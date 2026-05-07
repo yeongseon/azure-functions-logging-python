@@ -229,3 +229,56 @@ def test_logging_context_resets_even_when_body_raises() -> None:
     assert function_name_var.get() is None
     assert trace_id_var.get() is None
     assert cold_start_var.get() is None
+
+
+def test_nested_logging_context_restores_outer() -> None:
+    """Nested logging_context restores outer context on exit."""
+    from azure_functions_logging._context import logging_context, invocation_id_var, function_name_var
+
+    class OuterCtx:
+        invocation_id = "outer-inv"
+        function_name = "outer-fn"
+        trace_context = None
+
+    class InnerCtx:
+        invocation_id = "inner-inv"
+        function_name = "inner-fn"
+        trace_context = None
+
+    with logging_context(OuterCtx()):
+        assert invocation_id_var.get() == "outer-inv"
+        assert function_name_var.get() == "outer-fn"
+
+        with logging_context(InnerCtx()):
+            assert invocation_id_var.get() == "inner-inv"
+            assert function_name_var.get() == "inner-fn"
+
+        # After inner exits, outer is restored
+        assert invocation_id_var.get() == "outer-inv"
+        assert function_name_var.get() == "outer-fn"
+
+    # After outer exits, back to None
+    assert invocation_id_var.get() is None
+    assert function_name_var.get() is None
+
+
+def test_inject_context_returns_tokens() -> None:
+    """inject_context returns tokens that can be used with restore_context."""
+    from azure_functions_logging._context import inject_context, restore_context, invocation_id_var
+
+    class Ctx:
+        invocation_id = "tok-inv"
+        function_name = "tok-fn"
+        trace_context = None
+
+    # Set initial state
+    invocation_id_var.set("before")
+
+    tokens = inject_context(Ctx())
+    assert invocation_id_var.get() == "tok-inv"
+
+    restore_context(tokens)
+    assert invocation_id_var.get() == "before"
+
+    # Cleanup
+    invocation_id_var.set(None)

@@ -13,7 +13,7 @@ import functools
 import inspect
 from typing import Any, Callable, TypeVar, overload
 
-from ._context import inject_context, reset_context
+from ._context import inject_context, restore_context
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
@@ -66,11 +66,13 @@ def _wrap_sync(func: _F, param: str) -> _F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
-            inject_context(ctx)
+            tokens = inject_context(ctx)
+        else:
+            tokens = {}
         try:
             return func(*args, **kwargs)
         finally:
-            reset_context()
+            restore_context(tokens)
 
     _merge_toolkit_metadata(wrapper, "logging", {"version": 1, "context_param": param})
     return wrapper  # type: ignore[return-value]
@@ -83,11 +85,13 @@ def _wrap_async(func: _F, param: str) -> _F:
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
-            inject_context(ctx)
+            tokens = inject_context(ctx)
+        else:
+            tokens = {}
         try:
             return await func(*args, **kwargs)
         finally:
-            reset_context()
+            restore_context(tokens)
 
     _merge_toolkit_metadata(wrapper, "logging", {"version": 1, "context_param": param})
     return wrapper  # type: ignore[return-value]
