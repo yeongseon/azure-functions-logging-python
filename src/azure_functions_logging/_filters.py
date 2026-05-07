@@ -46,6 +46,7 @@ def _redact_value(
         return [_redact_value(item, sensitive_keys, mask) for item in value]
     return value
 
+
 # Standard LogRecord fields that RedactionFilter should never touch
 _STANDARD_RECORD_FIELDS: frozenset[str] = frozenset(
     {

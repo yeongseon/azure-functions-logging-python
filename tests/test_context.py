@@ -248,6 +248,7 @@ def test_nested_logging_context_restores_outer() -> None:
         trace_context = SimpleNamespace(
             trace_parent="00-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2-2222222222222222-01"
         )
+
     with logging_context(OuterCtx()):
         assert invocation_id_var.get() == "outer-inv"
         assert function_name_var.get() == "outer-fn"
@@ -301,3 +302,39 @@ def test_restore_context_tokens_are_single_use() -> None:
     restore_context(tokens)
     with pytest.raises(RuntimeError):
         restore_context(tokens)
+
+
+def test_install_context_factory_injects_fields() -> None:
+    """install_context_factory installs a LogRecordFactory that adds context fields."""
+    from azure_functions_logging._context import install_context_factory
+
+    # Reset factory state for test
+    ctx_mod._factory_installed = False
+    old_factory = logging.getLogRecordFactory()
+
+    try:
+        invocation_id_var.set("factory-inv")
+        function_name_var.set("factory-fn")
+
+        install_context_factory()
+
+        factory = logging.getLogRecordFactory()
+        record = factory(
+            "test",
+            logging.INFO,
+            __file__,
+            1,
+            "hi",
+            (),
+            None,
+        )
+        assert record.invocation_id == "factory-inv"  # type: ignore[attr-defined]
+        assert record.function_name == "factory-fn"  # type: ignore[attr-defined]
+
+        # Idempotent
+        install_context_factory()
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        ctx_mod._factory_installed = False
+        invocation_id_var.set(None)
+        function_name_var.set(None)

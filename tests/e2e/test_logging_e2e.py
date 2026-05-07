@@ -11,6 +11,7 @@ Usage:
     APPINSIGHTS_NAME=<ai-name> \\
     pytest tests/e2e -v
 """
+
 from __future__ import annotations
 
 import json
@@ -52,6 +53,7 @@ def warmup() -> None:
 
 # ── HTTP-level tests ───────────────────────────────────────────────────────
 
+
 @pytest.mark.skipif(not BASE_URL, reason=SKIP_REASON)
 def test_health_returns_200() -> None:
     r = _get("/api/health")
@@ -70,15 +72,23 @@ def test_logme_returns_200_with_correlation_id() -> None:
 
 # ── App Insights log query tests ───────────────────────────────────────────
 
+
 def _query_app_insights(query: str) -> list[dict]:  # type: ignore[type-arg]
     """Run a Kusto query against App Insights via az CLI and return rows."""
     result = subprocess.run(
         [
-            "az", "monitor", "app-insights", "query",
-            "--app", APPINSIGHTS_NAME,
-            "--resource-group", APPINSIGHTS_RG,
-            "--analytics-query", query,
-            "--output", "json",
+            "az",
+            "monitor",
+            "app-insights",
+            "query",
+            "--app",
+            APPINSIGHTS_NAME,
+            "--resource-group",
+            APPINSIGHTS_RG,
+            "--analytics-query",
+            query,
+            "--output",
+            "json",
         ],
         capture_output=True,
         text=True,
@@ -105,10 +115,7 @@ def test_structured_log_appears_in_app_insights() -> None:
 
     # App Insights ingestion latency can be up to ~2-5 min
     query = (
-        f"traces "
-        f"| where timestamp > ago(10m) "
-        f"| where message contains '{CORRELATION_ID}' "
-        f"| limit 5"
+        f"traces | where timestamp > ago(10m) | where message contains '{CORRELATION_ID}' | limit 5"
     )
     deadline = time.time() + 360  # wait up to 6 minutes
     while time.time() < deadline:

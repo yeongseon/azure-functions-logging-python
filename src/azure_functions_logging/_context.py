@@ -39,6 +39,10 @@ def _check_cold_start() -> bool:
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
+    .. deprecated:: 0.7.0
+        Use :func:`install_context_factory` instead for guaranteed context
+        injection on all log records regardless of handler configuration.
+
     This filter is installed on handlers (not loggers) so it covers ALL loggers
     including third-party libraries.
     """
@@ -139,6 +143,7 @@ def reset_context() -> None:
     trace_id_var.set(None)
     cold_start_var.set(None)
 
+
 def restore_context(tokens: ContextTokens) -> None:
     """Restore context variables to their previous state using tokens.
 
@@ -172,3 +177,43 @@ def logging_context(context: Any) -> Iterator[None]:
         yield
     finally:
         restore_context(tokens)
+
+
+# --- LogRecordFactory-based context injection (opt-in) ---
+
+_factory_installed: bool = False
+
+
+def install_context_factory() -> None:
+    """Install a global LogRecordFactory that injects context into every LogRecord.
+
+    This is an alternative to ``ContextFilter`` that guarantees context fields
+    are present on ALL log records regardless of handler/filter configuration.
+
+    .. warning::
+
+        This modifies the **global** ``logging.LogRecordFactory``. It affects
+        all loggers in the process, including third-party libraries. Call once
+        at application startup.
+
+    The factory chains with any previously-installed factory, preserving
+    existing customizations.
+
+    This function is idempotent — multiple calls have no additional effect.
+    """
+    global _factory_installed
+    if _factory_installed:
+        return
+
+    previous_factory = logging.getLogRecordFactory()
+
+    def context_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = previous_factory(*args, **kwargs)
+        record.invocation_id = invocation_id_var.get()
+        record.function_name = function_name_var.get()
+        record.trace_id = trace_id_var.get()
+        record.cold_start = cold_start_var.get()
+        return record
+
+    logging.setLogRecordFactory(context_record_factory)
+    _factory_installed = True
