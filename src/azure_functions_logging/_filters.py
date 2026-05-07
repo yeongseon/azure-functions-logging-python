@@ -117,6 +117,10 @@ class SamplingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True to emit the record, False to drop it."""
+        # Honor name-based scoping from logging.Filter
+        if not super().filter(record):
+            return True  # bypass sampling for non-matching loggers
+
         # Always pass WARNING and above
         if record.levelno >= logging.WARNING:
             return True
@@ -166,6 +170,10 @@ class RedactionFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Redact sensitive fields on the record. Always returns True."""
+        # Honor name-based scoping from logging.Filter
+        if not super().filter(record):
+            return True  # bypass redaction for non-matching loggers
+
         for key in list(record.__dict__.keys()):
             if key in _STANDARD_RECORD_FIELDS:
                 continue

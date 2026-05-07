@@ -153,3 +153,41 @@ def test_is_functions_environment_with_only_website_instance_id_is_false() -> No
     with patch.dict(os.environ, {"WEBSITE_INSTANCE_ID": "abc123"}, clear=True):
         assert _is_functions_environment() is False
         assert _is_azure_hosted() is True
+
+
+def test_format_json_warns_in_azure_environment() -> None:
+    """When format='json' and no functions_formatter in Azure, emit a warning."""
+    import warnings
+
+    root = logging.getLogger()
+    root.handlers = [logging.StreamHandler()]
+
+    with patch.dict(os.environ, {"FUNCTIONS_WORKER_RUNTIME": "python"}, clear=True):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            setup_logging(format="json")
+
+        assert len(w) == 1
+        assert "format" in str(w[0].message).lower()
+        assert "ignored" in str(w[0].message).lower()
+
+    root.handlers = []
+    root.filters.clear()
+
+
+def test_format_color_no_warning_in_azure_environment() -> None:
+    """When format='color' (default) in Azure, no warning."""
+    import warnings
+
+    root = logging.getLogger()
+    root.handlers = [logging.StreamHandler()]
+
+    with patch.dict(os.environ, {"FUNCTIONS_WORKER_RUNTIME": "python"}, clear=True):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            setup_logging(format="color")
+
+        assert len(w) == 0
+
+    root.handlers = []
+    root.filters.clear()

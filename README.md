@@ -33,7 +33,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 | Cold start invisible | No signal when a new worker instance starts | Detects automatically on first `inject_context()` |
 | Noisy third-party loggers | `azure-core`, `urllib3` flood your Application Insights | `SamplingFilter` / `RedactionFilter` |
 | Local vs cloud output mismatch | Colorized output breaks in production pipelines | Environment-aware formatter switching |
-| PII leaking into logs | Sensitive fields logged in exception tracebacks | `RedactionFilter` with pattern matching |
+| PII leaking into logs | Sensitive fields logged in exception tracebacks | `RedactionFilter` with key-based redaction |
 
 ## What it does
 
@@ -282,6 +282,10 @@ Both sync and async handlers are supported.
 
 Use JSON format when logs feed Application Insights or any aggregation system:
 
+> **Note:** The `format` parameter only affects handlers created by this library (local development).
+> In Azure Functions, the host manages handlers. Use `functions_formatter=JsonFormatter()` to set
+> JSON output on host-managed handlers. Passing `format="json"` in Azure emits a warning.
+
 ```python
 setup_logging(format="json")
 ```
@@ -333,8 +337,8 @@ import logging
 
 setup_logging()
 
-# Only log 1 in 10 azure-core messages
-logging.getLogger("azure").addFilter(SamplingFilter(rate=0.1))
+# Allow up to 10 azure-core messages per 1-second window
+logging.getLogger("azure").addFilter(SamplingFilter(rate=10))
 
 # Silence urllib3 completely in production
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -350,10 +354,10 @@ import logging
 
 setup_logging()
 root = logging.getLogger()
-root.addFilter(RedactionFilter(patterns=["password", "token", "secret"]))
+root.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
 ```
 
-Any log record where the message or extra fields match a pattern will have those values replaced with `[REDACTED]`.
+Any log record with extra fields whose keys match a sensitive key will have those values replaced with `***`.
 
 ## Local vs Cloud
 
