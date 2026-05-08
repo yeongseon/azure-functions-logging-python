@@ -2,8 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+### Bug Fixes
+
+- Address PR #94 review — marker-based idempotency, extra collision safety, tests 
+- Address PR review — CI fix, docstrings, ContextTokens alias, README, single-use test 
+- Address PR review — mypy attr-defined, README accuracy, filter docstrings 
+- V0.5.4 — correct README examples, warn on ignored format in Azure, honor filter name semantics 
+
 ### Documentation
 
+- Unify README examples around logging_context() as primary pattern 
+- Update README — add install_context_factory section, fix AI guidance examples 
+- Final cleanup — README wording, test dedup, trace_id nested restore 
+- Fix ecosystem table names, badges, and Part of intro line 
+- Mark cookbook as dogfood, fix ecosystem table description 
+- Replace non-existent python-dx link with cookbook repo 
+- Fix cross-repo links and README title 
+- *(agents)* Add Issue Conventions section to AGENTS.md 
+
+### Features
+
+- V0.7.0 — add install_context_factory() for global LogRecord context injection 
+- V0.6.0 — token-based context restore for safe nested logging_context() 
+
+### Miscellaneous Tasks
+
+- Soften idempotency docstring, move test imports to top-level 
+- *(deps)* Bump github/codeql-action from 4.35.2 to 4.35.3 
+
+### Testing
+
+- Raise coverage to 95%+ and enforce via AGENTS.md and pyproject.toml 
+
+### Documentation
+
+- Update changelog 
 - Clarify Application Insights ingestion, cold_start semantics, and KQL shapes (#85) 
 
 ### Features
