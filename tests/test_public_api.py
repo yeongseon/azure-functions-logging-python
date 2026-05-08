@@ -11,8 +11,6 @@ class TestAPISurface:
             "__version__",
             "ContextTokens",
             "FunctionLogger",
-            "__version__",
-            "FunctionLogger",
             "JsonFormatter",
             "RedactionFilter",
             "SamplingFilter",

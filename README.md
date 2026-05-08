@@ -182,7 +182,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
         return func.HttpResponse("OK")
 ```
 
-`logging_context` is the recommended primary pattern: it injects context on enter and **always** resets on exit (even when the handler raises), which prevents stale context from leaking into the next invocation on a reused worker.
+`logging_context` is the recommended primary pattern: it injects context on enter and **always** restores the previous context on exit (even when the handler raises), which prevents stale context from leaking into the next invocation on a reused worker.
 
 For lower-level control or when integrating with custom middleware, use token-based restore:
 
