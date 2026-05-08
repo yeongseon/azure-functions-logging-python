@@ -219,9 +219,8 @@ def install_context_factory() -> None:
     The factory chains with any previously-installed factory, preserving
     existing customizations.
 
-    This function is idempotent — calling it when the factory is already
-    installed (even if another factory was layered on top) has no additional
-    effect as long as the context factory remains in the chain.
+    This function is idempotent for repeated direct calls while the currently
+    active ``LogRecordFactory`` is the context factory installed by this package.
     """
     current_factory = logging.getLogRecordFactory()
     if getattr(current_factory, _CONTEXT_FACTORY_MARKER, False):

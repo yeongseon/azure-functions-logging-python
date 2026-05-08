@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 import azure_functions_logging._context as ctx_mod
 from azure_functions_logging._context import (
+    _CONTEXT_FACTORY_MARKER,
     ContextFilter,
     _check_cold_start,
     _extract_trace_id,
     cold_start_var,
     function_name_var,
     inject_context,
+    install_context_factory,
     invocation_id_var,
     logging_context,
     reset_context,
@@ -306,10 +309,6 @@ def test_restore_context_tokens_are_single_use() -> None:
 
 def test_install_context_factory_injects_fields() -> None:
     """install_context_factory installs a LogRecordFactory that adds context fields."""
-    from azure_functions_logging._context import (
-        _CONTEXT_FACTORY_MARKER,
-        install_context_factory,
-    )
 
     old_factory = logging.getLogRecordFactory()
 
@@ -345,10 +344,6 @@ def test_install_context_factory_injects_fields() -> None:
 
 def test_install_context_factory_chains_existing_factory() -> None:
     """Custom factory fields are preserved when context factory chains."""
-    from typing import Any
-
-    from azure_functions_logging._context import install_context_factory
-
     old_factory = logging.getLogRecordFactory()
 
     def custom_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
@@ -362,9 +357,7 @@ def test_install_context_factory_chains_existing_factory() -> None:
 
         install_context_factory()
 
-        record = logging.getLogRecordFactory()(
-            "test", logging.INFO, __file__, 1, "msg", (), None
-        )
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "msg", (), None)
 
         assert record.custom_field == "kept"  # type: ignore[attr-defined]
         assert record.invocation_id == "chain-inv"  # type: ignore[attr-defined]
@@ -375,7 +368,6 @@ def test_install_context_factory_chains_existing_factory() -> None:
 
 def test_install_context_factory_extra_collision_raises() -> None:
     """stdlib extra= with context field names raises KeyError when factory is active."""
-    from azure_functions_logging._context import install_context_factory
 
     old_factory = logging.getLogRecordFactory()
 
@@ -398,7 +390,6 @@ def test_install_context_factory_extra_collision_raises() -> None:
 
 def test_install_context_factory_with_logger_emit() -> None:
     """Context fields appear on records emitted through a real logger."""
-    from azure_functions_logging._context import install_context_factory
 
     old_factory = logging.getLogRecordFactory()
     captured: list[logging.LogRecord] = []
