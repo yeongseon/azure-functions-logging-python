@@ -16,6 +16,7 @@ from azure_functions_logging._context import (
     invocation_id_var,
     logging_context,
     reset_context,
+    restore_context,
     trace_id_var,
 )
 
@@ -233,7 +234,6 @@ def test_logging_context_resets_even_when_body_raises() -> None:
 
 def test_nested_logging_context_restores_outer() -> None:
     """Nested logging_context restores outer context on exit."""
-    from azure_functions_logging._context import logging_context, invocation_id_var, function_name_var
 
     class OuterCtx:
         invocation_id = "outer-inv"
@@ -248,23 +248,26 @@ def test_nested_logging_context_restores_outer() -> None:
     with logging_context(OuterCtx()):
         assert invocation_id_var.get() == "outer-inv"
         assert function_name_var.get() == "outer-fn"
+        assert cold_start_var.get() is True
 
         with logging_context(InnerCtx()):
             assert invocation_id_var.get() == "inner-inv"
             assert function_name_var.get() == "inner-fn"
+            assert cold_start_var.get() is False
 
         # After inner exits, outer is restored
         assert invocation_id_var.get() == "outer-inv"
         assert function_name_var.get() == "outer-fn"
+        assert cold_start_var.get() is True
 
     # After outer exits, back to None
     assert invocation_id_var.get() is None
     assert function_name_var.get() is None
+    assert cold_start_var.get() is None
 
 
 def test_inject_context_returns_tokens() -> None:
     """inject_context returns tokens that can be used with restore_context."""
-    from azure_functions_logging._context import inject_context, restore_context, invocation_id_var
 
     class Ctx:
         invocation_id = "tok-inv"
@@ -282,3 +285,12 @@ def test_inject_context_returns_tokens() -> None:
 
     # Cleanup
     invocation_id_var.set(None)
+
+
+def test_restore_context_tokens_are_single_use() -> None:
+    """Restoring the same tokens twice raises RuntimeError."""
+    ctx = SimpleNamespace(invocation_id="x", function_name="f", trace_context=None)
+    tokens = inject_context(ctx)
+    restore_context(tokens)
+    with pytest.raises(RuntimeError):
+        restore_context(tokens)

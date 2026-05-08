@@ -8,6 +8,9 @@ import contextvars
 import logging
 from typing import Any
 
+# Type alias for the token mapping returned by inject_context()
+ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
+
 # Context variables for invocation context
 invocation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "invocation_id", default=None
@@ -72,7 +75,7 @@ def _extract_trace_id(trace_parent: str | None) -> str | None:
     return None
 
 
-def inject_context(context: Any) -> dict[contextvars.ContextVar[Any], contextvars.Token[Any]]:
+def inject_context(context: Any) -> ContextTokens:
     """Set invocation context from an Azure Functions context object.
 
     Extracts invocation_id, function_name, trace_id, and cold_start
@@ -89,7 +92,7 @@ def inject_context(context: Any) -> dict[contextvars.ContextVar[Any], contextvar
         A mapping of ContextVar to Token that can be passed to
         ``restore_context()`` to restore the previous state.
     """
-    tokens: dict[contextvars.ContextVar[Any], contextvars.Token[Any]] = {}
+    tokens: ContextTokens = {}
     try:
         tokens[invocation_id_var] = invocation_id_var.set(getattr(context, "invocation_id", None))
     except Exception:  # nosec B110 — Principle 3: context failures are silent
@@ -117,9 +120,16 @@ def inject_context(context: Any) -> dict[contextvars.ContextVar[Any], contextvar
 def reset_context() -> None:
     """Clear every invocation context variable.
 
-    Call this after an invocation completes when you used ``inject_context()``
-    manually. Without resetting, contextvar values can leak across reused
-    Azure Functions worker invocations and across async/thread boundaries.
+    Use this for test teardown or defensive full cleanup. For normal
+    context management, prefer token-based restore::
+
+        tokens = inject_context(context)
+        try:
+            ...
+        finally:
+            restore_context(tokens)
+
+    because token-based restore preserves any outer context.
 
     Safe to call repeatedly. Setting to ``None`` is the documented \"absent\"
     state for every context field (matches ``ContextVar`` defaults).
@@ -129,8 +139,12 @@ def reset_context() -> None:
     trace_id_var.set(None)
     cold_start_var.set(None)
 
-def restore_context(tokens: dict[contextvars.ContextVar[Any], contextvars.Token[Any]]) -> None:
+def restore_context(tokens: ContextTokens) -> None:
     """Restore context variables to their previous state using tokens.
+
+    Tokens are single-use and must be restored in the same context where
+    they were created. Calling this function twice with the same tokens
+    raises ``RuntimeError`` from ``contextvars``.
 
     Args:
         tokens: Mapping returned by ``inject_context()``.

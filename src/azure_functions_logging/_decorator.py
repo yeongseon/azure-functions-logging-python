@@ -1,7 +1,7 @@
 """Decorator helper for automatic context injection.
 
 Provides ``with_context`` — a decorator that calls ``inject_context()``
-before the handler runs and resets context variables after it completes.
+before the handler runs and restores previous context variables after it completes.
 
 Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 """
@@ -126,7 +126,7 @@ def with_context(
 
     1. Finds the ``context`` parameter (by name, default ``"context"``)
     2. Calls ``inject_context(context)`` before the handler body
-    3. Resets all context variables in ``finally`` after the handler returns
+    3. Restores the previous context in ``finally`` after the handler returns
 
     Both sync and async handlers are supported.
 

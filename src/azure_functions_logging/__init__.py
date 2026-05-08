@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ._context import inject_context, logging_context, reset_context, restore_context
+from ._context import ContextTokens, inject_context, logging_context, reset_context, restore_context
 from ._decorator import get_logging_metadata, with_context
 from ._filters import RedactionFilter, SamplingFilter
 from ._json_formatter import JsonFormatter
@@ -11,6 +11,7 @@ from ._setup import setup_logging
 
 __all__ = [
     "__version__",
+    "ContextTokens",
     "FunctionLogger",
     "JsonFormatter",
     "RedactionFilter",

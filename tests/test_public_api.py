@@ -9,6 +9,9 @@ class TestAPISurface:
     def test_all_exports(self) -> None:
         assert set(azure_functions_logging.__all__) == {
             "__version__",
+            "ContextTokens",
+            "FunctionLogger",
+            "__version__",
             "FunctionLogger",
             "JsonFormatter",
             "RedactionFilter",
@@ -31,6 +34,7 @@ class TestAPISurface:
 
     def test_public_names_are_importable(self) -> None:
         from azure_functions_logging import (  # noqa: F401  # pyright: ignore[reportMissingImports]
+            ContextTokens,
             FunctionLogger,
             JsonFormatter,
             RedactionFilter,
