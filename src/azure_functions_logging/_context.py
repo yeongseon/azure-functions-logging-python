@@ -39,9 +39,12 @@ def _check_cold_start() -> bool:
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
-    .. deprecated:: 0.7.0
-        Use :func:`install_context_factory` instead for guaranteed context
-        injection on all log records regardless of handler configuration.
+    For most new applications, prefer :func:`install_context_factory` because it
+    injects context at LogRecord creation time and does not depend on handler
+    filter configuration.
+
+    ``ContextFilter`` remains supported for compatibility and for users who do
+    not want to modify the global ``LogRecordFactory``.
 
     This filter is installed on handlers (not loggers) so it covers ALL loggers
     including third-party libraries.
@@ -181,7 +184,16 @@ def logging_context(context: Any) -> Iterator[None]:
 
 # --- LogRecordFactory-based context injection (opt-in) ---
 
-_factory_installed: bool = False
+_CONTEXT_FACTORY_MARKER = "_azure_functions_logging_context_factory"
+
+#: Field names injected by the factory. These become reserved LogRecord
+#: attributes when ``install_context_factory()`` is active.
+CONTEXT_RECORD_FIELDS: tuple[str, ...] = (
+    "invocation_id",
+    "function_name",
+    "trace_id",
+    "cold_start",
+)
 
 
 def install_context_factory() -> None:
@@ -192,6 +204,14 @@ def install_context_factory() -> None:
 
     .. warning::
 
+        When this factory is active, the field names ``invocation_id``,
+        ``function_name``, ``trace_id``, and ``cold_start`` become **reserved**
+        LogRecord attributes. Passing them via ``extra=`` to stdlib loggers will
+        raise ``KeyError``. Use :class:`FunctionLogger` (which sanitizes extra
+        keys automatically) or choose different key names.
+
+    .. warning::
+
         This modifies the **global** ``logging.LogRecordFactory``. It affects
         all loggers in the process, including third-party libraries. Call once
         at application startup.
@@ -199,13 +219,15 @@ def install_context_factory() -> None:
     The factory chains with any previously-installed factory, preserving
     existing customizations.
 
-    This function is idempotent — multiple calls have no additional effect.
+    This function is idempotent — calling it when the factory is already
+    installed (even if another factory was layered on top) has no additional
+    effect as long as the context factory remains in the chain.
     """
-    global _factory_installed
-    if _factory_installed:
+    current_factory = logging.getLogRecordFactory()
+    if getattr(current_factory, _CONTEXT_FACTORY_MARKER, False):
         return
 
-    previous_factory = logging.getLogRecordFactory()
+    previous_factory = current_factory
 
     def context_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         record = previous_factory(*args, **kwargs)
@@ -215,5 +237,5 @@ def install_context_factory() -> None:
         record.cold_start = cold_start_var.get()
         return record
 
+    setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)
     logging.setLogRecordFactory(context_record_factory)
-    _factory_installed = True
