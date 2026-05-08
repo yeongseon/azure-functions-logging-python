@@ -1,7 +1,7 @@
 """Decorator helper for automatic context injection.
 
 Provides ``with_context`` — a decorator that calls ``inject_context()``
-before the handler runs and resets context variables after it completes.
+before the handler runs and restores previous context variables after it completes.
 
 Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 """
@@ -13,7 +13,7 @@ import functools
 import inspect
 from typing import Any, Callable, TypeVar, overload
 
-from ._context import inject_context, reset_context
+from ._context import inject_context, restore_context
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
@@ -66,11 +66,13 @@ def _wrap_sync(func: _F, param: str) -> _F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
-            inject_context(ctx)
+            tokens = inject_context(ctx)
+        else:
+            tokens = {}
         try:
             return func(*args, **kwargs)
         finally:
-            reset_context()
+            restore_context(tokens)
 
     _merge_toolkit_metadata(wrapper, "logging", {"version": 1, "context_param": param})
     return wrapper  # type: ignore[return-value]
@@ -83,11 +85,13 @@ def _wrap_async(func: _F, param: str) -> _F:
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
-            inject_context(ctx)
+            tokens = inject_context(ctx)
+        else:
+            tokens = {}
         try:
             return await func(*args, **kwargs)
         finally:
-            reset_context()
+            restore_context(tokens)
 
     _merge_toolkit_metadata(wrapper, "logging", {"version": 1, "context_param": param})
     return wrapper  # type: ignore[return-value]
@@ -122,7 +126,7 @@ def with_context(
 
     1. Finds the ``context`` parameter (by name, default ``"context"``)
     2. Calls ``inject_context(context)`` before the handler body
-    3. Resets all context variables in ``finally`` after the handler returns
+    3. Restores the previous context in ``finally`` after the handler returns
 
     Both sync and async handlers are supported.
 

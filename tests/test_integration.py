@@ -81,6 +81,7 @@ def test_get_logger_returns_function_logger() -> None:
 def test_public_api_exports() -> None:
     expected = {
         "__version__",
+        "ContextTokens",
         "FunctionLogger",
         "JsonFormatter",
         "RedactionFilter",
@@ -90,6 +91,7 @@ def test_public_api_exports() -> None:
         "inject_context",
         "logging_context",
         "reset_context",
+        "restore_context",
         "setup_logging",
         "with_context",
     }

@@ -8,6 +8,9 @@ import contextvars
 import logging
 from typing import Any
 
+# Type alias for the token mapping returned by inject_context()
+ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
+
 # Context variables for invocation context
 invocation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "invocation_id", default=None
@@ -72,7 +75,7 @@ def _extract_trace_id(trace_parent: str | None) -> str | None:
     return None
 
 
-def inject_context(context: Any) -> None:
+def inject_context(context: Any) -> ContextTokens:
     """Set invocation context from an Azure Functions context object.
 
     Extracts invocation_id, function_name, trace_id, and cold_start
@@ -84,40 +87,51 @@ def inject_context(context: Any) -> None:
 
     Args:
         context: An Azure Functions context object (func.Context).
+
+    Returns:
+        A mapping of ContextVar to Token that can be passed to
+        ``restore_context()`` to restore the previous state.
     """
+    tokens: ContextTokens = {}
     try:
-        invocation_id_var.set(getattr(context, "invocation_id", None))
+        tokens[invocation_id_var] = invocation_id_var.set(getattr(context, "invocation_id", None))
     except Exception:  # nosec B110 — Principle 3: context failures are silent
-        invocation_id_var.set(None)
+        tokens[invocation_id_var] = invocation_id_var.set(None)
 
     try:
-        function_name_var.set(getattr(context, "function_name", None))
+        tokens[function_name_var] = function_name_var.set(getattr(context, "function_name", None))
     except Exception:  # nosec B110 — Principle 3: context failures are silent
-        function_name_var.set(None)
+        tokens[function_name_var] = function_name_var.set(None)
 
     try:
         trace_context = getattr(context, "trace_context", None)
         trace_parent = getattr(trace_context, "trace_parent", None) if trace_context else None
-        trace_id_var.set(_extract_trace_id(trace_parent))
+        tokens[trace_id_var] = trace_id_var.set(_extract_trace_id(trace_parent))
     except Exception:  # nosec B110 — Principle 3: context failures are silent
-        trace_id_var.set(None)
+        tokens[trace_id_var] = trace_id_var.set(None)
 
     try:
-        cold_start_var.set(_check_cold_start())
+        tokens[cold_start_var] = cold_start_var.set(_check_cold_start())
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         pass
+    return tokens
 
 
 def reset_context() -> None:
     """Clear every invocation context variable.
 
-    Call this after an invocation completes when you used ``inject_context()``
-    manually. Without resetting, contextvar values can leak across reused
-    Azure Functions worker invocations and across async/thread boundaries —
-    a subsequent log line may carry a stale ``invocation_id`` belonging to an
-    earlier request.
+    Use this for test teardown or defensive full cleanup. For normal
+    context management, prefer token-based restore::
 
-    Safe to call repeatedly. Setting to ``None`` is the documented "absent"
+        tokens = inject_context(context)
+        try:
+            ...
+        finally:
+            restore_context(tokens)
+
+    because token-based restore preserves any outer context.
+
+    Safe to call repeatedly. Setting to ``None`` is the documented \"absent\"
     state for every context field (matches ``ContextVar`` defaults).
     """
     invocation_id_var.set(None)
@@ -125,10 +139,23 @@ def reset_context() -> None:
     trace_id_var.set(None)
     cold_start_var.set(None)
 
+def restore_context(tokens: ContextTokens) -> None:
+    """Restore context variables to their previous state using tokens.
+
+    Tokens are single-use and must be restored in the same context where
+    they were created. Calling this function twice with the same tokens
+    raises ``RuntimeError`` from ``contextvars``.
+
+    Args:
+        tokens: Mapping returned by ``inject_context()``.
+    """
+    for var, token in tokens.items():
+        var.reset(token)
+
 
 @contextmanager
 def logging_context(context: Any) -> Iterator[None]:
-    """Context manager wrapping ``inject_context`` + ``reset_context``.
+    """Context manager wrapping ``inject_context`` + ``restore_context``.
 
     Recommended pattern when handlers don't use the ``with_context`` decorator::
 
@@ -137,12 +164,11 @@ def logging_context(context: Any) -> Iterator[None]:
                 logger.info("processing")
                 ...
 
-    Guarantees ``reset_context()`` runs even if the body raises, preventing
-    invocation context from leaking into subsequent invocations on the same
-    worker.
+    Guarantees context is restored to its previous state even if the body raises,
+    supporting safe nesting of contexts.
     """
-    inject_context(context)
+    tokens = inject_context(context)
     try:
         yield
     finally:
-        reset_context()
+        restore_context(tokens)
