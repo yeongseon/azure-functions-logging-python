@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import warnings
 
 from ._context import ContextFilter
 from ._formatter import ColorFormatter
@@ -51,7 +52,8 @@ def setup_logging(
         level: Logging level for local development. Ignored in Azure/Core Tools.
         format: Log output format for local development. Supported values are
             ``"color"`` (default) and ``"json"``. Ignored when
-            ``functions_formatter`` is provided.
+            ``functions_formatter`` is provided. In Azure/Core Tools, passing
+            ``format="json"`` without ``functions_formatter`` emits a warning.
         logger_name: Optional logger name to configure. When None, configures
             the root logger (local dev) or installs filter on root handlers (Azure).
         functions_formatter: Optional custom formatter applied to all root
@@ -72,6 +74,12 @@ def setup_logging(
 
         if is_functions_env:
             # Azure or Core Tools: install filter only, don't touch handlers/level
+            if format != "color" and functions_formatter is None:
+                warnings.warn(
+                    "The 'format' parameter is ignored in Azure Functions environment. "
+                    "Pass functions_formatter=JsonFormatter() to set JSON output on host handlers.",
+                    stacklevel=2,
+                )
             root = logging.getLogger()
             for handler in root.handlers:
                 if functions_formatter is not None:

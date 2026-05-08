@@ -92,8 +92,9 @@ class SamplingFilter(logging.Filter):
     Args:
         rate: Maximum number of records to pass per window. Must be >= 1.
         window: Rolling time window in seconds. Default: 1.0.
-        name: Logger name filter (passed to ``logging.Filter.__init__``).
-              Empty string matches all loggers (default).
+        name: Optional logger-name scope. When set, only matching loggers are
+            subject to sampling; non-matching records pass through unchanged.
+            Empty string matches all loggers (default).
 
     Example::
 
@@ -117,6 +118,10 @@ class SamplingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True to emit the record, False to drop it."""
+        # Honor name-based scoping from logging.Filter
+        if not super().filter(record):
+            return True  # bypass sampling for non-matching loggers
+
         # Always pass WARNING and above
         if record.levelno >= logging.WARNING:
             return True
@@ -144,8 +149,8 @@ class RedactionFilter(logging.Filter):
         sensitive_keys: Iterable of lowercase key names to redact. When None,
             uses the built-in default set (password, passwd, token,
             authorization, secret, api_key, apikey).
-        name: Logger name filter (passed to ``logging.Filter.__init__``).
-
+        name: Optional logger-name scope. When set, only matching loggers are
+            subject to redaction; non-matching records pass through unchanged.
     Example::
 
         filter = RedactionFilter()
@@ -166,6 +171,10 @@ class RedactionFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Redact sensitive fields on the record. Always returns True."""
+        # Honor name-based scoping from logging.Filter
+        if not super().filter(record):
+            return True  # bypass redaction for non-matching loggers
+
         for key in list(record.__dict__.keys()):
             if key in _STANDARD_RECORD_FIELDS:
                 continue

@@ -240,3 +240,55 @@ def test_redaction_filter_skips_attributes_that_raise_on_access() -> None:
     assert record.__dict__["explode"] == {"token": "***"}
     assert getattr(record, "password") == "***"
     assert getattr(record, "payload") == {"token": "***", "safe": "ok"}
+
+
+class TestSamplingFilterNameScoping:
+    """Tests for name-based filter scoping in SamplingFilter."""
+
+    def test_non_matching_logger_bypasses_sampling(self) -> None:
+        """Records from non-matching loggers pass through without sampling."""
+        flt = SamplingFilter(rate=1, name="myapp")
+        # Record from a different logger
+        record = logging.LogRecord(
+            name="other.module", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="hello", args=(), exc_info=None,
+        )
+        # Should pass through even though rate=1 — name doesn't match
+        assert flt.filter(record) is True
+        assert flt.filter(record) is True  # not rate-limited
+
+    def test_matching_logger_applies_sampling(self) -> None:
+        """Records from matching loggers are subject to sampling."""
+        flt = SamplingFilter(rate=1, name="myapp")
+        record = logging.LogRecord(
+            name="myapp.sub", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="hello", args=(), exc_info=None,
+        )
+        assert flt.filter(record) is True  # first passes
+        assert flt.filter(record) is False  # second is rate-limited
+
+
+class TestRedactionFilterNameScoping:
+    """Tests for name-based filter scoping in RedactionFilter."""
+
+    def test_non_matching_logger_bypasses_redaction(self) -> None:
+        """Records from non-matching loggers are not redacted."""
+        flt = RedactionFilter(name="myapp")
+        record = logging.LogRecord(
+            name="other.module", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="hello", args=(), exc_info=None,
+        )
+        setattr(record, "password", "secret123")
+        assert flt.filter(record) is True
+        assert getattr(record, "password") == "secret123"  # not redacted
+
+    def test_matching_logger_applies_redaction(self) -> None:
+        """Records from matching loggers are redacted."""
+        flt = RedactionFilter(name="myapp")
+        record = logging.LogRecord(
+            name="myapp.handler", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="hello", args=(), exc_info=None,
+        )
+        setattr(record, "password", "secret123")
+        assert flt.filter(record) is True
+        assert getattr(record, "password") == "***"
