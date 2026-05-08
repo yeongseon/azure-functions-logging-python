@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
+- *(logger)* Correct merge precedence to bind < extra < kwargs 
+
+### Miscellaneous Tasks
+
+- Bump version to 0.7.1 
+
+### Refactor
+
+- *(logger)* Prevent silent overwrite in _sanitize_extra() on rename collision 
+
+### Testing
+
+- *(logger)* Add regression tests for control kwarg leakage and sanitize double-prefix 
+
+### Bug Fixes
+
 - Address PR #94 review — marker-based idempotency, extra collision safety, tests 
 - Address PR review — CI fix, docstrings, ContextTokens alias, README, single-use test 
 - Address PR review — mypy attr-defined, README accuracy, filter docstrings 
@@ -11,6 +27,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Unify README examples around logging_context() as primary pattern 
 - Update README — add install_context_factory section, fix AI guidance examples 
 - Final cleanup — README wording, test dedup, trace_id nested restore 
