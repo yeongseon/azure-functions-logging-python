@@ -115,9 +115,8 @@ class FunctionLogger:
         """Internal log dispatch with context injection."""
         if not self._logger.isEnabledFor(level):
             return
-        extra = kwargs.pop("extra", None) or {}
-        extra.update(kwargs)
-        extra.update(self._context)
+        explicit_extra = kwargs.pop("extra", None) or {}
+        extra = {**self._context, **explicit_extra, **kwargs}
         extra = _sanitize_extra(extra)
         self._logger.log(
             level,
