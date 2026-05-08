@@ -53,11 +53,21 @@ def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
     sanitized: dict[str, Any] = {}
     for key, value in extra.items():
         if key in _RESERVED_LOG_RECORD_KEYS:
-            sanitized[f"extra_{key}"] = value
+            target = f"extra_{key}"
+            if target in sanitized:
+                suffix = 2
+                while f"{target}_{suffix}" in sanitized:
+                    suffix += 1
+                target = f"{target}_{suffix}"
+            sanitized[target] = value
         else:
+            if key in sanitized:
+                suffix = 2
+                while f"{key}_{suffix}" in sanitized:
+                    suffix += 1
+                key = f"{key}_{suffix}"
             sanitized[key] = value
     return sanitized
-
 
 class FunctionLogger:
     """Wrapper around a standard ``logging.Logger`` with context binding.

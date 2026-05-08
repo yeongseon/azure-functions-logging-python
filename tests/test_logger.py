@@ -248,8 +248,8 @@ def test_sanitize_extra_double_prefix_conflict() -> None:
 
     _, kwargs = underlying.log.call_args
     extra = kwargs["extra"]
-    # 'name' is reserved -> becomes 'extra_name', but 'extra_name' was already there
-    # dict merge: kwargs wins, so 'extra_name' from the renamed 'name' overwrites
-    # This documents current behavior - last-write-wins in _sanitize_extra
-    assert extra["extra_name"] in ("collides", "user-supplied")
+    # 'name' is reserved -> renamed to 'extra_name' first
+    # then 'extra_name' (non-reserved) collides with existing -> becomes 'extra_name_2'
+    assert extra["extra_name"] == "collides"
+    assert extra["extra_name_2"] == "user-supplied"
     assert "name" not in extra
