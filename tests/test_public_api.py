@@ -17,6 +17,7 @@ class TestAPISurface:
             "get_logging_metadata",
             "get_logger",
             "inject_context",
+            "install_context_factory",
             "logging_context",
             "reset_context",
             "restore_context",
@@ -25,7 +26,7 @@ class TestAPISurface:
         }
 
     def test_version_is_0_5_0(self) -> None:
-        assert azure_functions_logging.__version__ == "0.6.0"
+        assert azure_functions_logging.__version__ == "0.7.0"
 
     def test_version_is_string(self) -> None:
         assert isinstance(azure_functions_logging.__version__, str)
@@ -40,6 +41,7 @@ class TestAPISurface:
             get_logger,
             get_logging_metadata,
             inject_context,
+            install_context_factory,
             logging_context,
             reset_context,
             restore_context,

@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from ._context import ContextTokens, inject_context, logging_context, reset_context, restore_context
+from ._context import (
+    ContextTokens,
+    inject_context,
+    install_context_factory,
+    logging_context,
+    reset_context,
+    restore_context,
+)
 from ._decorator import get_logging_metadata, with_context
 from ._filters import RedactionFilter, SamplingFilter
 from ._json_formatter import JsonFormatter
@@ -19,6 +26,7 @@ __all__ = [
     "get_logging_metadata",
     "get_logger",
     "inject_context",
+    "install_context_factory",
     "logging_context",
     "reset_context",
     "restore_context",
@@ -26,7 +34,7 @@ __all__ = [
     "with_context",
 ]
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 
 def get_logger(name: str | None = None) -> FunctionLogger:

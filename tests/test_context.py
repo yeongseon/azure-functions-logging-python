@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 import azure_functions_logging._context as ctx_mod
 from azure_functions_logging._context import (
+    _CONTEXT_FACTORY_MARKER,
     ContextFilter,
     _check_cold_start,
     _extract_trace_id,
     cold_start_var,
     function_name_var,
     inject_context,
+    install_context_factory,
     invocation_id_var,
     logging_context,
     reset_context,
@@ -248,6 +251,7 @@ def test_nested_logging_context_restores_outer() -> None:
         trace_context = SimpleNamespace(
             trace_parent="00-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2-2222222222222222-01"
         )
+
     with logging_context(OuterCtx()):
         assert invocation_id_var.get() == "outer-inv"
         assert function_name_var.get() == "outer-fn"
@@ -301,3 +305,126 @@ def test_restore_context_tokens_are_single_use() -> None:
     restore_context(tokens)
     with pytest.raises(RuntimeError):
         restore_context(tokens)
+
+
+def test_install_context_factory_injects_fields() -> None:
+    """install_context_factory installs a LogRecordFactory that adds context fields."""
+
+    old_factory = logging.getLogRecordFactory()
+
+    try:
+        invocation_id_var.set("factory-inv")
+        function_name_var.set("factory-fn")
+
+        install_context_factory()
+
+        factory = logging.getLogRecordFactory()
+        assert getattr(factory, _CONTEXT_FACTORY_MARKER, False) is True
+
+        record = factory(
+            "test",
+            logging.INFO,
+            __file__,
+            1,
+            "hi",
+            (),
+            None,
+        )
+        assert record.invocation_id == "factory-inv"  # type: ignore[attr-defined]
+        assert record.function_name == "factory-fn"  # type: ignore[attr-defined]
+
+        # Idempotent — calling again does not double-wrap
+        install_context_factory()
+        assert logging.getLogRecordFactory() is factory
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        invocation_id_var.set(None)
+        function_name_var.set(None)
+
+
+def test_install_context_factory_chains_existing_factory() -> None:
+    """Custom factory fields are preserved when context factory chains."""
+    old_factory = logging.getLogRecordFactory()
+
+    def custom_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = old_factory(*args, **kwargs)
+        record.custom_field = "kept"
+        return record
+
+    try:
+        logging.setLogRecordFactory(custom_factory)
+        invocation_id_var.set("chain-inv")
+
+        install_context_factory()
+
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "msg", (), None)
+
+        assert record.custom_field == "kept"  # type: ignore[attr-defined]
+        assert record.invocation_id == "chain-inv"  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        invocation_id_var.set(None)
+
+
+def test_install_context_factory_extra_collision_raises() -> None:
+    """stdlib extra= with context field names raises KeyError when factory is active."""
+
+    old_factory = logging.getLogRecordFactory()
+
+    try:
+        install_context_factory()
+        logger = logging.getLogger("test.factory.collision")
+        logger.handlers.clear()
+        logger.propagate = False
+        handler = logging.StreamHandler()
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+
+        with pytest.raises(KeyError):
+            logger.info("x", extra={"invocation_id": "manual"})
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        logger.handlers.clear()
+        logger.propagate = True
+
+
+def test_install_context_factory_with_logger_emit() -> None:
+    """Context fields appear on records emitted through a real logger."""
+
+    old_factory = logging.getLogRecordFactory()
+    captured: list[logging.LogRecord] = []
+
+    class CapturingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    try:
+        invocation_id_var.set("emit-inv")
+        function_name_var.set("emit-fn")
+        trace_id_var.set("emit-trace")
+        cold_start_var.set(True)
+
+        install_context_factory()
+
+        logger = logging.getLogger("test.factory.emit")
+        logger.handlers.clear()
+        logger.propagate = False
+        logger.addHandler(CapturingHandler())
+        logger.setLevel(logging.INFO)
+
+        logger.info("hello from factory")
+
+        assert len(captured) == 1
+        rec = captured[0]
+        assert rec.invocation_id == "emit-inv"  # type: ignore[attr-defined]
+        assert rec.function_name == "emit-fn"  # type: ignore[attr-defined]
+        assert rec.trace_id == "emit-trace"  # type: ignore[attr-defined]
+        assert rec.cold_start is True  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        invocation_id_var.set(None)
+        function_name_var.set(None)
+        trace_id_var.set(None)
+        cold_start_var.set(None)
+        logger.handlers.clear()
+        logger.propagate = True

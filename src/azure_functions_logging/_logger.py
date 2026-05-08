@@ -9,11 +9,14 @@ _RESERVED_LOG_RECORD_KEYS: frozenset[str] = frozenset(
     {
         "args",
         "asctime",
+        "cold_start",
         "created",
         "exc_info",
         "exc_text",
         "filename",
         "funcName",
+        "function_name",
+        "invocation_id",
         "levelname",
         "levelno",
         "lineno",
@@ -30,6 +33,7 @@ _RESERVED_LOG_RECORD_KEYS: frozenset[str] = frozenset(
         "taskName",
         "thread",
         "threadName",
+        "trace_id",
     }
 )
 

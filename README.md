@@ -75,7 +75,7 @@ Order: {'customer': 'Alice', 'total': 99.99}
 ```python
 import azure.functions as func
 
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -84,9 +84,9 @@ app = func.FunctionApp()
 
 @app.route(route="orders")
 def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("Processing order", order_id="o-999")
-    return func.HttpResponse("OK")
+    with logging_context(context):
+        logger.info("Processing order", order_id="o-999")
+        return func.HttpResponse("OK")
 ```
 
 Local terminal output (colorized):
@@ -230,7 +230,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## Invocation Context
 
-`inject_context(context)` should be the **first line** of every handler. It binds:
+Use `logging_context()` to bind invocation context for the duration of a handler. It sets:
 
 - `invocation_id` — unique per execution, correlates all logs for one request
 - `function_name` — the Azure Functions function name
@@ -241,12 +241,22 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ```python
 def my_function(req, context):
-    inject_context(context)
-    logger.info("handler started")
-    # every log from here carries invocation_id and cold_start
+    with logging_context(context):
+        logger.info("handler started")
+        # every log from here carries invocation_id and cold_start
 ```
 
-Without `inject_context()`, these fields are `None` in every log line.
+For lower-level control (e.g. middleware), use `inject_context()` with `restore_context()`:
+
+```python
+tokens = inject_context(context)
+try:
+    logger.info("handler started")
+finally:
+    restore_context(tokens)
+```
+
+Without context injection, these fields are `None` in every log line.
 
 ### `with_context` Decorator
 
@@ -279,6 +289,28 @@ def hello(req: func.HttpRequest, ctx: func.Context) -> func.HttpResponse:
 ```
 
 Both sync and async handlers are supported.
+
+### Global LogRecordFactory (opt-in)
+
+For applications where handlers may be added after `setup_logging()`, or where you want
+invocation context on **every** `LogRecord` regardless of handler/filter configuration,
+install the global context factory once at startup:
+
+```python
+from azure_functions_logging import install_context_factory, setup_logging
+
+install_context_factory()  # injects context at record creation time
+setup_logging()
+```
+
+When enabled, `invocation_id`, `function_name`, `trace_id`, and `cold_start` become
+reserved `LogRecord` attributes. Passing them via stdlib `extra=` will raise `KeyError`.
+Use `FunctionLogger` (which sanitizes keys automatically) or choose different key names.
+
+> **Relationship with `setup_logging()`:** `setup_logging()` still installs `ContextFilter`
+> on handlers by default. You can call both — they set the same values, so there is no
+> conflict. `install_context_factory()` ensures coverage even on handlers added later or
+> loggers that bypass the filter chain.
 
 ## Structured JSON Output (Production)
 
@@ -454,13 +486,13 @@ This package provides structured logging for Azure Functions with zero modificat
 **When generating code:**
 - Import only from `azure_functions_logging` public API (no underscores)
 - Call `setup_logging()` at module level or handler startup (not per-request)
-- Prefer `with logging_context(context):` in handlers; use raw `inject_context(context)` only with `try/finally reset_context()`
+- Prefer `with logging_context(context):` in handlers; use raw `inject_context(context)` only with `try/finally restore_context(tokens)`
 - Use `logger.bind(key=value)` for per-request fields (not direct logger.extra)
 - Apply `RedactionFilter` for PII fields, `SamplingFilter` for high-volume logs
 
 **Example Pattern:**
 ```python
-from azure_functions_logging import setup_logging, get_logger, inject_context
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 # Module level
 setup_logging()
@@ -468,10 +500,10 @@ logger = get_logger(__name__)
 
 # Per handler
 def my_function(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    req_logger = logger.bind(correlation_id=req.params.get("id"))
-    req_logger.info("Processing")
-    return func.HttpResponse("OK")
+    with logging_context(context):
+        req_logger = logger.bind(correlation_id=req.params.get("id"))
+        req_logger.info("Processing")
+        return func.HttpResponse("OK")
 ```
 
 

@@ -39,6 +39,13 @@ def _check_cold_start() -> bool:
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
+    For most new applications, prefer :func:`install_context_factory` because it
+    injects context at LogRecord creation time and does not depend on handler
+    filter configuration.
+
+    ``ContextFilter`` remains supported for compatibility and for users who do
+    not want to modify the global ``LogRecordFactory``.
+
     This filter is installed on handlers (not loggers) so it covers ALL loggers
     including third-party libraries.
     """
@@ -139,6 +146,7 @@ def reset_context() -> None:
     trace_id_var.set(None)
     cold_start_var.set(None)
 
+
 def restore_context(tokens: ContextTokens) -> None:
     """Restore context variables to their previous state using tokens.
 
@@ -172,3 +180,61 @@ def logging_context(context: Any) -> Iterator[None]:
         yield
     finally:
         restore_context(tokens)
+
+
+# --- LogRecordFactory-based context injection (opt-in) ---
+
+_CONTEXT_FACTORY_MARKER = "_azure_functions_logging_context_factory"
+
+#: Field names injected by the factory. These become reserved LogRecord
+#: attributes when ``install_context_factory()`` is active.
+CONTEXT_RECORD_FIELDS: tuple[str, ...] = (
+    "invocation_id",
+    "function_name",
+    "trace_id",
+    "cold_start",
+)
+
+
+def install_context_factory() -> None:
+    """Install a global LogRecordFactory that injects context into every LogRecord.
+
+    This is an alternative to ``ContextFilter`` that guarantees context fields
+    are present on ALL log records regardless of handler/filter configuration.
+
+    .. warning::
+
+        When this factory is active, the field names ``invocation_id``,
+        ``function_name``, ``trace_id``, and ``cold_start`` become **reserved**
+        LogRecord attributes. Passing them via ``extra=`` to stdlib loggers will
+        raise ``KeyError``. Use :class:`FunctionLogger` (which sanitizes extra
+        keys automatically) or choose different key names.
+
+    .. warning::
+
+        This modifies the **global** ``logging.LogRecordFactory``. It affects
+        all loggers in the process, including third-party libraries. Call once
+        at application startup.
+
+    The factory chains with any previously-installed factory, preserving
+    existing customizations.
+
+    This function is idempotent for repeated direct calls while the currently
+    active ``LogRecordFactory`` is the context factory installed by this package.
+    """
+    current_factory = logging.getLogRecordFactory()
+    if getattr(current_factory, _CONTEXT_FACTORY_MARKER, False):
+        return
+
+    previous_factory = current_factory
+
+    def context_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = previous_factory(*args, **kwargs)
+        record.invocation_id = invocation_id_var.get()
+        record.function_name = function_name_var.get()
+        record.trace_id = trace_id_var.get()
+        record.cold_start = cold_start_var.get()
+        return record
+
+    setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)
+    logging.setLogRecordFactory(context_record_factory)

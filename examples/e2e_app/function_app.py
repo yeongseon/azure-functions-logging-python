@@ -1,4 +1,5 @@
 """E2E test function app for azure-functions-logging."""
+
 from __future__ import annotations
 
 import json

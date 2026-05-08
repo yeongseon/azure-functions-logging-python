@@ -250,8 +250,13 @@ class TestSamplingFilterNameScoping:
         flt = SamplingFilter(rate=1, name="myapp")
         # Record from a different logger
         record = logging.LogRecord(
-            name="other.module", level=logging.INFO, pathname=__file__,
-            lineno=1, msg="hello", args=(), exc_info=None,
+            name="other.module",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         # Should pass through even though rate=1 — name doesn't match
         assert flt.filter(record) is True
@@ -261,8 +266,13 @@ class TestSamplingFilterNameScoping:
         """Records from matching loggers are subject to sampling."""
         flt = SamplingFilter(rate=1, name="myapp")
         record = logging.LogRecord(
-            name="myapp.sub", level=logging.INFO, pathname=__file__,
-            lineno=1, msg="hello", args=(), exc_info=None,
+            name="myapp.sub",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         assert flt.filter(record) is True  # first passes
         assert flt.filter(record) is False  # second is rate-limited
@@ -275,8 +285,13 @@ class TestRedactionFilterNameScoping:
         """Records from non-matching loggers are not redacted."""
         flt = RedactionFilter(name="myapp")
         record = logging.LogRecord(
-            name="other.module", level=logging.INFO, pathname=__file__,
-            lineno=1, msg="hello", args=(), exc_info=None,
+            name="other.module",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         setattr(record, "password", "secret123")
         assert flt.filter(record) is True
@@ -286,8 +301,13 @@ class TestRedactionFilterNameScoping:
         """Records from matching loggers are redacted."""
         flt = RedactionFilter(name="myapp")
         record = logging.LogRecord(
-            name="myapp.handler", level=logging.INFO, pathname=__file__,
-            lineno=1, msg="hello", args=(), exc_info=None,
+            name="myapp.handler",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         setattr(record, "password", "secret123")
         assert flt.filter(record) is True
