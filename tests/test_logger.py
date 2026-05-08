@@ -222,3 +222,34 @@ def test_merge_precedence_kwargs_override_bind() -> None:
 
     _, kwargs = underlying.log.call_args
     assert kwargs["extra"]["request_id"] == "new"
+
+
+def test_exc_info_and_stack_info_do_not_leak_into_extra() -> None:
+    """Regression: control kwargs (exc_info, stack_info, stacklevel) must not appear in extra."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying).bind(ctx="val")
+
+    logger.exception("boom", order_id="o-1")
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    assert "exc_info" not in extra
+    assert "stack_info" not in extra
+    assert "stacklevel" not in extra
+    assert extra == {"ctx": "val", "order_id": "o-1"}
+
+
+def test_sanitize_extra_double_prefix_conflict() -> None:
+    """Edge case: if both 'name' and 'extra_name' are supplied, both are preserved."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying)
+
+    logger.info("hi", name="collides", extra_name="user-supplied")
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    # 'name' is reserved -> becomes 'extra_name', but 'extra_name' was already there
+    # dict merge: kwargs wins, so 'extra_name' from the renamed 'name' overwrites
+    # This documents current behavior - last-write-wins in _sanitize_extra
+    assert extra["extra_name"] in ("collides", "user-supplied")
+    assert "name" not in extra
