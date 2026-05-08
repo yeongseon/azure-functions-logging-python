@@ -75,7 +75,7 @@ Order: {'customer': 'Alice', 'total': 99.99}
 ```python
 import azure.functions as func
 
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -84,9 +84,9 @@ app = func.FunctionApp()
 
 @app.route(route="orders")
 def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("Processing order", order_id="o-999")
-    return func.HttpResponse("OK")
+    with logging_context(context):
+        logger.info("Processing order", order_id="o-999")
+        return func.HttpResponse("OK")
 ```
 
 Local terminal output (colorized):
@@ -230,7 +230,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## Invocation Context
 
-`inject_context(context)` should be the **first line** of every handler. It binds:
+Use `logging_context()` to bind invocation context for the duration of a handler. It sets:
 
 - `invocation_id` — unique per execution, correlates all logs for one request
 - `function_name` — the Azure Functions function name
@@ -241,12 +241,22 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ```python
 def my_function(req, context):
-    inject_context(context)
-    logger.info("handler started")
-    # every log from here carries invocation_id and cold_start
+    with logging_context(context):
+        logger.info("handler started")
+        # every log from here carries invocation_id and cold_start
 ```
 
-Without `inject_context()`, these fields are `None` in every log line.
+For lower-level control (e.g. middleware), use `inject_context()` with `restore_context()`:
+
+```python
+tokens = inject_context(context)
+try:
+    logger.info("handler started")
+finally:
+    restore_context(tokens)
+```
+
+Without context injection, these fields are `None` in every log line.
 
 ### `with_context` Decorator
 
