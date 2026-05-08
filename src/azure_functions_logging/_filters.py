@@ -92,8 +92,9 @@ class SamplingFilter(logging.Filter):
     Args:
         rate: Maximum number of records to pass per window. Must be >= 1.
         window: Rolling time window in seconds. Default: 1.0.
-        name: Logger name filter (passed to ``logging.Filter.__init__``).
-              Empty string matches all loggers (default).
+        name: Optional logger-name scope. When set, only matching loggers are
+            subject to sampling; non-matching records pass through unchanged.
+            Empty string matches all loggers (default).
 
     Example::
 
@@ -148,8 +149,8 @@ class RedactionFilter(logging.Filter):
         sensitive_keys: Iterable of lowercase key names to redact. When None,
             uses the built-in default set (password, passwd, token,
             authorization, secret, api_key, apikey).
-        name: Logger name filter (passed to ``logging.Filter.__init__``).
-
+        name: Optional logger-name scope. When set, only matching loggers are
+            subject to redaction; non-matching records pass through unchanged.
     Example::
 
         filter = RedactionFilter()

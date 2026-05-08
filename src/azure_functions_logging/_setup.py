@@ -52,7 +52,8 @@ def setup_logging(
         level: Logging level for local development. Ignored in Azure/Core Tools.
         format: Log output format for local development. Supported values are
             ``"color"`` (default) and ``"json"``. Ignored when
-            ``functions_formatter`` is provided.
+            ``functions_formatter`` is provided. In Azure/Core Tools, passing
+            ``format="json"`` without ``functions_formatter`` emits a warning.
         logger_name: Optional logger name to configure. When None, configures
             the root logger (local dev) or installs filter on root handlers (Azure).
         functions_formatter: Optional custom formatter applied to all root

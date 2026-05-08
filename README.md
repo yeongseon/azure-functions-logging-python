@@ -7,7 +7,7 @@
 [![CI](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/ci-test.yml/badge.svg)](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/ci-test.yml)
 [![Release](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/publish-pypi.yml)
 [![Security Scans](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml)
-[![codecov](https://codecov.io/gh/yeongseon/azure-functions-logging-python-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-logging-python-python)
+[![codecov](https://codecov.io/gh/yeongseon/azure-functions-logging-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-logging-python)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-logging-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -33,7 +33,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 | Cold start invisible | No signal when a new worker instance starts | Detects automatically on first `inject_context()` |
 | Noisy third-party loggers | `azure-core`, `urllib3` flood your Application Insights | `SamplingFilter` / `RedactionFilter` |
 | Local vs cloud output mismatch | Colorized output breaks in production pipelines | Environment-aware formatter switching |
-| PII leaking into logs | Sensitive fields logged in exception tracebacks | `RedactionFilter` with key-based redaction |
+| PII leaking into logs | Sensitive values accidentally logged as extra fields | `RedactionFilter` with key-based redaction |
 
 ## What it does
 
@@ -286,8 +286,19 @@ Use JSON format when logs feed Application Insights or any aggregation system:
 > In Azure Functions, the host manages handlers. Use `functions_formatter=JsonFormatter()` to set
 > JSON output on host-managed handlers. Passing `format="json"` in Azure emits a warning.
 
+For standalone local development or CI output:
+
 ```python
 setup_logging(format="json")
+```
+
+For Azure Functions / Core Tools, the host owns the handlers. To force JSON
+formatting on existing host-managed handlers:
+
+```python
+from azure_functions_logging import JsonFormatter, setup_logging
+
+setup_logging(functions_formatter=JsonFormatter())
 ```
 
 Output per log line (NDJSON — one JSON object per line):
@@ -364,7 +375,7 @@ Any log record with extra fields whose keys match a sensitive key will have thos
 | Environment | Format | Behavior |
 |-------------|--------|---------|
 | Local terminal | `color` (default) | Colorized `[TIME] [LEVEL] [LOGGER] message` |
-| Azure / Core Tools | `json` | NDJSON, no ANSI codes, host-managed handlers |
+| Azure / Core Tools | host-managed | Installs context filters only; pass `functions_formatter=JsonFormatter()` to force NDJSON on host handlers |
 | CI / pipeline | `json` | NDJSON, machine-parseable |
 
 `setup_logging()` detects `FUNCTIONS_WORKER_RUNTIME` and `WEBSITE_INSTANCE_ID` to choose the right path automatically. In Azure, it installs context filters without adding handlers (avoids duplicate output from the host pipeline).
@@ -436,12 +447,12 @@ This package provides structured logging for Azure Functions with zero modificat
 5. **Test-friendly**:
    - `inject_context()` accepts any object (no hard dependency on azure.functions.Context)
    - `with_context` decorator works with sync and async handlers
-   - Use `context.reset_context_vars()` in test teardown if needed
+   - Use `reset_context()` in test teardown if needed
 
 **When generating code:**
 - Import only from `azure_functions_logging` public API (no underscores)
 - Call `setup_logging()` at module level or handler startup (not per-request)
-- Call `inject_context(context)` as first line of handler
+- Prefer `with logging_context(context):` in handlers; use raw `inject_context(context)` only with `try/finally reset_context()`
 - Use `logger.bind(key=value)` for per-request fields (not direct logger.extra)
 - Apply `RedactionFilter` for PII fields, `SamplingFilter` for high-volume logs
 

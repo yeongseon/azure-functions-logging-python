@@ -278,9 +278,9 @@ class TestRedactionFilterNameScoping:
             name="other.module", level=logging.INFO, pathname=__file__,
             lineno=1, msg="hello", args=(), exc_info=None,
         )
-        record.password = "secret123"
+        setattr(record, "password", "secret123")
         assert flt.filter(record) is True
-        assert record.password == "secret123"  # not redacted
+        assert getattr(record, "password") == "secret123"  # not redacted
 
     def test_matching_logger_applies_redaction(self) -> None:
         """Records from matching loggers are redacted."""
@@ -289,6 +289,6 @@ class TestRedactionFilterNameScoping:
             name="myapp.handler", level=logging.INFO, pathname=__file__,
             lineno=1, msg="hello", args=(), exc_info=None,
         )
-        record.password = "secret123"
+        setattr(record, "password", "secret123")
         assert flt.filter(record) is True
-        assert record.password == "***"
+        assert getattr(record, "password") == "***"
