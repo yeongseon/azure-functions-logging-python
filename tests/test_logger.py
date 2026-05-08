@@ -185,3 +185,71 @@ def test_reserved_keys_via_real_stdlib_logger_does_not_raise() -> None:
     logger = FunctionLogger(real_logger)
 
     logger.info("hi", name="custom", message="user-supplied")
+
+
+def test_merge_precedence_kwargs_override_extra_override_bind() -> None:
+    """Issue #95: per-call kwargs > explicit extra > bind context."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying).bind(key="from_bind", only_bind="b")
+
+    logger.info("msg", extra={"key": "from_extra", "only_extra": "e"}, key="from_kwarg")
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    # kwargs wins over extra wins over bind
+    assert extra["key"] == "from_kwarg"
+    assert extra["only_extra"] == "e"
+    assert extra["only_bind"] == "b"
+
+
+def test_merge_precedence_extra_overrides_bind() -> None:
+    """Issue #95: explicit extra= overrides bind context."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying).bind(env="staging")
+
+    logger.info("msg", extra={"env": "production"})
+
+    _, kwargs = underlying.log.call_args
+    assert kwargs["extra"]["env"] == "production"
+
+
+def test_merge_precedence_kwargs_override_bind() -> None:
+    """Issue #95: per-call kwargs override bind context."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying).bind(request_id="old")
+
+    logger.info("msg", request_id="new")
+
+    _, kwargs = underlying.log.call_args
+    assert kwargs["extra"]["request_id"] == "new"
+
+
+def test_exc_info_and_stack_info_do_not_leak_into_extra() -> None:
+    """Regression: control kwargs (exc_info, stack_info, stacklevel) must not appear in extra."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying).bind(ctx="val")
+
+    logger.exception("boom", order_id="o-1")
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    assert "exc_info" not in extra
+    assert "stack_info" not in extra
+    assert "stacklevel" not in extra
+    assert extra == {"ctx": "val", "order_id": "o-1"}
+
+
+def test_sanitize_extra_double_prefix_conflict() -> None:
+    """Edge case: if both 'name' and 'extra_name' are supplied, both are preserved."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying)
+
+    logger.info("hi", name="collides", extra_name="user-supplied")
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    # 'name' is reserved -> renamed to 'extra_name' first
+    # then 'extra_name' (non-reserved) collides with existing -> becomes 'extra_name_2'
+    assert extra["extra_name"] == "collides"
+    assert extra["extra_name_2"] == "user-supplied"
+    assert "name" not in extra
