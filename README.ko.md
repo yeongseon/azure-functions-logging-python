@@ -234,7 +234,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 - `invocation_id` — 실행마다 고유, 한 요청의 모든 로그를 상관시킴
 - `function_name` — Azure Functions 함수 이름
-- `trace_id` — 플랫폼의 trace 컨텍스트
+- `trace_id` — 플랫폼의 trace 컨텍스트. 유효한 W3C `traceparent` 헤더에서만 추출되며, 유효성 검증이 엄격하여 잘못된 값은 무시됩니다
 - `cold_start` — 이 worker 프로세스의 첫 호출일 때 `True`
 
 > **`cold_start` 의미.** `cold_start=True`는 *모듈 로드 후 이 Python worker 프로세스에서 관측된 첫 호출*을 의미합니다. **플랫폼 레벨**의 cold start 메트릭이 아니며, Azure Functions 메트릭이 보고하는 App Service plan / instance 할당 cold start와는 일치하지 않습니다. 같은 worker의 후속 호출은 worker가 재활용될 때까지 `cold_start=False`를 발행합니다.

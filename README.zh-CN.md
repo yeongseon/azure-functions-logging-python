@@ -234,7 +234,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 - `invocation_id` — 每次执行唯一，关联一个请求的所有日志
 - `function_name` — Azure Functions 函数名
-- `trace_id` — 来自平台的 trace 上下文
+- `trace_id` — 来自平台的 trace 上下文；仅从有效的 W3C `traceparent` 头中提取（严格校验，无效值会被忽略）
 - `cold_start` — 此 worker 进程的首次调用时为 `True`
 
 > **`cold_start` 语义。** `cold_start=True` 表示 *模块加载后此 Python worker 进程观察到的首次调用*。它**不是**平台级别的冷启动指标，与 Azure Functions 指标报告的 App Service plan / instance 分配冷启动不对应。在同一 worker 上的后续调用，在 worker 被回收之前会发出 `cold_start=False`。
