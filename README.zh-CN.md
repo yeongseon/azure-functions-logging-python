@@ -489,8 +489,8 @@ def process_order(order_id: str) -> None:
 2. **上下文注入基于 contextvar** — 不是 thread-local，与 asyncio 协同工作
 3. **幂等 setup** — 多次调用 `setup_logging()` 是安全的
 4. **两个环境，两种行为**:
-   - Azure/Core Tools: 仅在现有 root 处理程序上安装过滤器 (尊重 host.json)
-   - 本地开发: 向指定 logger 添加 ColorFormatter 或 JsonFormatter 处理程序
+   - Azure/Core Tools: 在现有 root 处理程序以及 root logger 自身上安装 `ContextFilter`；不添加处理程序，也不修改 root 级别（尊重 `host.json`）。
+   - 本地独立运行: 设置目标/根 logger 级别；**仅当不存在任何处理程序时**添加 `StreamHandler`（ColorFormatter 或 JsonFormatter），否则仅在现有处理程序上附加过滤器。
 5. **测试友好**:
    - `inject_context()` 接受任何对象 (对 azure.functions.Context 没有强依赖)
    - `with_context` 装饰器在同步与异步处理程序中都有效

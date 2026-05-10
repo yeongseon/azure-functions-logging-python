@@ -489,8 +489,8 @@ def process_order(order_id: str) -> None:
 2. **컨텍스트 주입은 contextvar 기반** — thread-local이 아니므로 asyncio와 호환
 3. **멱등성 보장 setup** — `setup_logging()`을 여러 번 호출해도 안전
 4. **두 환경, 두 동작**:
-   - Azure/Core Tools: 기존 root 핸들러에 필터만 설치 (host.json 존중)
-   - 로컬 개발: 지정된 로거에 ColorFormatter 또는 JsonFormatter 핸들러 추가
+   - Azure/Core Tools: 기존 root 핸들러와 root 로거 자체에 `ContextFilter`를 설치합니다. 핸들러를 추가하거나 root 레벨을 변경하지 않습니다 (`host.json` 존중).
+   - 로컬 독립 실행: 대상/루트 로거 레벨을 설정합니다. **핸들러가 하나도 없을 때만** `StreamHandler` (ColorFormatter 또는 JsonFormatter)를 추가하고, 그렇지 않으면 기존 핸들러에 필터만 부착합니다.
 5. **테스트 친화적**:
    - `inject_context()`는 어떤 객체든 받음 (azure.functions.Context에 강한 의존성 없음)
    - `with_context` 데코레이터는 동기 및 비동기 핸들러에서 동작

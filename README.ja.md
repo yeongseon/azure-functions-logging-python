@@ -489,8 +489,8 @@ def process_order(order_id: str) -> None:
 2. **コンテキスト注入は contextvar ベース** — thread-local ではなく、asyncio で動作
 3. **冪等な setup** — `setup_logging()` を複数回呼び出しても安全
 4. **2 つの環境、2 つの動作**:
-   - Azure/Core Tools: 既存の root ハンドラにフィルタのみインストール (host.json を尊重)
-   - ローカル開発: 指定されたロガーに ColorFormatter または JsonFormatter ハンドラを追加
+   - Azure/Core Tools: 既存の root ハンドラと root ロガー自身に `ContextFilter` をインストールします。ハンドラの追加や root レベルの変更は行いません (`host.json` を尊重)。
+   - スタンドアロンのローカル実行: 対象/ルートロガーのレベルを設定します。**ハンドラが 1 つも存在しない場合に限り** `StreamHandler` (ColorFormatter または JsonFormatter) を追加し、そうでなければ既存のハンドラにフィルタのみ付加します。
 5. **テストフレンドリー**:
    - `inject_context()` は任意のオブジェクトを受け入れる (azure.functions.Context への強い依存なし)
    - `with_context` デコレータは同期および非同期ハンドラで動作

@@ -80,8 +80,8 @@ This combines context-managed invocation context and request binding in a safe, 
 
 Behavior changes intentionally by runtime:
 
-- Local standalone process: installs handler and formatter (`color` or `json`).
-- Azure/Core Tools runtime: installs context filter only and avoids handler duplication.
+- Local standalone process: sets the target/root logger level; adds a `StreamHandler` (`color` or `json`) only if no handlers exist, otherwise just attaches filters to existing handlers.
+- Azure/Core Tools runtime: installs `ContextFilter` on existing root handlers **and on the root logger itself** (so records flowing through later-added handlers still carry context); does not add handlers or change root level.
 
 !!! warning
     In Azure-hosted execution, host-level `host.json` settings can still suppress logs even when application-level setup appears correct.
