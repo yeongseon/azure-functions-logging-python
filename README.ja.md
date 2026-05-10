@@ -485,7 +485,7 @@ def process_order(order_id: str) -> None:
 
 **コード生成のための主要な実装詳細:**
 
-1. **ホスト構成を尊重** — Azure / Core Tools ではハンドラを追加せず、ルートロガーのレベルは `host.json` に委ねます。既存のルートハンドラ (および将来追加されるハンドラのためにルートロガー自体) に `ContextFilter` のみをインストールします。ローカル単独モードでは `setup_logging(logger_name=None)` がルートロガーを構成します (レベル設定、ハンドラがなければ `StreamHandler` を追加)。
+1. **ホスト構成を尊重** — Azure / Core Tools ではハンドラを追加せず、ルートロガーのレベルは `host.json` に委ねます。既存のルートハンドラとルートロガー自身に `ContextFilter` をインストールします（ルートロガーでの直接呼び出しはコンテキストを仲介する）。名前付きの子ロガーから伝搬されて後から追加されたハンドラへ到達するレコードにもコンテキストを保証したい場合は `install_context_factory()` を呼び出してください。ローカル単独モードでは `setup_logging(logger_name=None)` がルートロガーを構成します（レベル設定、ハンドラがなければ `StreamHandler` 追加）。
 2. **コンテキスト注入は contextvar ベース** — thread-local ではなく、asyncio で動作
 3. **冪等な setup** — `setup_logging()` を複数回呼び出しても安全
 4. **2 つの環境、2 つの動作**:
