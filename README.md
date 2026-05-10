@@ -498,8 +498,8 @@ This package provides structured logging for Azure Functions with zero modificat
 2. **Context injection is contextvar-based** — Not thread-local, works with asyncio
 3. **Idempotent setup** — Calling setup_logging() multiple times is safe
 4. **Two environments, two behaviors**:
-   - Azure/Core Tools: Only install filters on existing root handlers (respects host.json)
-   - Local dev: Add ColorFormatter or JsonFormatter handler to specified logger
+   - Azure/Core Tools: install `ContextFilter` on existing root handlers and on the root logger itself; do not add handlers or change the root level (respects `host.json`).
+   - Standalone local: set the target/root logger level; add a `StreamHandler` (ColorFormatter or JsonFormatter) **only if no handlers exist**, otherwise just attach filters to existing handlers.
 5. **Test-friendly**:
    - `inject_context()` accepts any object (no hard dependency on azure.functions.Context)
    - `with_context` decorator works with sync and async handlers
