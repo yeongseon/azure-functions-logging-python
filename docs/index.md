@@ -91,9 +91,10 @@ Behavior changes intentionally by runtime:
 Use these defaults unless you have a specific reason to diverge:
 
 - Local development: `setup_logging(format="color")`
-- Production environments: `setup_logging(format="json")`
+- Production (standalone): `setup_logging(format="json")`
+- Production (Azure Functions / Core Tools): `setup_logging(functions_formatter=JsonFormatter())` — `format="json"` alone is ignored on host-managed handlers
 - Logger creation: `get_logger(__name__)`
-- Function entrypoint: `inject_context(context)` as first operation
+- Function entrypoint: `with logging_context(context):` wrapping the body, or `tokens = inject_context(context); try: ...; finally: restore_context(tokens)`
 
 ## Documentation Map
 
