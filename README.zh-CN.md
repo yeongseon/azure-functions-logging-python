@@ -75,9 +75,9 @@ Order: {'customer': 'Alice', 'total': 99.99}
 ```python
 import azure.functions as func
 
-from azure_functions_logging import get_logger, logging_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging()
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 app = func.FunctionApp()
 
@@ -202,7 +202,7 @@ finally:
 在本地启动 Functions host (使用 [e2e 示例应用](examples/e2e_app)):
 
 ```bash
-func start
+func start --script-root examples/e2e_app
 ```
 
 ### 在本地与 Azure 上验证
@@ -350,7 +350,7 @@ logger.info("order accepted", order_id="o-999", tenant_id="t-1")
 如果您的 `host.json` 抑制了应用发出的日志级别，启动时会出现以下警告:
 
 ```
-WARNING: host.json logLevel.default is 'Warning'. Logs below WARNING will be suppressed in Azure.
+host.json logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
 ```
 
 推荐的 `host.json` 基线:

@@ -201,6 +201,12 @@ class RedactionFilter(logging.Filter):
 ### Context Injection
 
 ```python
+import contextvars
+from collections.abc import Iterator
+from typing import Any
+
+import azure.functions as func
+
 from azure_functions_logging import (
     ContextTokens,
     inject_context,
@@ -211,7 +217,6 @@ from azure_functions_logging import (
     get_logging_metadata,
     with_context,
 )
-import azure.functions as func
 
 # ContextTokens is a type alias (not a class) — opaque mapping returned by
 # inject_context(). Pass to restore_context() to undo a single inject_context() call.
@@ -247,7 +252,7 @@ def reset_context() -> None:
     prefer logging_context() / restore_context() in production code."""
     ...
 
-def logging_context(context: Any) -> ContextManager[None]:
+def logging_context(context: Any) -> Iterator[None]:
     """Recommended primary pattern. Context manager that calls inject_context()
     on enter and **always** calls restore_context() on exit (even when the body
     raises). Prevents stale context from leaking into the next invocation on a

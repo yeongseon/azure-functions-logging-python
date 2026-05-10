@@ -75,9 +75,9 @@ Order: {'customer': 'Alice', 'total': 99.99}
 ```python
 import azure.functions as func
 
-from azure_functions_logging import get_logger, logging_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging()
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 app = func.FunctionApp()
 
@@ -202,7 +202,7 @@ Use `reset_context()` only when you intentionally want to clear all context (e.g
 Start the Functions host locally (using the [e2e example app](examples/e2e_app)):
 
 ```bash
-func start
+func start --script-root examples/e2e_app
 ```
 
 ### Verify locally and on Azure
@@ -358,7 +358,7 @@ logger.info("order accepted", order_id="o-999", tenant_id="t-1")
 If your `host.json` suppresses log levels that your app emits, you get this warning at startup:
 
 ```
-WARNING: host.json logLevel.default is 'Warning'. Logs below WARNING will be suppressed in Azure.
+host.json logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
 ```
 
 Recommended `host.json` baseline:
