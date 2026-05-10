@@ -66,20 +66,52 @@ class ContextFilter(logging.Filter):
         return True
 
 
-def _extract_trace_id(trace_parent: str | None) -> str | None:
-    """Extract trace_id from W3C traceparent header.
+_HEX_CHARS = frozenset("0123456789abcdefABCDEF")
 
-    Format: 00-<trace_id>-<parent_id>-<flags>
+
+def _is_hex(value: str, length: int) -> bool:
+    return len(value) == length and all(ch in _HEX_CHARS for ch in value)
+
+
+def _extract_trace_id(trace_parent: str | None) -> str | None:
+    """Extract a W3C trace-id from a ``traceparent`` header.
+
+    Format (W3C Trace Context Level 1):
+        ``<version>-<trace-id>-<parent-id>-<flags>``
+
+    Returns the trace-id only when the header is structurally valid:
+      * exactly 4 ``-``-separated parts,
+      * version: 2 hex chars (``ff`` is reserved — rejected),
+      * trace-id: 32 hex chars and not all-zero,
+      * parent/span-id: 16 hex chars and not all-zero,
+      * flags: 2 hex chars,
+      * version ``00`` enforces the strict 4-part shape; future versions are
+        accepted as long as the first 4 fields parse — trailing fields are
+        ignored to stay forward-compatible with later spec revisions.
+
+    Otherwise returns ``None`` so callers never log garbage trace IDs.
     """
     if not trace_parent:
         return None
     try:
         parts = trace_parent.split("-")
-        if len(parts) >= 3:
-            return parts[1]
+        if len(parts) < 4:
+            return None
+        version, trace_id, parent_id, flags = parts[0], parts[1], parts[2], parts[3]
+        if not _is_hex(version, 2) or version.lower() == "ff":
+            return None
+        # Version 00 must have exactly 4 fields; later versions may extend.
+        if version == "00" and len(parts) != 4:
+            return None
+        if not _is_hex(trace_id, 32) or trace_id == "0" * 32:
+            return None
+        if not _is_hex(parent_id, 16) or parent_id == "0" * 16:
+            return None
+        if not _is_hex(flags, 2):
+            return None
+        return trace_id
     except Exception:  # nosec B110 — Principle 3: context failures are silent
-        pass
-    return None
+        return None
 
 
 def inject_context(context: Any) -> ContextTokens:

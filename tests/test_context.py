@@ -428,3 +428,68 @@ def test_install_context_factory_with_logger_emit() -> None:
         cold_start_var.set(None)
         logger.handlers.clear()
         logger.propagate = True
+
+
+
+# ---------------------------------------------------------------------------
+# W3C traceparent strict validation (issue #104)
+# ---------------------------------------------------------------------------
+
+_VALID_TRACEPARENT = "00-1234567890abcdef1234567890abcdef-fedcba0987654321-01"
+_VALID_TRACE_ID = "1234567890abcdef1234567890abcdef"
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        # version 00 with extra trailing field
+        "00-1234567890abcdef1234567890abcdef-fedcba0987654321-01-extra",
+        # bad version length
+        "0-1234567890abcdef1234567890abcdef-fedcba0987654321-01",
+        "000-1234567890abcdef1234567890abcdef-fedcba0987654321-01",
+        # reserved version ff
+        "ff-1234567890abcdef1234567890abcdef-fedcba0987654321-01",
+        # non-hex in version
+        "zz-1234567890abcdef1234567890abcdef-fedcba0987654321-01",
+        # short trace-id
+        "00-1234567890abcdef1234567890abcde-fedcba0987654321-01",
+        # long trace-id
+        "00-1234567890abcdef1234567890abcdef0-fedcba0987654321-01",
+        # non-hex trace-id
+        "00-zzzz567890abcdef1234567890abcdef-fedcba0987654321-01",
+        # all-zero trace-id
+        "00-00000000000000000000000000000000-fedcba0987654321-01",
+        # short span-id
+        "00-1234567890abcdef1234567890abcdef-fedcba098765432-01",
+        # long span-id
+        "00-1234567890abcdef1234567890abcdef-fedcba09876543210-01",
+        # all-zero span-id
+        "00-1234567890abcdef1234567890abcdef-0000000000000000-01",
+        # non-hex span-id
+        "00-1234567890abcdef1234567890abcdef-zzzzzzzzzzzzzzzz-01",
+        # bad flags length
+        "00-1234567890abcdef1234567890abcdef-fedcba0987654321-1",
+        "00-1234567890abcdef1234567890abcdef-fedcba0987654321-001",
+        # non-hex flags
+        "00-1234567890abcdef1234567890abcdef-fedcba0987654321-zz",
+        # too few fields
+        "00-1234567890abcdef1234567890abcdef-fedcba0987654321",
+    ],
+)
+def test_extract_trace_id_rejects_malformed_headers(header: str) -> None:
+    assert _extract_trace_id(header) is None
+
+
+def test_extract_trace_id_accepts_valid_uppercase_hex() -> None:
+    upper = "00-1234567890ABCDEF1234567890ABCDEF-FEDCBA0987654321-01"
+    assert _extract_trace_id(upper) == "1234567890ABCDEF1234567890ABCDEF"
+
+
+def test_extract_trace_id_forward_compatible_future_version() -> None:
+    """Versions other than 00 may have trailing fields — still parsed."""
+    future = "01-1234567890abcdef1234567890abcdef-fedcba0987654321-01-future"
+    assert _extract_trace_id(future) == _VALID_TRACE_ID
+
+
+def test_extract_trace_id_baseline_valid_still_works() -> None:
+    assert _extract_trace_id(_VALID_TRACEPARENT) == _VALID_TRACE_ID
