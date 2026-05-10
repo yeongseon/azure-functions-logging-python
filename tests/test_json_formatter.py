@@ -8,6 +8,8 @@ import logging
 import sys
 import uuid
 
+import pytest
+
 from azure_functions_logging._json_formatter import JsonFormatter
 
 
@@ -158,3 +160,100 @@ def test_unserializable_extra_where_str_raises_returns_sentinel() -> None:
     payload = json.loads(formatter.format(record))
 
     assert payload["extra"]["bad"] == "<unserializable:Hostile>"
+
+
+
+# ---- Fail-safe tests (#101) ---------------------------------------------
+
+
+class _HostileStr:
+    """Object whose __str__ raises — used to break message rendering."""
+
+    def __str__(self) -> str:  # noqa: D401
+        raise RuntimeError("boom in __str__")
+
+    def __repr__(self) -> str:  # noqa: D401
+        raise RuntimeError("boom in __repr__")
+
+
+def test_format_survives_hostile_message_str() -> None:
+    formatter = JsonFormatter()
+    # Use %-format with a single %s arg whose __str__ raises
+    record = logging.LogRecord(
+        name="test.logger",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="value=%s",
+        args=(_HostileStr(),),
+        exc_info=None,
+    )
+
+    output = formatter.format(record)
+    payload = json.loads(output)  # must be valid JSON
+    assert payload["level"] == "INFO"
+    assert "<unrenderable message:" in payload["message"]
+
+
+def test_format_survives_malformed_exc_info() -> None:
+    formatter = JsonFormatter()
+    record = _make_record(logging.ERROR, "boom")
+    # Invalid exc_info triple: missing traceback object causes formatException to fail
+    record.exc_info = (RuntimeError, RuntimeError("x"), "not a traceback")  # type: ignore[assignment]
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+    assert payload["level"] == "ERROR"
+    assert payload["exception"] is not None
+    assert "<unformattable exception:" in payload["exception"]
+
+
+def test_format_survives_cyclic_extra_payload() -> None:
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "cyclic")
+    cycle: dict[str, object] = {}
+    cycle["self"] = cycle  # self-referential — json.dumps would normally raise
+    record.cyclic = cycle
+
+    output = formatter.format(record)
+    payload = json.loads(output)  # must still be valid JSON
+    # Either the default coerced it to a string, or last-resort fallback fired
+    assert payload["level"] == "INFO"
+    assert "extra" in payload
+
+
+def test_format_emergency_fallback_when_payload_dict_unserializable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If even the second json.dumps attempt fails, emergency payload is emitted."""
+    formatter = JsonFormatter()
+    record = _make_record(logging.WARNING, "force emergency")
+
+
+
+    call_count = {"n": 0}
+    real_dumps = json.dumps
+
+    def always_raise(*args, **kwargs):  # type: ignore[no-untyped-def]
+        call_count["n"] += 1
+        if call_count["n"] <= 2:
+            raise TypeError("forced failure")
+        return real_dumps(*args, **kwargs)
+
+    monkeypatch.setattr("azure_functions_logging._json_formatter.json.dumps", always_raise)
+
+    output = formatter.format(record)
+    payload = json.loads(output)  # emergency payload must be valid JSON
+    assert payload["message"] == "<emergency fallback: formatter failed>"
+    assert payload["extra"] == {"__serialization_error__": True}
+    assert payload["level"] == "WARNING"
+
+
+def test_format_handles_invalid_timestamp() -> None:
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "bad ts")
+    record.created = float("nan")  # fromtimestamp will raise
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+    assert payload["timestamp"] == "1970-01-01T00:00:00+00:00"
