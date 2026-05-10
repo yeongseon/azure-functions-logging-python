@@ -234,7 +234,7 @@ Use `logging_context()` to bind invocation context for the duration of a handler
 
 - `invocation_id` — unique per execution, correlates all logs for one request
 - `function_name` — the Azure Functions function name
-- `trace_id` — trace context from the platform
+- `trace_id` — trace context from the platform; extracted only from valid W3C `traceparent` headers (strict validation, invalid values are ignored)
 - `cold_start` — `True` on first invocation of this worker process
 
 > **`cold_start` semantics.** `cold_start=True` means *the first invocation observed by this Python worker process after module load*. It is **not** a platform-level cold start metric and does not correspond to App Service plan / instance allocation cold starts reported by Azure Functions metrics. Subsequent invocations on the same worker emit `cold_start=False` until the worker is recycled.
@@ -505,6 +505,8 @@ This package provides structured logging for Azure Functions with zero modificat
 - Call `setup_logging()` at module level or handler startup (not per-request)
 - Prefer `with logging_context(context):` in handlers; use raw `inject_context(context)` only with `try/finally restore_context(tokens)`
 - Use `logger.bind(key=value)` for per-request fields (not direct logger.extra)
+- Use `with_context` decorator if you prefer to inject context implicitly per-handler
+- Call `get_logging_metadata(func)` to inspect `@with_context` metadata on a function (returns `dict[str, Any] | None`)
 - Apply `RedactionFilter` for PII fields, `SamplingFilter` for high-volume logs
 
 **Example Pattern:**

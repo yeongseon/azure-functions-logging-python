@@ -50,7 +50,7 @@ This library addresses those gaps with a small API surface.
 Depending on formatter and context, events include:
 
 - Timestamp, level, logger name, message.
-- Invocation metadata: `invocation_id`, `function_name`, `trace_id`, `cold_start`.
+- Invocation metadata: `invocation_id`, `function_name`, `trace_id` (from W3C `traceparent` headers, strict validation), `cold_start`.
 - Structured per-event fields from keyword arguments.
 - Bound context keys from `bind()`.
 

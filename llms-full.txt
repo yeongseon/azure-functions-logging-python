@@ -32,7 +32,7 @@ def setup_logging(
     format: str = "color",
     logger_name: str | None = None,
     functions_formatter: logging.Formatter | None = None,
-    host_json_path: Path | None = None,
+    host_json_path: Path | str | None = None,
 ) -> None:
     """Configure logging for the current environment.
 

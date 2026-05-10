@@ -234,7 +234,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 - `invocation_id` — 実行ごとに一意、1 リクエストのすべてのログを相関させる
 - `function_name` — Azure Functions の関数名
-- `trace_id` — プラットフォームからのトレースコンテキスト
+- `trace_id` — プラットフォームからのトレースコンテキスト。有効な W3C `traceparent` ヘッダーからのみ抽出され、厳格に検証されるため不正な値は無視されます
 - `cold_start` — この worker プロセスの最初の呼び出しで `True`
 
 > **`cold_start` のセマンティクス。** `cold_start=True` は *モジュールロード後にこの Python worker プロセスで観測された最初の呼び出し* を意味します。**プラットフォームレベル** のコールドスタートメトリックではなく、Azure Functions メトリクスが報告する App Service plan / instance 割当のコールドスタートには対応しません。同じ worker での後続の呼び出しは、worker がリサイクルされるまで `cold_start=False` を発行します。
