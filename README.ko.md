@@ -177,7 +177,7 @@ app = func.FunctionApp()
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     with logging_context(context):  # invocation_id, function_name, cold_start 바인딩, 종료 시 이전 컨텍스트로 복원
         logger.info("Request received")
-        # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
+        # 로그 레코드에 invocation_id, function_name, cold_start가 실립니다
 
         return func.HttpResponse("OK")
 ```
@@ -421,7 +421,7 @@ extra 필드의 키가 sensitive 키와 일치하는 모든 로그 레코드는 
 
 | 환경 | 포맷 | 동작 |
 |------|------|------|
-| 로컬 터미널 | `color` (기본) | 색상 적용된 `[TIME] [LEVEL] [LOGGER] message` |
+| 로컬 터미널 | `color` (기본) | 색상 적용된 읽기 쉬운 형식: `HH:MM:SS LEVEL logger  message [context...]` |
 | Azure / Core Tools | host-managed | 컨텍스트 필터만 설치; host 핸들러에 NDJSON을 강제하려면 `functions_formatter=JsonFormatter()`를 전달 |
 | CI / 파이프라인 | `json` | NDJSON, 머신 파싱 가능 |
 

@@ -177,7 +177,7 @@ app = func.FunctionApp()
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     with logging_context(context):  # 绑定 invocation_id, function_name, cold_start; 退出时恢复先前上下文
         logger.info("Request received")
-        # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
+        # 日志记录现在携带 invocation_id、function_name、cold_start
 
         return func.HttpResponse("OK")
 ```
@@ -421,7 +421,7 @@ extra 字段中键名匹配 sensitive 键的任何日志记录将其值替换为
 
 | 环境 | 格式 | 行为 |
 |------|------|------|
-| 本地终端 | `color` (默认) | 彩色 `[TIME] [LEVEL] [LOGGER] message` |
+| 本地终端 | `color` (默认) | 彩色人类可读格式: `HH:MM:SS LEVEL logger  message [context...]` |
 | Azure / Core Tools | host-managed | 仅安装上下文过滤器；通过 `functions_formatter=JsonFormatter()` 在 host 处理程序上强制 NDJSON |
 | CI / 管道 | `json` | NDJSON, 机器可解析 |
 
