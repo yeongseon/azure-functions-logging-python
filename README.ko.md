@@ -175,7 +175,7 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    with logging_context(context):  # invocation_id, function_name, cold_start 바인딩 후, 종료 시 복원
+    with logging_context(context):  # invocation_id, function_name, cold_start 바인딩, 종료 시 이전 컨텍스트로 복원
         logger.info("Request received")
         # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
 
@@ -187,6 +187,9 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 저수준 제어가 필요하거나 커스텀 미들웨어와 통합할 때는 토큰 기반 복원을 사용하세요:
 
 ```python
+from azure_functions_logging import inject_context, restore_context
+
+# `logger`와 `context`가 스코프에 있다고 가정 (Quick Start 참조).
 tokens = inject_context(context)
 try:
     logger.info("Request received")
@@ -278,7 +281,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     return func.HttpResponse("OK")
 ```
 
-데코레이터는 이름으로 `context` 매개변수를 찾고, 핸들러 실행 전 `inject_context()`를 호출하며, 반환 후 `finally`에서 컨텍스트 변수를 리셋합니다.
+데코레이터는 이름으로 `context` 매개변수를 찾고, 핸들러 실행 전 `inject_context()`를 호출하며, 반환 후 `finally`에서 이전 컨텍스트를 복원합니다.
 
 커스텀 매개변수 이름:
 
@@ -332,7 +335,7 @@ setup_logging(functions_formatter=JsonFormatter())
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
  "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "00-abc...", "exception": null,
+ "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
  "extra": {"order_id": "o-999"}}
 ```
 
@@ -407,7 +410,9 @@ import logging
 
 setup_logging()
 root = logging.getLogger()
-root.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
+# 명명된 자식 로거의 레코드도 함께 정제되도록 필터를 핸들러에 부착합니다.
+for handler in root.handlers:
+    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
 ```
 
 extra 필드의 키가 sensitive 키와 일치하는 모든 로그 레코드는 해당 값이 `***`로 대체됩니다.
@@ -480,7 +485,7 @@ def process_order(order_id: str) -> None:
 
 **코드 생성을 위한 핵심 구현 세부사항:**
 
-1. **루트 로거를 절대 수정하지 않음** — 핸들러에만 필터/포매터 설치
+1. **호스트 구성 보존** — Azure / Core Tools에서는 핸들러를 추가하지 않고 루트 로거 레벨을 `host.json`에 위임하며, 기존 루트 핸들러(및 루트 로거 자체)에 `ContextFilter`만 설치합니다. 로컬 단독 모드에서는 `setup_logging(logger_name=None)`이 루트 로거를 구성합니다 (레벨 설정, 핸들러 없으면 `StreamHandler` 추가).
 2. **컨텍스트 주입은 contextvar 기반** — thread-local이 아니므로 asyncio와 호환
 3. **멱등성 보장 setup** — `setup_logging()`을 여러 번 호출해도 안전
 4. **두 환경, 두 동작**:
@@ -496,6 +501,8 @@ def process_order(order_id: str) -> None:
 - `setup_logging()`은 모듈 레벨이나 핸들러 시작 시 호출 (요청당 호출 X)
 - 핸들러에서는 `with logging_context(context):`를 우선 사용; raw `inject_context(context)`는 반드시 `try/finally restore_context(tokens)`와 함께 사용
 - 요청당 필드에는 `logger.bind(key=value)` 사용 (logger.extra 직접 X)
+- 암묵적 핸들러별 컨텍스트 주입이 필요하면 `with_context` 데코레이터 사용
+- 함수에 적용된 `@with_context` 메타데이터를 검사하려면 `get_logging_metadata(func)` 호출 (`dict[str, Any] | None` 반환)
 - PII 필드에는 `RedactionFilter`, 대량 로그에는 `SamplingFilter` 적용
 
 **예시 패턴:**

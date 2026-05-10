@@ -20,12 +20,12 @@ Key features:
 - **Structured JSON output** — Application Insights-ready NDJSON format for production
 - **Noise control** — `SamplingFilter` rate-limits chatty third-party loggers
 - **PII protection** — `RedactionFilter` masks sensitive fields before they reach log aggregation
-- **No root logger mutation** — respects `host.json` configuration, installs filters only
+- **Root logger contract** — in Azure/Core Tools mode, no handlers are added; `ContextFilter` is installed on existing root handlers and on the root logger itself (covers handlers added later). In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added if none exist.
 - **Zero runtime dependency** — on azure-functions (works with any context-like object)
 
 ## Core API
 
-- `setup_logging(level, format, functions_formatter, host_json_path, ...)` — One-call logging setup for local or Azure
+- `setup_logging(level, format, logger_name, functions_formatter, host_json_path, ...)` — One-call logging setup for local or Azure (pass `logger_name=None` for root logger configuration in standalone mode)
 - `get_logger(name)` → `FunctionLogger` — Create a logger with context binding support
 - `FunctionLogger` — Enhanced logger wrapper with `bind()`, `log()`, `hasHandlers()` for stdlib parity
 - `JsonFormatter` — JSON log formatter (NDJSON), use with `functions_formatter=` in Azure

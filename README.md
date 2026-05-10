@@ -175,7 +175,7 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    with logging_context(context):  # binds invocation_id, function_name, cold_start; resets on exit
+    with logging_context(context):  # binds invocation_id, function_name, cold_start; restores previous context on exit
         logger.info("Request received")
         # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
 
@@ -187,6 +187,9 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 For lower-level control or when integrating with custom middleware, use token-based restore:
 
 ```python
+from azure_functions_logging import inject_context, restore_context
+
+# Assumes `logger` and `context` are in scope (see Quick Start).
 tokens = inject_context(context)
 try:
     logger.info("Request received")
@@ -278,7 +281,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     return func.HttpResponse("OK")
 ```
 
-The decorator finds the `context` parameter by name, calls `inject_context()` before your handler runs, and resets context variables in `finally` after it returns.
+The decorator finds the `context` parameter by name, calls `inject_context()` before your handler runs, and restores the previous context in `finally` after it returns.
 
 Custom parameter name:
 
@@ -340,7 +343,7 @@ Output per log line (NDJSON — one JSON object per line):
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
  "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "00-abc...", "exception": null,
+ "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
  "extra": {"order_id": "o-999"}}
 ```
 
@@ -416,7 +419,9 @@ import logging
 
 setup_logging()
 root = logging.getLogger()
-root.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
+# Attach the filter to handlers so records from named child loggers are also redacted.
+for handler in root.handlers:
+    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
 ```
 
 Any log record with extra fields whose keys match a sensitive key will have those values replaced with `***`.
@@ -489,7 +494,7 @@ This package provides structured logging for Azure Functions with zero modificat
 
 **Key Implementation Details for Code Generation:**
 
-1. **Never modify root logger** — Only install filters/formatters on handlers
+1. **Preserves host configuration** — In Azure / Core Tools, no handlers are added and the root logger level is left to `host.json`; only a `ContextFilter` is installed on existing root handlers (and on the root logger itself, so it covers handlers added later). In standalone local mode, `setup_logging(logger_name=None)` configures the root logger (sets level, adds a `StreamHandler` if none exist).
 2. **Context injection is contextvar-based** — Not thread-local, works with asyncio
 3. **Idempotent setup** — Calling setup_logging() multiple times is safe
 4. **Two environments, two behaviors**:

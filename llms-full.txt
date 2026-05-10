@@ -103,6 +103,11 @@ class FunctionLogger:
     def error(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
     def critical(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
     def exception(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
+
+    # Stdlib parity: level inspection/configuration on the underlying logger.
+    def setLevel(self, level: int | str) -> None: ...
+    def isEnabledFor(self, level: int) -> bool: ...
+    def getEffectiveLevel(self) -> int: ...
 ```
 
 ### JSON Formatter
@@ -309,37 +314,19 @@ from azure_functions_logging import (
     install_context_factory,  # opt-in global LogRecordFactory
     ContextTokens,          # type alias used by inject_context/restore_context
 )
-import contextvars
+```
 
-# Context variables available for direct access in advanced scenarios:
-invocation_id_var: contextvars.ContextVar[str | None]
-function_name_var: contextvars.ContextVar[str | None]
-trace_id_var: contextvars.ContextVar[str | None]
-cold_start_var: contextvars.ContextVar[bool | None]
-
-class ContextFilter(logging.Filter):
-    """Logging filter copying contextvars onto LogRecord attributes.
-    
-    Installed on handlers (not loggers) to cover ALL loggers
-    including third-party libraries.
-    """
-    
-    CONTEXT_FIELDS: tuple[str, ...] = (
-        "invocation_id",
-        "function_name",
-        "trace_id",
-        "cold_start",
-    )
-    
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Add context fields to log record. Always returns True."""
-        ...
+Context fields (`invocation_id`, `function_name`, `trace_id`, `cold_start`) are
+stored in private contextvars and surfaced on every `LogRecord` via the internal
+`ContextFilter`, which is installed automatically by `setup_logging()`. The filter
+and the underlying contextvars are **implementation details** — use the public
+helpers above instead of importing them directly.
 ```
 
 ## Design Principles
 
-1. **Root logger is never modified** — Only filters/formatters installed on handlers
-2. **Respects host.json** — In Azure/Core Tools, never changes root logger level
+1. **Narrow root logger contract** — In Azure/Core Tools, no handlers are added; `setup_logging()` installs `ContextFilter` on existing root handlers and on the root logger itself so records emitted through later-added handlers still carry context. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added only when no handlers exist.
+2. **Respects host.json** — In Azure/Core Tools, never changes root logger level or replaces existing handlers
 3. **No runtime dependency on azure-functions** — Works with any context-like object
 4. **Silent on context failures** — Missing attributes don't cause exceptions
 5. **Idempotent setup** — Calling setup_logging() multiple times is safe
@@ -471,8 +458,10 @@ Configure Application Insights in host.json to capture structured logs:
 }
 ```
 
-Log records with invocation_id, function_name, and custom fields are automatically
-captured by Application Insights. Use Analytics to query:
+Log records emitted through this library carry `invocation_id`, `function_name`,
+and any user-supplied `extra=` fields. In Application Insights these structured
+fields are flattened into the `customDimensions` column (not top-level table
+columns), so queries must reference them via `customDimensions.<field>`.
 
 ```
 traces
