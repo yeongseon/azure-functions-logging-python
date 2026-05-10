@@ -5,7 +5,7 @@
 ## Package Info
 
 - PyPI: `pip install azure-functions-logging`
-- Version: 0.4.1
+- Version: 0.7.1
 - Python: >=3.10, <3.15
 - License: MIT
 - Docs: https://yeongseon.github.io/azure-functions-logging-python/
@@ -25,20 +25,26 @@ Key features:
 
 ## Core API
 
-- `setup_logging(level, format, ...)` — One-call logging setup for local or Azure
+- `setup_logging(level, format, functions_formatter, host_json_path, ...)` — One-call logging setup for local or Azure
 - `get_logger(name)` → `FunctionLogger` — Create a logger with context binding support
-- `FunctionLogger` — Enhanced logger wrapper with `bind()` for context
-- `JsonFormatter` — JSON log formatter (NDJSON)
+- `FunctionLogger` — Enhanced logger wrapper with `bind()`, `log()`, `hasHandlers()` for stdlib parity
+- `JsonFormatter` — JSON log formatter (NDJSON), use with `functions_formatter=` in Azure
 - `RedactionFilter` — Filter to redact sensitive fields (password, token, api_key, etc.)
 - `SamplingFilter` — Filter for log sampling/rate-limiting noisy loggers
-- `inject_context(context)` — Set contextvars-based fields from Azure Functions context
+- `logging_context(context)` — **Recommended** context manager: injects on enter, always restores on exit
+- `inject_context(context)` → `ContextTokens` — Set contextvars; returns tokens for paired restore
+- `restore_context(tokens)` — Restore previous contextvars from tokens (paired with `inject_context`)
+- `reset_context()` — Clear all context vars unconditionally (for test teardown)
 - `with_context` — Decorator to inject context per-request (sync/async)
+- `install_context_factory()` — Opt-in global LogRecordFactory so context flows to every record
+- `get_logging_metadata()` — Inspect installation state (factory installed, version, etc.)
+- `ContextTokens` — Typed token bundle returned by `inject_context()`
 
 ## Quick Start
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -47,9 +53,9 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)  # binds invocation_id, function_name, cold_start
-    logger.info("Request received")
-    return func.HttpResponse("OK")
+    with logging_context(context):  # binds invocation_id, function_name, cold_start; always restores on exit
+        logger.info("Request received")
+        return func.HttpResponse("OK")
 ```
 
 Or use the decorator:
