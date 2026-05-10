@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
 ### Bug Fixes
 
 - *(logger)* Correct merge precedence to bind < extra < kwargs 
