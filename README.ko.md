@@ -425,7 +425,7 @@ extra 필드의 키가 sensitive 키와 일치하는 모든 로그 레코드는 
 | Azure / Core Tools | host-managed | 컨텍스트 필터만 설치; host 핸들러에 NDJSON을 강제하려면 `functions_formatter=JsonFormatter()`를 전달 |
 | CI / 파이프라인 | `json` | NDJSON, 머신 파싱 가능 |
 
-`setup_logging()`은 `FUNCTIONS_WORKER_RUNTIME`과 `WEBSITE_INSTANCE_ID`를 감지하여 자동으로 올바른 경로를 선택합니다. Azure에서는 핸들러를 추가하지 않고 컨텍스트 필터를 설치합니다 (host 파이프라인의 중복 출력을 피함).
+`setup_logging()`은 `FUNCTIONS_WORKER_RUNTIME`를 감지하여 Azure Functions / Core Tools와 로컬 독립 실행을 구분합니다. Azure 모드에서는 핸들러를 추가하지 않고 컨텍스트 필터만 설치합니다 (host 파이프라인의 중복 출력을 회피).
 
 ## 컨텍스트 바인딩
 

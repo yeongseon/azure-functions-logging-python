@@ -434,7 +434,7 @@ Any log record with extra fields whose keys match a sensitive key will have thos
 | Azure / Core Tools | host-managed | Installs context filters only; pass `functions_formatter=JsonFormatter()` to force NDJSON on host handlers |
 | CI / pipeline | `json` | NDJSON, machine-parseable |
 
-`setup_logging()` detects `FUNCTIONS_WORKER_RUNTIME` and `WEBSITE_INSTANCE_ID` to choose the right path automatically. In Azure, it installs context filters without adding handlers (avoids duplicate output from the host pipeline).
+`setup_logging()` detects `FUNCTIONS_WORKER_RUNTIME` to distinguish Azure Functions / Core Tools from standalone local execution. In Azure mode it installs context filters without adding handlers (avoids duplicate output from the host pipeline).
 
 ## Context Binding
 
