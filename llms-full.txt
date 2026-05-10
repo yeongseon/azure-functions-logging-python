@@ -44,8 +44,8 @@ def setup_logging(
 
     Args:
         level: Logging level for local dev. Ignored in Azure/Core Tools (default: INFO).
-        format: Log format: "color" (default) or "json". Ignored if functions_formatter provided.
-                Passing format="json" in Azure emits a warning; use functions_formatter instead.
+        format: Log format. "color" (default) or "json". In standalone local mode, selects ColorFormatter vs JsonFormatter. In Azure/Core Tools, host handlers are host-managed; use functions_formatter to set their formatter (passing format="json" alone emits a warning).
+                Passing format="json" in Azure without functions_formatter emits a warning.
         logger_name: Optional logger name to configure. None = root logger.
         functions_formatter: Custom formatter for Azure/Core Tools host-managed handlers.
         host_json_path: Explicit path to host.json. When None, walks up from cwd up to 5
@@ -324,7 +324,7 @@ stored in private contextvars and surfaced on every `LogRecord` via the internal
 `ContextFilter`, which is installed automatically by `setup_logging()`. The filter
 and the underlying contextvars are **implementation details** — use the public
 helpers above instead of importing them directly.
-```
+
 
 ## Design Principles
 
@@ -487,7 +487,7 @@ traces
 - Use `setup_logging(format="json")` instead of default color format.
 
 **Q: Can I use custom formatters?**
-- Yes, pass `functions_formatter=MyFormatter()` to setup_logging().
+- Yes, in Azure/Core Tools pass `functions_formatter=MyFormatter()` to setup_logging() to format host-managed handlers. In standalone local mode the built-in `format="color"` / `format="json"` selection applies (custom formatters are not yet wired into the standalone branch).
 
 **Q: Does this work without azure-functions?**
 - Yes, pass any object with invocation_id, function_name attributes to inject_context().

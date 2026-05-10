@@ -177,7 +177,7 @@ app = func.FunctionApp()
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     with logging_context(context):  # binds invocation_id, function_name, cold_start; restores previous context on exit
         logger.info("Request received")
-        # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
+        # log record now carries invocation_id, function_name, cold_start
 
         return func.HttpResponse("OK")
 ```
@@ -430,7 +430,7 @@ Any log record with extra fields whose keys match a sensitive key will have thos
 
 | Environment | Format | Behavior |
 |-------------|--------|---------|
-| Local terminal | `color` (default) | Colorized `[TIME] [LEVEL] [LOGGER] message` |
+| Local terminal | `color` (default) | Colorized human-readable: `HH:MM:SS LEVEL logger  message [context...]` |
 | Azure / Core Tools | host-managed | Installs context filters only; pass `functions_formatter=JsonFormatter()` to force NDJSON on host handlers |
 | CI / pipeline | `json` | NDJSON, machine-parseable |
 

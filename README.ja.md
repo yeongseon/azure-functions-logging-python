@@ -177,7 +177,7 @@ app = func.FunctionApp()
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     with logging_context(context):  # invocation_id, function_name, cold_start をバインドし、終了時に以前のコンテキストへ復元
         logger.info("Request received")
-        # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
+        # ログレコードに invocation_id, function_name, cold_start が付与されます
 
         return func.HttpResponse("OK")
 ```
@@ -421,7 +421,7 @@ extra フィールドのキーが sensitive キーと一致するすべてのロ
 
 | 環境 | フォーマット | 動作 |
 |------|------------|------|
-| ローカルターミナル | `color` (デフォルト) | 色付き `[TIME] [LEVEL] [LOGGER] message` |
+| ローカルターミナル | `color` (デフォルト) | 色付きで人間が読める形式: `HH:MM:SS LEVEL logger  message [context...]` |
 | Azure / Core Tools | host-managed | コンテキストフィルタのみインストール; host ハンドラに NDJSON を強制するには `functions_formatter=JsonFormatter()` を渡す |
 | CI / パイプライン | `json` | NDJSON、機械パース可能 |
 
