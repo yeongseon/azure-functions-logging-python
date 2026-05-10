@@ -359,12 +359,23 @@ setup_logging()  # Color in local, filter in Azure
 logger = get_logger(__name__)
 ```
 
-### JSON output everywhere:
+### JSON output:
+
+Standalone local process (formatter applied directly):
+
+```python
+from azure_functions_logging import setup_logging, get_logger
+
+setup_logging(format="json")
+logger = get_logger(__name__)
+```
+
+Azure Functions / Core Tools (host owns the handlers — `format="json"` alone is ignored; pass `functions_formatter` instead):
 
 ```python
 from azure_functions_logging import setup_logging, get_logger, JsonFormatter
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 ```
 
