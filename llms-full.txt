@@ -210,11 +210,9 @@ from azure_functions_logging import (
 )
 import azure.functions as func
 
-class ContextTokens:
-    """Bundle of contextvars Tokens returned by inject_context().
-    Pass to restore_context() to undo a single inject_context() call.
-    Treat as opaque.
-    """
+# ContextTokens is a type alias (not a class) — opaque mapping returned by
+# inject_context(). Pass to restore_context() to undo a single inject_context() call.
+ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
 
 def inject_context(context: Any) -> ContextTokens:
     """Set invocation context from an Azure Functions context object.
@@ -269,9 +267,10 @@ def install_context_factory() -> None:
     """
     ...
 
-def get_logging_metadata() -> dict[str, Any]:
-    """Return introspection metadata: package version, factory installed flag,
-    detected environment (azure/local), discovered host.json path, etc."""
+def get_logging_metadata(func: Any) -> dict[str, Any] | None:
+    """Return logging metadata attached to a function by ``@with_context``.
+    Returns ``None`` if the function was not decorated with ``@with_context``
+    (no introspection of install/runtime state — metadata is per-function only)."""
     ...
 ```
 
@@ -297,13 +296,18 @@ def with_context(
 ```
 ### Contextvar Helpers (Advanced)
 
+All public helpers are exported from the top-level package. Do **not** import
+from `azure_functions_logging._context` (private module — not part of the
+supported API surface and may change without notice).
+
 ```python
-from azure_functions_logging._context import (
-    invocation_id_var,
-    function_name_var,
-    trace_id_var,
-    cold_start_var,
-    ContextFilter,
+from azure_functions_logging import (
+    logging_context,        # primary: context manager
+    inject_context,         # low-level: returns ContextTokens
+    restore_context,        # low-level: pair with inject_context()
+    reset_context,          # test teardown only
+    install_context_factory,  # opt-in global LogRecordFactory
+    ContextTokens,          # type alias used by inject_context/restore_context
 )
 import contextvars
 
