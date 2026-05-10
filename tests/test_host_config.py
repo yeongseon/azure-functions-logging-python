@@ -7,7 +7,7 @@ import warnings
 
 import pytest
 
-from azure_functions_logging._host_config import warn_host_json_level_conflict
+from azure_functions_logging._host_config import discover_host_json, warn_host_json_level_conflict
 
 
 def _write_host_json(path: Path, content: dict[str, object]) -> None:
@@ -213,3 +213,112 @@ def test_no_warning_when_log_level_block_is_not_a_dict(
         warn_host_json_level_conflict(logging.INFO)
 
     assert len(warning_list) == 0
+
+
+# ---------------------------------------------------------------------------
+# Discovery + override tests (issue #102)
+# ---------------------------------------------------------------------------
+
+
+def test_discover_host_json_finds_in_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.chdir(tmp_path)
+    found = discover_host_json()
+    assert found == (tmp_path / "host.json").resolve()
+
+
+def test_discover_host_json_walks_parents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nested = tmp_path / "a" / "b" / "c"
+    nested.mkdir(parents=True)
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.chdir(nested)
+    found = discover_host_json()
+    assert found == (tmp_path / "host.json").resolve()
+
+
+def test_discover_host_json_returns_none_when_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert discover_host_json() is None
+
+
+def test_discover_host_json_respects_max_depth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 7 nested levels — host.json placed at the very top, beyond the bounded walk.
+    deep = tmp_path
+    for name in ("a", "b", "c", "d", "e", "f", "g"):
+        deep = deep / name
+    deep.mkdir(parents=True)
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.chdir(deep)
+    assert discover_host_json() is None
+
+
+def test_discover_host_json_picks_nearest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nested = tmp_path / "app"
+    nested.mkdir()
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    _write_host_json(nested / "host.json", {"version": "4.0"})
+    monkeypatch.chdir(nested)
+    found = discover_host_json()
+    assert found == (nested / "host.json").resolve()
+
+
+def test_warn_uses_explicit_override_when_cwd_has_no_host_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    _write_host_json(
+        other / "host.json",
+        {"logging": {"logLevel": {"default": "Warning"}}},
+    )
+    # cwd has no host.json — discovery would yield nothing.
+    monkeypatch.chdir(tmp_path)
+    with pytest.warns(UserWarning, match="more restrictive"):
+        warn_host_json_level_conflict(
+            logging.INFO,
+            host_json_path=other / "host.json",
+        )
+
+
+def test_warn_override_missing_file_silently_skipped(
+    tmp_path: Path,
+) -> None:
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(
+            logging.INFO,
+            host_json_path=tmp_path / "does-not-exist.json",
+        )
+    assert len(warning_list) == 0
+
+
+def test_warn_walks_parents_to_find_host_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-discovery must reach host.json even when cwd is a subdirectory."""
+    nested = tmp_path / "src" / "functions"
+    nested.mkdir(parents=True)
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"default": "Warning"}}},
+    )
+    monkeypatch.chdir(nested)
+    with pytest.warns(UserWarning, match="more restrictive"):
+        warn_host_json_level_conflict(logging.INFO)

@@ -372,6 +372,23 @@ Recommended `host.json` baseline:
 }
 ```
 
+### Discovery order
+
+`host.json` is located by walking up from the current working directory:
+
+1. `cwd/host.json`
+2. Each parent directory, up to 5 levels deep.
+
+The first existing file wins. To bypass auto-discovery (e.g. in tests or
+non-standard layouts), pass an explicit path:
+
+```python
+from pathlib import Path
+from azure_functions_logging import setup_logging
+
+setup_logging(host_json_path=Path("/site/wwwroot/host.json"))
+```
+
 ## Noise Control
 
 Suppress chatty third-party loggers without removing them:
