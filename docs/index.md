@@ -9,7 +9,7 @@ Production-oriented, developer-friendly logging for the Azure Functions Python v
 Copy this into your function module:
 
 ```python
-from azure_functions_logging import get_logger, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -35,10 +35,14 @@ This library addresses those gaps with a small API surface.
 - `setup_logging()` one-liner startup configuration.
 - Local colorized output (`format="color"`) for fast visual scanning.
 - Structured NDJSON output (`format="json"`) for production ingestion.
-- `inject_context(context)` to add invocation metadata fields.
+- `logging_context(context)` context manager that always restores prior context on exit (recommended).
+- `inject_context(context)` returns `ContextTokens` for paired `restore_context(tokens)` use in middleware.
+- `install_context_factory()` opt-in global LogRecordFactory so context flows to every `LogRecord`.
+- `JsonFormatter` for host-managed handlers via `setup_logging(functions_formatter=JsonFormatter())`.
 - Automatic `cold_start` flag detection on first invocation per process.
 - `FunctionLogger.bind()` for immutable request-scoped context binding.
-- Host-level `host.json` conflict warnings when Azure suppresses lower-level logs.
+- `FunctionLogger.log()` and `FunctionLogger.hasHandlers()` for stdlib parity.
+- Host-level `host.json` conflict warnings, with `host_json_path=` override and bounded parent-walk discovery.
 - Idempotent setup to avoid duplicate reconfiguration.
 
 ## What Gets Logged
@@ -54,9 +58,9 @@ Depending on formatter and context, events include:
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 
 app = func.FunctionApp()
@@ -64,13 +68,13 @@ app = func.FunctionApp()
 
 @app.route(route="health")
 def health(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    request_logger = logger.bind(route="/health", method=req.method)
-    request_logger.info("health endpoint called")
-    return func.HttpResponse("ok", status_code=200)
+    with logging_context(context):
+        request_logger = logger.bind(route="/health", method=req.method)
+        request_logger.info("health endpoint called")
+        return func.HttpResponse("ok", status_code=200)
 ```
 
-This combines runtime context injection and request binding in a safe, explicit flow.
+This combines context-managed invocation context and request binding in a safe, explicit flow that always restores prior context on exit (even on exceptions).
 
 ## Environment-Aware Behavior
 
@@ -119,10 +123,9 @@ It is a focused logging utility, not a full observability stack.
 
 If you are integrating today:
 
-1. Add package and call `setup_logging()` once.
-2. Update handlers to call `inject_context(context)`.
-3. Add request-scoped keys with `bind()`.
-4. Select `json` format for production tiers.
-5. Verify `host.json` level settings to avoid silent suppression.
-
+1. Add the package and call `setup_logging()` once at startup.
+2. Wrap each handler body in `with logging_context(context):` (or apply `@with_context`).
+3. Add request-scoped keys with `logger.bind()`.
+4. Use `setup_logging(functions_formatter=JsonFormatter())` to emit NDJSON on host-managed handlers in Azure.
+5. Verify `host.json` level settings (or pass `host_json_path=`) to avoid silent suppression.
 When these are complete, your logs become immediately easier to read, correlate, and operate.

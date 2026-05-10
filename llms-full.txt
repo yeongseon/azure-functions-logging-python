@@ -5,7 +5,7 @@
 ## Package Info
 
 - PyPI: `pip install azure-functions-logging`
-- Version: 0.4.1
+- Version: 0.7.1
 - Python: >=3.10, <3.15
 - License: MIT
 - Docs: https://yeongseon.github.io/azure-functions-logging-python/
@@ -23,6 +23,7 @@ pip install azure-functions-logging
 
 ```python
 from azure_functions_logging import setup_logging
+from pathlib import Path
 import logging
 
 def setup_logging(
@@ -31,22 +32,27 @@ def setup_logging(
     format: str = "color",
     logger_name: str | None = None,
     functions_formatter: logging.Formatter | None = None,
+    host_json_path: Path | None = None,
 ) -> None:
     """Configure logging for the current environment.
-    
+
     Behavior depends on detected environment:
     - **Azure / Core Tools**: Installs ContextFilter on root logger's handlers only.
       Does NOT add handlers or modify root logger level (respects host.json).
+      If `functions_formatter` is provided, it is applied to host-managed handlers.
     - **Standalone local**: Adds StreamHandler with ColorFormatter or JsonFormatter.
-    
+
     This function is idempotent per logger_name.
-    
+
     Args:
         level: Logging level for local dev. Ignored in Azure/Core Tools (default: INFO).
         format: Log format: "color" (default) or "json". Ignored if functions_formatter provided.
+                Passing format="json" in Azure emits a warning; use functions_formatter instead.
         logger_name: Optional logger name to configure. None = root logger.
-        functions_formatter: Custom formatter for Azure/Core Tools handlers.
-    
+        functions_formatter: Custom formatter for Azure/Core Tools host-managed handlers.
+        host_json_path: Explicit path to host.json. When None, walks up from cwd up to 5
+                        levels deep to discover host.json automatically.
+
     Raises:
         ValueError: If format not in {"color", "json"}.
     """
@@ -59,74 +65,44 @@ def setup_logging(
 from azure_functions_logging import get_logger, FunctionLogger
 
 def get_logger(name: str | None = None) -> FunctionLogger:
-    """Create a FunctionLogger wrapping a standard logging.Logger.
-    
-    Args:
-        name: Logger name. Typically __name__. None = root logger.
-    
-    Returns:
-        A FunctionLogger instance.
-    """
+    """Create a FunctionLogger wrapping a standard logging.Logger."""
     ...
 
 class FunctionLogger:
     """Wrapper around logging.Logger with context binding.
-    
-    Delegates all standard logging methods to underlying logger.
-    The bind() method returns new wrapper with merged context.
+
+    Delegates standard logging methods to the underlying logger.
+    The bind() method returns a new wrapper with merged context.
+    Reserved keys (invocation_id, function_name, trace_id, cold_start) are
+    automatically sanitized before being forwarded to stdlib logging.
     """
-    
-    def __init__(self, logger: logging.Logger) -> None:
-        """Wrap a standard logger."""
-        ...
-    
+
+    def __init__(self, logger: logging.Logger) -> None: ...
+
     @property
-    def name(self) -> str:
-        """Return underlying logger name."""
-        ...
-    
+    def name(self) -> str: ...
+
     def bind(self, **kwargs: Any) -> FunctionLogger:
-        """Return new FunctionLogger with merged context.
-        
-        Context from bind() is supplementary to global context
-        (invocation_id, function_name, etc.) from inject_context().
-        
-        Args:
-            **kwargs: Context key-value pairs to bind.
-        
-        Returns:
-            New FunctionLogger with merged context.
-        """
+        """Return new FunctionLogger with merged context."""
         ...
-    
-    def clear_context(self) -> None:
-        """Clear all bound context fields."""
+
+    def clear_context(self) -> None: ...
+
+    def hasHandlers(self) -> bool:
+        """Stdlib parity: True if any handler is reachable up the chain."""
         ...
-    
-    # Standard logging methods (all support extra= and context binding):
-    def debug(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """Log DEBUG message."""
+
+    def log(self, level: int, msg: object, *args: Any, **kwargs: Any) -> None:
+        """Stdlib parity: log at arbitrary numeric level. Routes through internal
+        sanitization and bound-context merging like the named-level methods."""
         ...
-    
-    def info(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """Log INFO message."""
-        ...
-    
-    def warning(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """Log WARNING message."""
-        ...
-    
-    def error(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """Log ERROR message."""
-        ...
-    
-    def critical(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """Log CRITICAL message."""
-        ...
-    
-    def exception(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """Log ERROR with exception traceback."""
-        ...
+
+    def debug(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
+    def info(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
+    def warning(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
+    def error(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
+    def critical(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
+    def exception(self, msg: object, *args: Any, **kwargs: Any) -> None: ...
 ```
 
 ### JSON Formatter
@@ -222,25 +198,80 @@ class RedactionFilter(logging.Filter):
 ### Context Injection
 
 ```python
-from azure_functions_logging import inject_context, with_context
+from azure_functions_logging import (
+    ContextTokens,
+    inject_context,
+    logging_context,
+    restore_context,
+    reset_context,
+    install_context_factory,
+    get_logging_metadata,
+    with_context,
+)
 import azure.functions as func
 
-def inject_context(context: Any) -> None:
-    """Set invocation context from Azure Functions context object.
-    
-    Extracts invocation_id, function_name, trace_id, cold_start
-    and stores in contextvars. Safe to call with any object;
-    missing attributes silently ignored (context failures never
-    cause application failures).
-    
-    Args:
-        context: An Azure Functions context object (func.Context).
-    
+class ContextTokens:
+    """Bundle of contextvars Tokens returned by inject_context().
+    Pass to restore_context() to undo a single inject_context() call.
+    Treat as opaque.
+    """
+
+def inject_context(context: Any) -> ContextTokens:
+    """Set invocation context from an Azure Functions context object.
+
+    Extracts invocation_id, function_name, trace_id, cold_start and stores
+    them in contextvars. Returns a ContextTokens bundle that can be passed
+    to restore_context() to undo this specific injection.
+
+    Safe to call with any object; missing attributes are silently ignored
+    (context failures never cause application failures).
+
     Example:
         def handler(req, context):
-            inject_context(context)  # Must be first line
-            logger.info("Processing")  # Includes invocation_id, cold_start
+            tokens = inject_context(context)
+            try:
+                logger.info("Processing")
+            finally:
+                restore_context(tokens)
     """
+    ...
+
+def restore_context(tokens: ContextTokens) -> None:
+    """Restore the previous contextvar values captured in tokens.
+    Always pair with the matching inject_context() call."""
+    ...
+
+def reset_context() -> None:
+    """Unconditionally clear all context vars. Use only in test teardown—
+    prefer logging_context() / restore_context() in production code."""
+    ...
+
+def logging_context(context: Any) -> ContextManager[None]:
+    """Recommended primary pattern. Context manager that calls inject_context()
+    on enter and **always** calls restore_context() on exit (even when the body
+    raises). Prevents stale context from leaking into the next invocation on a
+    reused worker.
+
+    Example:
+        def handler(req, context):
+            with logging_context(context):
+                logger.info("handler started")
+    """
+    ...
+
+def install_context_factory() -> None:
+    """Opt-in: install a global logging.setLogRecordFactory() that copies
+    contextvars onto every LogRecord at creation time. Ensures coverage even
+    on handlers added after setup_logging() and on loggers that bypass the
+    filter chain. Once installed, invocation_id/function_name/trace_id/
+    cold_start become reserved LogRecord attributes—passing them via stdlib
+    extra= raises KeyError. Use FunctionLogger (auto-sanitizes) or rename keys.
+    """
+    ...
+
+def get_logging_metadata() -> dict[str, Any]:
+    """Return introspection metadata: package version, factory installed flag,
+    detected environment (azure/local), discovered host.json path, etc."""
     ...
 ```
 
@@ -258,30 +289,12 @@ def with_context(
     param: str = "context",
 ) -> _F | Callable[[_F], _F]:
     """Decorator that automatically injects invocation context.
-    
-    Finds the context parameter, calls inject_context() before handler,
-    and resets context variables in finally. Both sync and async supported.
-    
-    Usage without args:
-        @with_context
-        def handler(req, context):
-            logger.info("Automatic context")
-    
-    Usage with custom param name:
-        @with_context(param="ctx")
-        def handler(req, ctx):
-            logger.info("Still automatic")
-    
-    Args:
-        func: Handler function (when used without parentheses).
-        param: Context parameter name (default: "context").
-    
-    Returns:
-        Decorated function with auto context injection.
+
+    Finds the context parameter, calls inject_context() before the handler,
+    and calls restore_context() in finally. Sync and async handlers supported.
     """
     ...
 ```
-
 ### Contextvar Helpers (Advanced)
 
 ```python
@@ -327,6 +340,13 @@ class ContextFilter(logging.Filter):
 4. **Silent on context failures** — Missing attributes don't cause exceptions
 5. **Idempotent setup** — Calling setup_logging() multiple times is safe
 6. **Standard logging delegates** — FunctionLogger wraps, never replaces stdlib logging
+7. **Always-restoring context** — logging_context() / restore_context() prevent stale
+   context from leaking into the next invocation on a reused worker
+8. **Strict W3C traceparent validation** — _extract_trace_id() validates Trace Context
+   Level 1 (4 parts; 2/32/16/2 hex; rejects version ff and all-zero trace/span ids;
+   forward-compatible with future versions)
+9. **Bounded host.json discovery** — walks up from cwd, max 5 parent levels;
+   override with host_json_path= for tests / non-standard layouts
 
 ## Common Patterns
 
