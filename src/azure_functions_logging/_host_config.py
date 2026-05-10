@@ -17,6 +17,10 @@ _HOST_LEVEL_TO_LOGGING: dict[str, int] = {
     "warning": logging.WARNING,
 }
 
+# Maximum number of parent directories to walk when auto-discovering host.json.
+# Bounded to avoid scanning the entire filesystem on misconfigured environments.
+_HOST_JSON_DISCOVERY_MAX_DEPTH = 5
+
 
 def _resolve_host_level(value: object) -> int | None:
     if not isinstance(value, str):
@@ -24,7 +28,38 @@ def _resolve_host_level(value: object) -> int | None:
     return _HOST_LEVEL_TO_LOGGING.get(value.lower())
 
 
-def warn_host_json_level_conflict(configured_level: int) -> None:
+def discover_host_json(start: Path | None = None) -> Path | None:
+    """Locate ``host.json`` deterministically by walking ``start`` upward.
+
+    Discovery order:
+
+    1. ``start`` (defaults to :func:`Path.cwd`).
+    2. Each ancestor up to :data:`_HOST_JSON_DISCOVERY_MAX_DEPTH` levels.
+
+    Returns the first existing ``host.json`` path or ``None``. Never raises:
+    filesystem errors are swallowed so callers stay silent on broken setups.
+    """
+    try:
+        base = (start or Path.cwd()).resolve()
+    except Exception:
+        return None
+
+    candidates = [base, *list(base.parents)[:_HOST_JSON_DISCOVERY_MAX_DEPTH]]
+    for directory in candidates:
+        candidate = directory / "host.json"
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def warn_host_json_level_conflict(
+    configured_level: int,
+    *,
+    host_json_path: Path | str | None = None,
+) -> None:
     """Warn when any ``host.json`` ``logLevel`` entry suppresses logs below ``configured_level``.
 
     Azure Functions honors category-specific keys under ``logging.logLevel``
@@ -35,10 +70,25 @@ def warn_host_json_level_conflict(configured_level: int) -> None:
     user's logs.
 
     This helper iterates every category and warns once per offending entry.
+
+    Args:
+        configured_level: The numeric logging level configured by the app.
+        host_json_path: Optional explicit path to a ``host.json`` file. When
+            provided, auto-discovery is bypassed entirely. When ``None``,
+            :func:`discover_host_json` is used.
     """
-    host_path = Path.cwd() / "host.json"
-    if not host_path.exists():
-        return
+    if host_json_path is not None:
+        host_path = Path(host_json_path)
+        try:
+            if not host_path.is_file():
+                return
+        except OSError:
+            return
+    else:
+        discovered = discover_host_json()
+        if discovered is None:
+            return
+        host_path = discovered
 
     try:
         host_config = json.loads(host_path.read_text(encoding="utf-8"))

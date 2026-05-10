@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 import threading
 import warnings
 
@@ -33,6 +34,7 @@ def setup_logging(
     format: str = "color",
     logger_name: str | None = None,
     functions_formatter: logging.Formatter | None = None,
+    host_json_path: Path | str | None = None,
 ) -> None:
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
@@ -60,6 +62,11 @@ def setup_logging(
             handlers when running inside Azure/Core Tools. Useful for
             injecting a custom JSON formatter or third-party formatter
             without losing ContextFilter integration.
+        host_json_path: Optional explicit path to a ``host.json`` file used by
+            the host-level conflict warning. When ``None`` (default),
+            ``host.json`` is auto-discovered by walking up from the current
+            working directory (bounded). Pass an explicit path to disable
+            auto-discovery in environments where it might pick the wrong file.
     """
     if format not in {"color", "json"}:
         msg = "format must be 'color' or 'json'"
@@ -104,6 +111,6 @@ def setup_logging(
                     handler.addFilter(context_filter)
 
         if is_functions_env:
-            warn_host_json_level_conflict(level)
+            warn_host_json_level_conflict(level, host_json_path=host_json_path)
 
         _configured_loggers.add(logger_name)
