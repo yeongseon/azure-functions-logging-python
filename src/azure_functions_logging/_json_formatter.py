@@ -69,13 +69,20 @@ class JsonFormatter(logging.Formatter):
         super().__init__()
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format a log record as one NDJSON object."""
-        message = record.getMessage()
-        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+        """Format a log record as one NDJSON object.
+
+        Fully fail-safe: every step (message rendering, exception formatting,
+        timestamp, JSON serialization) is wrapped so that a hostile
+        ``__str__`` / ``__repr__``, a malformed ``exc_info`` triple, or a
+        cyclic ``extra`` payload never raises out of ``format()``. Worst-case
+        we still emit a single valid JSON object with sentinel values.
+        """
+        message = _safe_get_message(record)
+        timestamp = _safe_timestamp(record)
 
         exception: str | None = None
         if record.exc_info:
-            exception = self.formatException(record.exc_info)
+            exception = _safe_format_exception(self, record.exc_info)
 
         excluded_fields = _STANDARD_RECORD_FIELDS | _CONTEXT_FIELDS
         extra = {key: value for key, value in record.__dict__.items() if key not in excluded_fields}
@@ -93,4 +100,60 @@ class JsonFormatter(logging.Formatter):
             "extra": extra,
         }
 
-        return json.dumps(payload, ensure_ascii=False, default=_json_default)
+        try:
+            return json.dumps(payload, ensure_ascii=False, default=_json_default)
+        except Exception:
+            # Last-resort fallback: drop ``extra`` (the most likely culprit
+            # for cyclic / unserializable payloads) and re-attempt. If even
+            # that fails, emit a minimal hand-built JSON object so the
+            # logging pipeline never breaks.
+            payload["extra"] = {"__serialization_error__": True}
+            try:
+                return json.dumps(payload, ensure_ascii=False, default=_json_default)
+            except Exception:
+                return _emergency_payload(record)
+
+
+def _safe_get_message(record: logging.LogRecord) -> str:
+    """Render ``record.getMessage()`` without ever raising."""
+    try:
+        return record.getMessage()
+    except Exception as exc:
+        return f"<unrenderable message: {type(exc).__name__}>"
+
+
+def _safe_timestamp(record: logging.LogRecord) -> str:
+    """Format the record timestamp without ever raising."""
+    try:
+        return datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+    except Exception:
+        return "1970-01-01T00:00:00+00:00"
+
+
+def _safe_format_exception(formatter: logging.Formatter, exc_info: Any) -> str:
+    """Format ``exc_info`` without ever raising."""
+    try:
+        return formatter.formatException(exc_info)
+    except Exception as exc:
+        return f"<unformattable exception: {type(exc).__name__}>"
+
+
+def _emergency_payload(record: logging.LogRecord) -> str:
+    """Build a minimal valid JSON line when every other path failed."""
+    level = getattr(record, "levelname", "UNKNOWN")
+    name = getattr(record, "name", "unknown")
+    return json.dumps(
+        {
+            "timestamp": "1970-01-01T00:00:00+00:00",
+            "level": str(level),
+            "logger": str(name),
+            "message": "<emergency fallback: formatter failed>",
+            "invocation_id": None,
+            "function_name": None,
+            "trace_id": None,
+            "cold_start": None,
+            "exception": None,
+            "extra": {"__serialization_error__": True},
+        },
+        ensure_ascii=False,
+    )
