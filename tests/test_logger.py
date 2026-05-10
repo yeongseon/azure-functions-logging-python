@@ -253,3 +253,77 @@ def test_sanitize_extra_double_prefix_conflict() -> None:
     assert extra["extra_name"] == "collides"
     assert extra["extra_name_2"] == "user-supplied"
     assert "name" not in extra
+
+
+
+# ---------------------------------------------------------------------------
+# log() and hasHandlers() stdlib parity (issue #103)
+# ---------------------------------------------------------------------------
+
+
+def test_log_dispatches_at_arbitrary_level() -> None:
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying)
+
+    for level in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
+        underlying.log.reset_mock()
+        logger.log(level, "msg-%s" % level)
+        underlying.log.assert_called_once()
+        args, _ = underlying.log.call_args
+        assert args[0] == level
+
+
+def test_log_honors_bind_extra_kwargs_precedence() -> None:
+    """bind < extra < kwargs ordering must match level-specific methods."""
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying).bind(field="from-bind", common="bind-only")
+
+    logger.log(
+        logging.WARNING,
+        "hi",
+        field="from-kwargs",
+        extra={"field": "from-extra", "only_extra": True},
+    )
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    assert extra["field"] == "from-kwargs"
+    assert extra["only_extra"] is True
+    assert extra["common"] == "bind-only"
+
+
+def test_log_sanitizes_reserved_keys() -> None:
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying)
+
+    logger.log(logging.INFO, "hi", name="shadow")
+
+    _, kwargs = underlying.log.call_args
+    extra = kwargs["extra"]
+    assert "name" not in extra
+    assert extra["extra_name"] == "shadow"
+
+
+def test_log_skipped_when_level_disabled() -> None:
+    underlying = _mock_underlying_logger()
+    underlying.isEnabledFor.return_value = False
+    logger = FunctionLogger(underlying)
+
+    logger.log(logging.DEBUG, "nope")
+
+    underlying.log.assert_not_called()
+
+
+def test_has_handlers_true() -> None:
+    underlying = _mock_underlying_logger()
+    underlying.hasHandlers.return_value = True
+    logger = FunctionLogger(underlying)
+    assert logger.hasHandlers() is True
+    underlying.hasHandlers.assert_called_once_with()
+
+
+def test_has_handlers_false() -> None:
+    underlying = _mock_underlying_logger()
+    underlying.hasHandlers.return_value = False
+    logger = FunctionLogger(underlying)
+    assert logger.hasHandlers() is False

@@ -174,3 +174,16 @@ class FunctionLogger:
     def getEffectiveLevel(self) -> int:
         """Return the effective level of the underlying logger."""
         return self._logger.getEffectiveLevel()
+
+    def log(self, level: int, msg: object, *args: Any, **kwargs: Any) -> None:
+        """Log ``msg`` at the given ``level``, mirroring ``logging.Logger.log``.
+
+        Honors the same ``bind`` < ``extra`` < ``kwargs`` merge precedence
+        as :meth:`info` / :meth:`warning` / etc. and applies the same
+        reserved-key sanitization.
+        """
+        self._log(level, msg, args, **kwargs)
+
+    def hasHandlers(self) -> bool:
+        """Return whether the underlying logger has any handlers configured."""
+        return self._logger.hasHandlers()
