@@ -397,11 +397,12 @@ handler = logging.StreamHandler()
 handler.addFilter(SamplingFilter(rate=10, window=1.0))
 urllib3_logger.addHandler(handler)
 
-# Redact passwords from custom field
-custom_logger = get_logger("myapp.auth")
+# Redact passwords on a stdlib logger (FunctionLogger does not expose addHandler;
+# attach handlers/filters to the underlying stdlib logger instead).
+auth_logger = logging.getLogger("myapp.auth")
 handler = logging.StreamHandler()
 handler.addFilter(RedactionFilter())
-custom_logger.addHandler(handler)
+auth_logger.addHandler(handler)
 ```
 
 ### Per-request context with bind() (using `logging_context`):

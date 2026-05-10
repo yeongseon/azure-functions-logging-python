@@ -61,6 +61,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 Or use the decorator:
 
 ```python
+import azure.functions as func
 from azure_functions_logging import with_context, get_logger, setup_logging
 
 setup_logging()
