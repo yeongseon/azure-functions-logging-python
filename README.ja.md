@@ -425,7 +425,7 @@ extra フィールドのキーが sensitive キーと一致するすべてのロ
 | Azure / Core Tools | host-managed | コンテキストフィルタのみインストール; host ハンドラに NDJSON を強制するには `functions_formatter=JsonFormatter()` を渡す |
 | CI / パイプライン | `json` | NDJSON、機械パース可能 |
 
-`setup_logging()` は `FUNCTIONS_WORKER_RUNTIME` と `WEBSITE_INSTANCE_ID` を検出し、自動的に正しいパスを選択します。Azure では、ハンドラを追加せずにコンテキストフィルタをインストールします (host パイプラインからの重複出力を回避)。
+`setup_logging()` は `FUNCTIONS_WORKER_RUNTIME` を検出し、Azure Functions / Core Tools とスタンドアロンのローカル実行を区別します。Azure モードではハンドラを追加せずにコンテキストフィルタをインストールします (host パイプラインからの重複出力を回避)。
 
 ## コンテキストバインディング
 

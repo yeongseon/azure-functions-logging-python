@@ -331,9 +331,9 @@ helpers above instead of importing them directly.
 6. **Standard logging delegates** — FunctionLogger wraps, never replaces stdlib logging
 7. **Always-restoring context** — logging_context() / restore_context() prevent stale
    context from leaking into the next invocation on a reused worker
-8. **Strict W3C traceparent validation** — _extract_trace_id() validates Trace Context
-   Level 1 (4 parts; 2/32/16/2 hex; rejects version ff and all-zero trace/span ids;
-   forward-compatible with future versions)
+8. **Strict W3C traceparent validation** — trace IDs are extracted only from valid W3C
+   `traceparent` headers (Trace Context Level 1: 4 parts; 2/32/16/2 hex; rejects
+   version `ff` and all-zero trace/span ids; forward-compatible with future versions)
 9. **Bounded host.json discovery** — walks up from cwd, max 5 parent levels;
    override with host_json_path= for tests / non-standard layouts
 
@@ -457,9 +457,12 @@ Configure Application Insights in host.json to capture structured logs:
 ```
 
 Log records emitted through this library carry `invocation_id`, `function_name`,
-and any user-supplied `extra=` fields. In Application Insights these structured
-fields are flattened into the `customDimensions` column (not top-level table
-columns), so queries must reference them via `customDimensions.<field>`.
+and any user-supplied `extra=` fields. When the host pipeline forwards them to
+Application Insights, structured fields typically appear under `customDimensions`
+(not as top-level table columns), so queries should reference them via
+`customDimensions.<field>`. Exact ingestion shape depends on the host/exporter
+pipeline; some setups may surface fields differently or leave them in the raw
+`message`.
 
 ```
 traces

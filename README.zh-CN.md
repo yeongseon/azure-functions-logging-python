@@ -425,7 +425,7 @@ extra 字段中键名匹配 sensitive 键的任何日志记录将其值替换为
 | Azure / Core Tools | host-managed | 仅安装上下文过滤器；通过 `functions_formatter=JsonFormatter()` 在 host 处理程序上强制 NDJSON |
 | CI / 管道 | `json` | NDJSON, 机器可解析 |
 
-`setup_logging()` 检测 `FUNCTIONS_WORKER_RUNTIME` 和 `WEBSITE_INSTANCE_ID` 来自动选择正确路径。在 Azure 中，它安装上下文过滤器而不添加处理程序 (避免来自 host 管道的重复输出)。
+`setup_logging()` 检测 `FUNCTIONS_WORKER_RUNTIME` 以区分 Azure Functions / Core Tools 与本地独立运行。在 Azure 模式下，它不添加处理程序仅安装上下文过滤器（避免来自 host 管道的重复输出）。
 
 ## 上下文绑定
 
