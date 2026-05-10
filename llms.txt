@@ -20,7 +20,7 @@ Key features:
 - **Structured JSON output** — Application Insights-ready NDJSON format for production
 - **Noise control** — `SamplingFilter` rate-limits chatty third-party loggers
 - **PII protection** — `RedactionFilter` masks sensitive fields before they reach log aggregation
-- **Root logger contract** — in Azure/Core Tools mode, no handlers are added; `ContextFilter` is installed on existing root handlers and on the root logger itself (covers handlers added later). In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added if none exist.
+- **Root logger contract** — in Azure/Core Tools mode, no handlers are added; `ContextFilter` is installed on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). To guarantee coverage for records that propagate from named child loggers to handlers attached later, call `install_context_factory()`. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added if none exist.
 - **Zero runtime dependency** — on azure-functions (works with any context-like object)
 
 ## Core API

@@ -37,7 +37,7 @@ def setup_logging(
     """Configure logging for the current environment.
 
     Behavior depends on detected environment:
-    - **Azure / Core Tools**: Installs ContextFilter on existing root handlers AND on the root logger itself (so records emitted through later-added handlers still carry context). Does NOT add handlers or modify root logger level (respects host.json). If `functions_formatter` is provided, it is applied to host-managed handlers.
+    - **Azure / Core Tools**: Installs ContextFilter on existing root handlers AND on the root logger itself (so direct calls on the root logger carry context). Does NOT add handlers or modify root logger level (respects host.json). If `functions_formatter` is provided, it is applied to host-managed handlers. NOTE: a filter on the root logger does not run for records that propagate from named child loggers to host/third-party handlers attached later — use `install_context_factory()` to guarantee context coverage in that case.
     - **Standalone local**: Sets the target/root logger level. Adds a StreamHandler (ColorFormatter or JsonFormatter) ONLY when no handlers exist; otherwise just attaches filters to existing handlers.
 
     This function is idempotent per logger_name.
@@ -323,7 +323,7 @@ helpers above instead of importing them directly.
 
 ## Design Principles
 
-1. **Narrow root logger contract** — In Azure/Core Tools, no handlers are added; `setup_logging()` installs `ContextFilter` on existing root handlers and on the root logger itself so records emitted through later-added handlers still carry context. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added only when no handlers exist.
+1. **Narrow root logger contract** — In Azure/Core Tools, no handlers are added; `setup_logging()` installs `ContextFilter` on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). To guarantee context on records that propagate from named child loggers to handlers attached later (host- or third-party-installed), call `install_context_factory()`. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added only when no handlers exist.
 2. **Respects host.json** — In Azure/Core Tools, never changes root logger level or replaces existing handlers
 3. **No runtime dependency on azure-functions** — Works with any context-like object
 4. **Silent on context failures** — Missing attributes don't cause exceptions
@@ -332,8 +332,10 @@ helpers above instead of importing them directly.
 7. **Always-restoring context** — logging_context() / restore_context() prevent stale
    context from leaking into the next invocation on a reused worker
 8. **Strict W3C traceparent validation** — trace IDs are extracted only from valid W3C
-   `traceparent` headers (Trace Context Level 1: 4 parts; 2/32/16/2 hex; rejects
-   version `ff` and all-zero trace/span ids; forward-compatible with future versions)
+   `traceparent` headers (version `00` requires exactly 4 parts; later versions may
+   include trailing fields, which are ignored after validating the first four:
+   2/32/16/2 hex; version `ff` and all-zero trace/span ids are rejected;
+   forward-compatible with future versions)
 9. **Bounded host.json discovery** — walks up from cwd, max 5 parent levels;
    override with host_json_path= for tests / non-standard layouts
 

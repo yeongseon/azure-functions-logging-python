@@ -485,7 +485,7 @@ def process_order(order_id: str) -> None:
 
 **코드 생성을 위한 핵심 구현 세부사항:**
 
-1. **호스트 구성 보존** — Azure / Core Tools에서는 핸들러를 추가하지 않고 루트 로거 레벨을 `host.json`에 위임하며, 기존 루트 핸들러(및 루트 로거 자체)에 `ContextFilter`만 설치합니다. 로컬 단독 모드에서는 `setup_logging(logger_name=None)`이 루트 로거를 구성합니다 (레벨 설정, 핸들러 없으면 `StreamHandler` 추가).
+1. **호스트 구성 보존** — Azure / Core Tools에서는 핸들러를 추가하지 않고 루트 로거 레벨을 `host.json`에 위임하며, 기존 루트 핸들러와 루트 로거 자체에 `ContextFilter`를 설치합니다 (루트 로거에서 직접 호출되는 레코드에 컨텍스트를 익수함). 이름 있는 자식 로거에서 이마 추가되는 핸들러에 전파되는 레코드의 경우 `install_context_factory()`를 호출하여 컨텍스트 커버리지를 보장하세요. 로컬 단독 모드에서는 `setup_logging(logger_name=None)`이 루트 로거를 구성합니다 (레벨 설정, 핸들러 없으면 `StreamHandler` 추가).
 2. **컨텍스트 주입은 contextvar 기반** — thread-local이 아니므로 asyncio와 호환
 3. **멱등성 보장 setup** — `setup_logging()`을 여러 번 호출해도 안전
 4. **두 환경, 두 동작**:

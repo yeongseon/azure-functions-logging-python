@@ -485,7 +485,7 @@ def process_order(order_id: str) -> None:
 
 **代码生成的关键实现细节:**
 
-1. **保留 host 配置** — 在 Azure / Core Tools 中不添加处理程序，root logger 级别交给 `host.json`；仅在已有 root 处理程序（以及 root logger 自身，以覆盖后续添加的处理程序）上安装 `ContextFilter`。在本地独立模式下，`setup_logging(logger_name=None)` 会配置 root logger（设置级别，无处理程序时添加 `StreamHandler`）。
+1. **保留 host 配置** — 在 Azure / Core Tools 中不添加处理程序，root logger 级别交给 `host.json`；在已有 root 处理程序以及 root logger 自身上安装 `ContextFilter`（以便在 root logger 上的直接调用携带上下文）。若需覆盖从命名子 logger 传播到后续添加处理程序的记录，请调用 `install_context_factory()` 以保证上下文覆盖。在本地独立模式下，`setup_logging(logger_name=None)` 会配置 root logger（设置级别，无处理程序时添加 `StreamHandler`）。
 2. **上下文注入基于 contextvar** — 不是 thread-local，与 asyncio 协同工作
 3. **幂等 setup** — 多次调用 `setup_logging()` 是安全的
 4. **两个环境，两种行为**:
