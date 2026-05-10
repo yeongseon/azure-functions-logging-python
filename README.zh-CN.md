@@ -175,7 +175,7 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    with logging_context(context):  # 绑定 invocation_id, function_name, cold_start; 退出时重置
+    with logging_context(context):  # 绑定 invocation_id, function_name, cold_start; 退出时恢复先前上下文
         logger.info("Request received")
         # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
 
@@ -187,6 +187,9 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 如需较低级别的控制或与自定义中间件集成，请使用基于令牌 (token) 的恢复:
 
 ```python
+from azure_functions_logging import inject_context, restore_context
+
+# 假设 `logger` 和 `context` 已在作用域内 (参见 Quick Start)。
 tokens = inject_context(context)
 try:
     logger.info("Request received")
@@ -278,7 +281,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     return func.HttpResponse("OK")
 ```
 
-装饰器按名称查找 `context` 参数，在处理程序运行前调用 `inject_context()`，并在返回后的 `finally` 中重置上下文变量。
+装饰器按名称查找 `context` 参数，在处理程序运行前调用 `inject_context()`，并在返回后的 `finally` 中恢复先前上下文。
 
 自定义参数名:
 
@@ -332,7 +335,7 @@ setup_logging(functions_formatter=JsonFormatter())
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
  "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "00-abc...", "exception": null,
+ "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
  "extra": {"order_id": "o-999"}}
 ```
 
@@ -407,7 +410,9 @@ import logging
 
 setup_logging()
 root = logging.getLogger()
-root.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
+# 将过滤器附加到处理程序，以便命名子 logger 的记录也被脱敏。
+for handler in root.handlers:
+    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
 ```
 
 extra 字段中键名匹配 sensitive 键的任何日志记录将其值替换为 `***`。
@@ -480,7 +485,7 @@ def process_order(order_id: str) -> None:
 
 **代码生成的关键实现细节:**
 
-1. **从不修改 root logger** — 仅在处理程序上安装过滤器/格式化器
+1. **保留 host 配置** — 在 Azure / Core Tools 中不添加处理程序，root logger 级别交给 `host.json`；仅在已有 root 处理程序（以及 root logger 自身，以覆盖后续添加的处理程序）上安装 `ContextFilter`。在本地独立模式下，`setup_logging(logger_name=None)` 会配置 root logger（设置级别，无处理程序时添加 `StreamHandler`）。
 2. **上下文注入基于 contextvar** — 不是 thread-local，与 asyncio 协同工作
 3. **幂等 setup** — 多次调用 `setup_logging()` 是安全的
 4. **两个环境，两种行为**:
@@ -496,6 +501,8 @@ def process_order(order_id: str) -> None:
 - 在模块级别或处理程序启动时调用 `setup_logging()` (而不是每次请求)
 - 在处理程序中优先使用 `with logging_context(context):`; 仅在配合 `try/finally restore_context(tokens)` 时使用原始 `inject_context(context)`
 - 对每次请求的字段使用 `logger.bind(key=value)` (而不是直接 logger.extra)
+- 如需隐式按处理程序注入上下文，可使用 `with_context` 装饰器
+- 调用 `get_logging_metadata(func)` 检查函数的 `@with_context` 元数据 (返回 `dict[str, Any] | None`)
 - 对 PII 字段应用 `RedactionFilter`，对高频日志应用 `SamplingFilter`
 
 **示例模式:**

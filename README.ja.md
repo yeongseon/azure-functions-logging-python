@@ -175,7 +175,7 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    with logging_context(context):  # invocation_id, function_name, cold_start をバインド、終了時にリセット
+    with logging_context(context):  # invocation_id, function_name, cold_start をバインドし、終了時に以前のコンテキストへ復元
         logger.info("Request received")
         # {"level": "INFO", "invocation_id": "abc-123", "cold_start": true, ...}
 
@@ -187,6 +187,9 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 低レベル制御またはカスタムミドルウェアと統合する場合は、トークンベース復元を使用してください:
 
 ```python
+from azure_functions_logging import inject_context, restore_context
+
+# `logger` と `context` がスコープにあると仮定 (Quick Start を参照)。
 tokens = inject_context(context)
 try:
     logger.info("Request received")
@@ -278,7 +281,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     return func.HttpResponse("OK")
 ```
 
-デコレータは名前で `context` パラメータを見つけ、ハンドラ実行前に `inject_context()` を呼び出し、戻った後 `finally` でコンテキスト変数をリセットします。
+デコレータは名前で `context` パラメータを見つけ、ハンドラ実行前に `inject_context()` を呼び出し、戻った後 `finally` で以前のコンテキストへ復元します。
 
 カスタムパラメータ名:
 
@@ -332,7 +335,7 @@ setup_logging(functions_formatter=JsonFormatter())
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
  "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "00-abc...", "exception": null,
+ "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
  "extra": {"order_id": "o-999"}}
 ```
 
@@ -407,7 +410,9 @@ import logging
 
 setup_logging()
 root = logging.getLogger()
-root.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
+# 名前付きの子ロガーから出力されるレコードもリダクトされるよう、フィルタはハンドラに付与します。
+for handler in root.handlers:
+    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
 ```
 
 extra フィールドのキーが sensitive キーと一致するすべてのログレコードは、その値が `***` で置き換えられます。
@@ -480,7 +485,7 @@ def process_order(order_id: str) -> None:
 
 **コード生成のための主要な実装詳細:**
 
-1. **ルートロガーを変更しない** — ハンドラにのみフィルタ/フォーマッタをインストール
+1. **ホスト構成を尊重** — Azure / Core Tools ではハンドラを追加せず、ルートロガーのレベルは `host.json` に委ねます。既存のルートハンドラ (および将来追加されるハンドラのためにルートロガー自体) に `ContextFilter` のみをインストールします。ローカル単独モードでは `setup_logging(logger_name=None)` がルートロガーを構成します (レベル設定、ハンドラがなければ `StreamHandler` を追加)。
 2. **コンテキスト注入は contextvar ベース** — thread-local ではなく、asyncio で動作
 3. **冪等な setup** — `setup_logging()` を複数回呼び出しても安全
 4. **2 つの環境、2 つの動作**:
@@ -496,6 +501,8 @@ def process_order(order_id: str) -> None:
 - `setup_logging()` をモジュールレベルまたはハンドラ起動時に呼び出す (リクエストごとではない)
 - ハンドラでは `with logging_context(context):` を優先; 生の `inject_context(context)` は `try/finally restore_context(tokens)` とのみ併用
 - リクエストごとのフィールドには `logger.bind(key=value)` を使用 (logger.extra への直接アクセスではない)
+- 暗黙的なハンドラごとのコンテキスト注入を好む場合は `with_context` デコレータを使用
+- 関数の `@with_context` メタデータを検査するには `get_logging_metadata(func)` を呼び出す (`dict[str, Any] | None` を返却)
 - PII フィールドには `RedactionFilter`、大量ログには `SamplingFilter` を適用
 
 **例パターン:**
