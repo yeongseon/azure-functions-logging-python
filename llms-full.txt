@@ -400,20 +400,35 @@ handler.addFilter(RedactionFilter())
 custom_logger.addHandler(handler)
 ```
 
-### Per-request context with bind():
+### Per-request context with bind() (using `logging_context`):
 
 ```python
-from azure_functions_logging import get_logger, inject_context
+from azure_functions_logging import get_logger, logging_context
 
 logger = get_logger(__name__)
 
 def handler(req, context):
-    inject_context(context)
-    
-    # Create request-scoped logger with user_id
-    req_logger = logger.bind(user_id=req.params.get("user_id"))
-    req_logger.info("Processing request")
-    # Log includes: invocation_id, user_id, cold_start, etc.
+    with logging_context(context):
+        # Create request-scoped logger with user_id
+        req_logger = logger.bind(user_id=req.params.get("user_id"))
+        req_logger.info("Processing request")
+        # Log includes: invocation_id, user_id, cold_start, etc.
+```
+
+Equivalent low-level pattern (e.g. middleware that cannot use a `with` block):
+
+```python
+from azure_functions_logging import get_logger, inject_context, restore_context
+
+logger = get_logger(__name__)
+
+def handler(req, context):
+    tokens = inject_context(context)
+    try:
+        req_logger = logger.bind(user_id=req.params.get("user_id"))
+        req_logger.info("Processing request")
+    finally:
+        restore_context(tokens)  # Always pair to avoid stale context on reused workers
 ```
 
 ### Async handler with decorator:
