@@ -384,3 +384,19 @@ def test_format_truncates_extra_at_max_recursion_depth() -> None:
     output = formatter.format(record)
     payload = json.loads(output)
     assert f"<max-depth:{_MAX_RECURSION_DEPTH}>" in json.dumps(payload["extra"]["deep"])
+
+
+def test_format_does_not_misclassify_dag_as_cycle() -> None:
+    """A shared (non-cyclic) child appearing in two sibling positions must be
+    expanded twice, not replaced with the cyclic sentinel."""
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "dag")
+    shared = {"name": "shared"}
+    record.payload = {"a": shared, "b": shared}
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+    assert payload["extra"]["payload"] == {
+        "a": {"name": "shared"},
+        "b": {"name": "shared"},
+    }

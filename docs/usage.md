@@ -232,13 +232,13 @@ Recommended baseline:
 
 - Sets logger level.
 - Adds stream handler if missing.
-- Installs context filter.
+- Installs context filter (skipped when `use_record_factory=True`; the global LogRecordFactory injects context instead).
 - Applies selected formatter.
 
 ### Azure Functions / Core Tools
 
 - Does not add handlers.
-- Installs context filter for metadata enrichment.
+- Installs context filter for metadata enrichment (skipped when `use_record_factory=True`; the global LogRecordFactory injects context instead).
 - Leaves host handler pipeline intact.
 
 This design prevents duplicate logs in runtime-managed environments.

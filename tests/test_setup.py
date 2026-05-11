@@ -269,3 +269,79 @@ def test_setup_logging_use_record_factory_is_idempotent() -> None:
         lg = logging.getLogger(name)
         lg.handlers.clear()
         lg.filters.clear()
+
+
+def test_setup_logging_use_record_factory_skips_context_filter() -> None:
+    """With use_record_factory=True, ContextFilter must NOT be attached.
+
+    Otherwise the filter would overwrite factory-injected fields with current
+    contextvar values at handler dispatch time, defeating the record-creation-
+    time guarantee under queued / cross-thread / delayed handling.
+    """
+    logger_name = "afl.test.factory.no_filter"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=logger_name, use_record_factory=True)
+
+    assert not any(isinstance(f, ContextFilter) for f in logger.filters)
+    for handler in logger.handlers:
+        assert not any(isinstance(f, ContextFilter) for f in handler.filters)
+
+    logger.handlers.clear()
+    logger.filters.clear()
+
+
+def test_setup_logging_factory_record_survives_contextvar_reset() -> None:
+    """Regression: factory-injected fields must survive contextvar reset.
+
+    Simulates queued/delayed handling: a record is created inside a context,
+    then the context is reset before the handler runs. With use_record_factory,
+    the snapshot must be preserved (no ContextFilter to overwrite it).
+    """
+    from azure_functions_logging._context import invocation_id_var
+
+    logger_name = "afl.test.factory.snapshot"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=logger_name, use_record_factory=True)
+
+    token = invocation_id_var.set("test-invocation-123")
+    try:
+        record = logger.makeRecord(
+            logger_name, logging.INFO, "f.py", 1, "msg", (), None,
+        )
+    finally:
+        invocation_id_var.reset(token)
+
+    # Context reset — but record was already created.
+    invocation_id_var.set(None)
+
+    # Run any handler filters (there should be none, but if any existed
+    # they must not overwrite the snapshot).
+    for handler in logger.handlers:
+        for flt in handler.filters:
+            if isinstance(flt, logging.Filter):
+                flt.filter(record)
+
+    assert getattr(record, "invocation_id", None) == "test-invocation-123"
+
+    logger.handlers.clear()
+    logger.filters.clear()
+
+
+def test_setup_logging_invalid_format_leaves_no_global_side_effects() -> None:
+    """Invalid `format` must raise BEFORE any global side effects (e.g. factory)."""
+    baseline_factory = logging.getLogRecordFactory()
+
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(ValueError, match="format must be"):
+            setup_logging(format="bogus", use_record_factory=True)
+
+    # Factory must not have been swapped despite use_record_factory=True
+    assert logging.getLogRecordFactory() is baseline_factory

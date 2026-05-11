@@ -68,24 +68,41 @@ def setup_logging(
             ``host.json`` is auto-discovered by walking up from the current
             working directory (bounded). Pass an explicit path to disable
             auto-discovery in environments where it might pick the wrong file.
-        use_record_factory: When True, also call :func:`install_context_factory`
-            so context fields are injected at LogRecord creation time. This is
-            an opt-in global hook that guarantees context propagation even if
-            handler filters are missing or bypassed. Defaults to False to
-            preserve the existing handler-filter-only behavior.
-    """
-    if use_record_factory:
-        install_context_factory()
+        use_record_factory: When True, install :func:`install_context_factory`
+            so context fields are injected at LogRecord creation time and are
+            preserved through queued, delayed, or cross-thread handling. When
+            this option is enabled, ``ContextFilter`` is **not** attached to
+            handlers, because the global ``LogRecordFactory`` would be
+            overwritten by the filter at handler dispatch time. Defaults to
+            False to preserve the existing handler-filter-only behavior.
 
+    .. warning::
+
+        ``use_record_factory=True`` modifies the **global**
+        ``logging.LogRecordFactory``, which affects all loggers in the process
+        (including third-party libraries). The four context field names
+        (``invocation_id``, ``function_name``, ``trace_id``, ``cold_start``)
+        become reserved LogRecord attributes — passing them via ``extra=`` to
+        stdlib loggers will raise ``KeyError``. Prefer :class:`FunctionLogger`
+        (which sanitizes ``extra`` keys automatically) when this option is on.
+    """
     if format not in {"color", "json"}:
         msg = "format must be 'color' or 'json'"
         raise ValueError(msg)
+
+    # Install the global LogRecordFactory only after argument validation,
+    # so an invalid call does not leave persistent global side effects.
+    if use_record_factory:
+        install_context_factory()
 
     with _configured_lock:
         if logger_name in _configured_loggers:
             return
 
-        context_filter = ContextFilter()
+        # When the LogRecordFactory is active, attaching ContextFilter would
+        # overwrite factory-injected fields with current contextvar values at
+        # handler dispatch time, defeating the record-creation-time guarantee.
+        context_filter: ContextFilter | None = None if use_record_factory else ContextFilter()
         is_functions_env = _is_functions_environment()
 
         if is_functions_env:
@@ -100,9 +117,11 @@ def setup_logging(
             for handler in root.handlers:
                 if functions_formatter is not None:
                     handler.setFormatter(functions_formatter)
-                handler.addFilter(context_filter)
+                if context_filter is not None:
+                    handler.addFilter(context_filter)
             # Also install on any future handlers via the logger itself
-            root.addFilter(context_filter)
+            if context_filter is not None:
+                root.addFilter(context_filter)
         else:
             # Standalone local development
             target = logging.getLogger(logger_name)
@@ -112,9 +131,10 @@ def setup_logging(
             if not target.handlers:
                 handler = logging.StreamHandler()
                 handler.setFormatter(ColorFormatter() if format == "color" else JsonFormatter())
-                handler.addFilter(context_filter)
+                if context_filter is not None:
+                    handler.addFilter(context_filter)
                 target.addHandler(handler)
-            else:
+            elif context_filter is not None:
                 # Add filter to existing handlers
                 for handler in target.handlers:
                     handler.addFilter(context_filter)

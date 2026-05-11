@@ -117,9 +117,16 @@ Behavior details:
 
 - Default is `False` to preserve the existing handler-filter-only behavior.
 - When `True`, `install_context_factory()` is called once; repeated calls are no-ops.
+- When `True`, `ContextFilter` is **not** attached to handlers. The global
+  `LogRecordFactory` is the sole source of context fields, so values captured at
+  record-creation time survive thread hops, queued handlers, and delayed flushes
+  (no filter runs at handler dispatch time to overwrite the snapshot).
 - Modifies the **global** `LogRecordFactory` and affects all loggers in the process.
-- The four context field names become reserved on the LogRecord; prefer
-  `FunctionLogger` (which sanitizes `extra` keys) when this option is enabled.
+- The four context field names (`invocation_id`, `function_name`, `trace_id`,
+  `cold_start`) become reserved on every LogRecord; prefer `FunctionLogger`
+  (which sanitizes `extra` keys) when this option is enabled.
+- Input validation (e.g. `format`) runs **before** the factory is installed, so
+  invalid arguments raise `ValueError` without any global side effects.
 ## Idempotency and Reconfiguration
 
 `setup_logging()` uses internal setup state to guarantee idempotency.
@@ -152,14 +159,14 @@ Execution behavior by environment:
 
 - Sets logger level.
 - Adds `StreamHandler` if no handlers exist.
-- Installs `ContextFilter` on handlers.
+- Installs `ContextFilter` on handlers (skipped when `use_record_factory=True`).
 - Uses selected formatter (`ColorFormatter` or `JsonFormatter`).
 
 ### Azure Functions / Core Tools
 
 - Does not add new handlers.
 - Does not override host-managed handler strategy.
-- Installs `ContextFilter` to enrich records with invocation fields.
+- Installs `ContextFilter` to enrich records with invocation fields (skipped when `use_record_factory=True`).
 - Emits host-level conflict warning checks.
 
 !!! tip
