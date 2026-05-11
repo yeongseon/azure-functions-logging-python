@@ -8,7 +8,7 @@ from pathlib import Path
 import threading
 import warnings
 
-from ._context import ContextFilter
+from ._context import ContextFilter, install_context_factory
 from ._formatter import ColorFormatter
 from ._host_config import warn_host_json_level_conflict
 from ._json_formatter import JsonFormatter
@@ -35,6 +35,7 @@ def setup_logging(
     logger_name: str | None = None,
     functions_formatter: logging.Formatter | None = None,
     host_json_path: Path | str | None = None,
+    use_record_factory: bool = False,
 ) -> None:
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
@@ -67,7 +68,15 @@ def setup_logging(
             ``host.json`` is auto-discovered by walking up from the current
             working directory (bounded). Pass an explicit path to disable
             auto-discovery in environments where it might pick the wrong file.
+        use_record_factory: When True, also call :func:`install_context_factory`
+            so context fields are injected at LogRecord creation time. This is
+            an opt-in global hook that guarantees context propagation even if
+            handler filters are missing or bypassed. Defaults to False to
+            preserve the existing handler-filter-only behavior.
     """
+    if use_record_factory:
+        install_context_factory()
+
     if format not in {"color", "json"}:
         msg = "format must be 'color' or 'json'"
         raise ValueError(msg)

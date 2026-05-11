@@ -324,3 +324,63 @@ def test_format_handles_invalid_timestamp() -> None:
     output = formatter.format(record)
     payload = json.loads(output)
     assert payload["timestamp"] == "1970-01-01T00:00:00+00:00"
+
+
+def test_format_coerces_non_string_dict_keys() -> None:
+    """Non-string dict keys in extra are coerced via _safe_key."""
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "non-string keys")
+    record.payload = {1: "one", (2, 3): "tuple-key", None: "none-key"}
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+    assert payload["extra"]["payload"] == {
+        "1": "one",
+        "(2, 3)": "tuple-key",
+        "None": "none-key",
+    }
+
+
+def test_format_handles_nested_cyclic_extra_payload() -> None:
+    """Cycles nested inside lists/dicts are replaced with a sentinel."""
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "nested cycle")
+    inner: dict[str, object] = {"name": "inner"}
+    outer: dict[str, object] = {"items": [inner, {"deep": inner}]}
+    inner["back"] = outer  # creates a cycle through nested containers
+    record.tree = outer
+
+    output = formatter.format(record)
+    payload = json.loads(output)  # must be valid JSON
+    assert payload["level"] == "INFO"
+    assert "tree" in payload["extra"]
+    serialized = json.dumps(payload["extra"]["tree"])
+    assert "<cyclic>" in serialized
+
+
+def test_format_converts_sets_to_lists_in_extra() -> None:
+    """Sets are not JSON-native; safe conversion turns them into lists."""
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "set extra")
+    record.tags = {"a", "b", "c"}
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+    assert isinstance(payload["extra"]["tags"], list)
+    assert sorted(payload["extra"]["tags"]) == ["a", "b", "c"]
+
+
+def test_format_truncates_extra_at_max_recursion_depth() -> None:
+    """Pathologically deep nesting is replaced with a depth sentinel."""
+    from azure_functions_logging._json_formatter import _MAX_RECURSION_DEPTH
+
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "deep nesting")
+    deep: dict[str, object] = {"v": "leaf"}
+    for _ in range(_MAX_RECURSION_DEPTH + 5):
+        deep = {"n": deep}
+    record.deep = deep
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+    assert f"<max-depth:{_MAX_RECURSION_DEPTH}>" in json.dumps(payload["extra"]["deep"])

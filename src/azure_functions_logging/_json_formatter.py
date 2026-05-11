@@ -48,6 +48,12 @@ _CONTEXT_FIELDS: set[str] = {
 _MAX_SERIALIZED_EXTRA_LENGTH = 2048
 _TRUNCATION_SUFFIX = "...<truncated>"
 
+# Maximum recursion depth when walking the ``extra`` payload to coerce it into
+# a JSON-safe structure. Beyond this depth, the offending value is replaced
+# with a sentinel so a pathological nested object (e.g. accidentally logging a
+# whole ORM graph) cannot blow the stack inside ``format()``.
+_MAX_RECURSION_DEPTH = 32
+
 
 def _json_default(value: Any) -> str:
     """Fallback serializer for ``json.dumps``.
@@ -68,6 +74,46 @@ def _json_default(value: Any) -> str:
     if len(text) > _MAX_SERIALIZED_EXTRA_LENGTH:
         return text[:_MAX_SERIALIZED_EXTRA_LENGTH] + _TRUNCATION_SUFFIX
     return text
+
+
+def _safe_key(key: Any) -> str:
+    """Coerce a dict key to ``str`` without ever raising."""
+    if isinstance(key, str):
+        return key
+    try:
+        return str(key)
+    except Exception:
+        return f"<unserializable-key:{type(key).__name__}>"
+
+
+def _to_json_safe(
+    value: Any,
+    _seen: frozenset[int] | None = None,
+    _depth: int = 0,
+) -> Any:
+    """Return a JSON-safe copy of ``value``.
+
+    Coerces non-string dict keys via :func:`_safe_key`, recurses through
+    dicts/lists/tuples/sets, converts sets to lists, detects reference cycles,
+    and bounds recursion depth. Primitive values pass through unchanged;
+    anything else is left for the ``json.dumps`` ``default=`` path.
+    """
+    if _depth > _MAX_RECURSION_DEPTH:
+        return f"<max-depth:{_MAX_RECURSION_DEPTH}>"
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (dict, list, tuple, set, frozenset)):
+        seen = _seen if _seen is not None else frozenset()
+        if id(value) in seen:
+            return "<cyclic>"
+        seen = seen | {id(value)}
+        if isinstance(value, dict):
+            return {
+                _safe_key(k): _to_json_safe(v, seen, _depth + 1)
+                for k, v in value.items()
+            }
+        return [_to_json_safe(item, seen, _depth + 1) for item in value]
+    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -102,6 +148,7 @@ class JsonFormatter(logging.Formatter):
 
         excluded_fields = _STANDARD_RECORD_FIELDS | _CONTEXT_FIELDS
         extra = {key: value for key, value in record.__dict__.items() if key not in excluded_fields}
+        extra = _to_json_safe(extra)
 
         payload = {
             "timestamp": timestamp,

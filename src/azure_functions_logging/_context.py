@@ -46,8 +46,10 @@ class ContextFilter(logging.Filter):
     ``ContextFilter`` remains supported for compatibility and for users who do
     not want to modify the global ``LogRecordFactory``.
 
-    This filter is installed on handlers (not loggers) so it covers ALL loggers
-    including third-party libraries.
+    This filter is intended to be installed on handlers, so it applies to any
+    record that reaches those handlers, including records from third-party
+    loggers that propagate to them. For guaranteed record-creation-time
+    injection, prefer :func:`install_context_factory`.
     """
 
     CONTEXT_FIELDS: tuple[str, ...] = (

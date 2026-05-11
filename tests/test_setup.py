@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 import logging
 import os
 from unittest.mock import patch
@@ -17,7 +18,11 @@ from azure_functions_logging._setup import (
 
 
 @pytest.fixture(autouse=True)
-def reset_setup_state() -> None:
+def reset_setup_state() -> Iterator[None]:
+    setup_mod._configured_loggers.clear()
+    saved_factory = logging.getLogRecordFactory()
+    yield
+    logging.setLogRecordFactory(saved_factory)
     setup_mod._configured_loggers.clear()
 
 
@@ -191,3 +196,76 @@ def test_format_color_no_warning_in_azure_environment() -> None:
 
     root.handlers = []
     root.filters.clear()
+
+
+def test_setup_logging_use_record_factory_installs_factory() -> None:
+    """use_record_factory=True installs the global LogRecordFactory."""
+    from azure_functions_logging._context import (
+        _CONTEXT_FACTORY_MARKER,
+    )
+
+    logger_name = "afl.test.use_record_factory"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+
+    baseline_factory = logging.getLogRecordFactory()
+    assert not getattr(baseline_factory, _CONTEXT_FACTORY_MARKER, False)
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=logger_name, use_record_factory=True)
+
+    active_factory = logging.getLogRecordFactory()
+    assert getattr(active_factory, _CONTEXT_FACTORY_MARKER, False) is True
+
+    logger.handlers.clear()
+    logger.filters.clear()
+
+
+def test_setup_logging_use_record_factory_default_false_does_not_install() -> None:
+    """Default behavior must not touch the global LogRecordFactory."""
+    from azure_functions_logging._context import (
+        _CONTEXT_FACTORY_MARKER,
+    )
+
+    logger_name = "afl.test.no_record_factory"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=logger_name)
+
+    active_factory = logging.getLogRecordFactory()
+    assert not getattr(active_factory, _CONTEXT_FACTORY_MARKER, False)
+
+    logger.handlers.clear()
+    logger.filters.clear()
+
+
+def test_setup_logging_use_record_factory_is_idempotent() -> None:
+    """Repeated setup_logging(use_record_factory=True) keeps a single factory."""
+    from azure_functions_logging._context import (
+        _CONTEXT_FACTORY_MARKER,
+    )
+
+    first_name = "afl.test.factory.first"
+    second_name = "afl.test.factory.second"
+    for name in (first_name, second_name):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=first_name, use_record_factory=True)
+        first_factory = logging.getLogRecordFactory()
+        setup_logging(logger_name=second_name, use_record_factory=True)
+        second_factory = logging.getLogRecordFactory()
+
+    assert first_factory is second_factory
+    assert getattr(second_factory, _CONTEXT_FACTORY_MARKER, False) is True
+
+    for name in (first_name, second_name):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.filters.clear()
