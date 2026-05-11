@@ -10,6 +10,9 @@ def setup_logging(
     level: int = logging.INFO,
     format: str = "color",
     logger_name: str | None = None,
+    functions_formatter: logging.Formatter | None = None,
+    host_json_path: Path | str | None = None,
+    use_record_factory: bool = False,
 ) -> None
 ```
 
@@ -96,6 +99,27 @@ Practical recommendation:
 
 - Prefer root configuration unless you have a clear logger isolation strategy.
 
+## Parameter: `use_record_factory`
+
+`use_record_factory` is an opt-in flag that also installs a global
+`logging.LogRecordFactory` so context fields (`invocation_id`, `function_name`,
+`trace_id`, `cold_start`) are injected at LogRecord creation time. It guarantees
+context propagation even when handler filters are misconfigured or bypassed by
+third-party logging setups.
+
+```python
+from azure_functions_logging import setup_logging
+
+setup_logging(format="json", use_record_factory=True)
+```
+
+Behavior details:
+
+- Default is `False` to preserve the existing handler-filter-only behavior.
+- When `True`, `install_context_factory()` is called once; repeated calls are no-ops.
+- Modifies the **global** `LogRecordFactory` and affects all loggers in the process.
+- The four context field names become reserved on the LogRecord; prefer
+  `FunctionLogger` (which sanitizes `extra` keys) when this option is enabled.
 ## Idempotency and Reconfiguration
 
 `setup_logging()` uses internal setup state to guarantee idempotency.
