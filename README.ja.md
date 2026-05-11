@@ -89,13 +89,13 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
         return func.HttpResponse("OK")
 ```
 
-ローカルターミナル出力 (色付き):
+スタンドアロンで実行した際 (例: `python app.py`、カラーフォーマッタ) のローカルターミナル出力:
 
 ```
 10:30:00 INFO     function_app  Processing order  [invocation_id=abc-123-def, function_name=process_order, cold_start=true]
 ```
 
-本番出力 (Application Insights 用 NDJSON):
+`func start` / Azure 環境での本番出力 (`functions_formatter` が設定されているため Application Insights 用 NDJSON が適用される):
 
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
@@ -339,7 +339,7 @@ setup_logging(functions_formatter=JsonFormatter())
  "extra": {"order_id": "o-999"}}
 ```
 
-追加フィールドは `extra` に表示され、Application Insights でインデックス可能です:
+追加フィールドは出力される JSON の `extra` に含まれます。Application Insights で直接インデックス可能かどうかは ingestion パイプラインに依存します: JSON が `customDimensions` にパースされる場合は直接クエリ可能ですが、JSON が `message` カラムに残る場合はまず `parse_json(message)` を通す必要があります。
 
 ```python
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
@@ -393,8 +393,11 @@ import logging
 
 setup_logging()
 
-# 1 秒ウィンドウあたり azure-core メッセージを最大 10 個まで許可
-logging.getLogger("azure").addFilter(SamplingFilter(rate=10))
+# ノイズーな azure.* ロガーをサンプリング: 1 秒ウィンドウあたり最大 10 レコードを保持
+# ロガーにアタッチしたフィルターは、子ロガーから伝播されるレコードには実行されないため、
+# ルートハンドラーにアタッチし、ロガー名でスコープを限定します。
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SamplingFilter(rate=10, name="azure"))
 
 # 本番で urllib3 を完全に沈黙
 logging.getLogger("urllib3").setLevel(logging.WARNING)
