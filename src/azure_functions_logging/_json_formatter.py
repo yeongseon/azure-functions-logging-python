@@ -39,6 +39,16 @@ _CONTEXT_FIELDS: set[str] = {
 }
 
 
+# Maximum length (in characters) of the string produced by the ``json.dumps``
+# ``default=`` fallback path. A single very large object (e.g. a SQLAlchemy
+# result row, a deeply nested config, a full HTTP body) can otherwise bloat
+# every log record it appears in and risk hitting Application Insights
+# per-record size limits. Natively serializable values (strings, numbers,
+# booleans, lists, dicts) are NOT affected by this limit.
+_MAX_SERIALIZED_EXTRA_LENGTH = 2048
+_TRUNCATION_SUFFIX = "...<truncated>"
+
+
 def _json_default(value: Any) -> str:
     """Fallback serializer for ``json.dumps``.
 
@@ -47,11 +57,17 @@ def _json_default(value: Any) -> str:
     objects, etc.). This callable coerces unknown values to ``str(value)`` and
     returns a sentinel string if even ``str()`` raises, so the formatter always
     produces a valid JSON document.
+
+    Strings longer than :data:`_MAX_SERIALIZED_EXTRA_LENGTH` are truncated and
+    suffixed with :data:`_TRUNCATION_SUFFIX` to bound per-record growth.
     """
     try:
-        return str(value)
+        text = str(value)
     except Exception:
         return f"<unserializable:{type(value).__name__}>"
+    if len(text) > _MAX_SERIALIZED_EXTRA_LENGTH:
+        return text[:_MAX_SERIALIZED_EXTRA_LENGTH] + _TRUNCATION_SUFFIX
+    return text
 
 
 class JsonFormatter(logging.Formatter):

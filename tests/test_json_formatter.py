@@ -162,6 +162,73 @@ def test_unserializable_extra_where_str_raises_returns_sentinel() -> None:
     assert payload["extra"]["bad"] == "<unserializable:Hostile>"
 
 
+# ---- Fallback truncation (#82) ------------------------------------------
+
+
+def test_fallback_value_at_max_length_is_not_truncated() -> None:
+    """#82 boundary: str(value) at exactly _MAX_SERIALIZED_EXTRA_LENGTH passes through."""
+    from azure_functions_logging._json_formatter import _MAX_SERIALIZED_EXTRA_LENGTH
+
+    class Boundary:
+        def __str__(self) -> str:
+            return "x" * _MAX_SERIALIZED_EXTRA_LENGTH
+
+    formatter = JsonFormatter()
+    record = _make_record(msg="boundary")
+    record.payload = Boundary()
+
+    output = formatter.format(record)
+    payload = json.loads(output)
+
+    assert payload["extra"]["payload"] == "x" * _MAX_SERIALIZED_EXTRA_LENGTH
+    assert "<truncated>" not in payload["extra"]["payload"]
+
+
+def test_fallback_value_over_max_length_is_truncated_with_suffix() -> None:
+    """Issue #82: str(value) longer than the limit is truncated and suffixed."""
+    from azure_functions_logging._json_formatter import (
+        _MAX_SERIALIZED_EXTRA_LENGTH,
+        _TRUNCATION_SUFFIX,
+    )
+
+    class Huge:
+        def __str__(self) -> str:
+            return "a" * (_MAX_SERIALIZED_EXTRA_LENGTH + 500)
+
+    formatter = JsonFormatter()
+    record = _make_record(msg="huge")
+    record.payload = Huge()
+
+    output = formatter.format(record)
+    # Output must remain a valid JSON document.
+    payload = json.loads(output)
+
+    rendered = payload["extra"]["payload"]
+    assert rendered.endswith(_TRUNCATION_SUFFIX)
+    assert len(rendered) == _MAX_SERIALIZED_EXTRA_LENGTH + len(_TRUNCATION_SUFFIX)
+    # The first _MAX_SERIALIZED_EXTRA_LENGTH chars are the original prefix.
+    assert rendered[:_MAX_SERIALIZED_EXTRA_LENGTH] == "a" * _MAX_SERIALIZED_EXTRA_LENGTH
+
+
+def test_truncation_does_not_apply_to_native_serializable_values() -> None:
+    """Issue #82 scope: the limit only applies to the json.dumps default= path.
+
+    Plain strings/ints/lists/dicts are serialized natively by json and must
+    pass through untouched even if they exceed the limit.
+    """
+    from azure_functions_logging._json_formatter import _MAX_SERIALIZED_EXTRA_LENGTH
+
+    big_string = "z" * (_MAX_SERIALIZED_EXTRA_LENGTH + 100)
+    formatter = JsonFormatter()
+    record = _make_record(msg="native")
+    record.payload = big_string
+
+    payload = json.loads(formatter.format(record))
+
+    # Native string must not be touched by the fallback truncation.
+    assert payload["extra"]["payload"] == big_string
+    assert "<truncated>" not in payload["extra"]["payload"]
+
 
 # ---- Fail-safe tests (#101) ---------------------------------------------
 
