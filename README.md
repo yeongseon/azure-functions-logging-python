@@ -89,13 +89,13 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
         return func.HttpResponse("OK")
 ```
 
-Local terminal output (colorized):
+Local terminal output when run standalone (e.g. `python app.py`, color formatter):
 
 ```
 10:30:00 INFO     function_app  Processing order  [invocation_id=abc-123-def, function_name=process_order, cold_start=true]
 ```
 
-Production output (NDJSON for Application Insights):
+Production output under `func start` / Azure (Application Insights NDJSON, applied because `functions_formatter` is set):
 
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
@@ -347,7 +347,7 @@ Output per log line (NDJSON — one JSON object per line):
  "extra": {"order_id": "o-999"}}
 ```
 
-Extra fields appear in `extra` and are indexable in Application Insights:
+Extra fields appear under `extra` in the emitted JSON. Whether they are directly indexable in Application Insights depends on your ingestion pipeline: when JSON is parsed into `customDimensions` they are queryable directly; when the JSON stays in the `message` column you need `parse_json(message)` first.
 
 ```python
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
@@ -402,8 +402,11 @@ import logging
 
 setup_logging()
 
-# Allow up to 10 azure-core messages per 1-second window
-logging.getLogger("azure").addFilter(SamplingFilter(rate=10))
+# Sample noisy azure.* loggers: keep up to 10 records per 1-second window.
+# Filters attached to a logger don't run for records propagated from
+# descendants, so attach to the root handlers and scope by logger name.
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SamplingFilter(rate=10, name="azure"))
 
 # Silence urllib3 completely in production
 logging.getLogger("urllib3").setLevel(logging.WARNING)

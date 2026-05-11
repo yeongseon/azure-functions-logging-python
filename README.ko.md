@@ -89,13 +89,13 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
         return func.HttpResponse("OK")
 ```
 
-로컬 터미널 출력 (색상 적용):
+단독 실행할 때 (예: `python app.py`, 컬러 포맷터) 로컬 터미널 출력:
 
 ```
 10:30:00 INFO     function_app  Processing order  [invocation_id=abc-123-def, function_name=process_order, cold_start=true]
 ```
 
-프로덕션 출력 (Application Insights용 NDJSON):
+`func start` / Azure 환경에서의 프로덕션 출력 (`functions_formatter`가 설정되어 있으므로 Application Insights용 NDJSON이 적용됨):
 
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
@@ -339,7 +339,7 @@ setup_logging(functions_formatter=JsonFormatter())
  "extra": {"order_id": "o-999"}}
 ```
 
-추가 필드는 `extra`에 표시되며 Application Insights에서 인덱싱 가능합니다:
+추가 필드는 발행되는 JSON의 `extra`에 포함됩니다. Application Insights에서 직접 인덱싱 가능한지 여부는 ingestion 파이프라인에 따라 다릅니다: JSON이 `customDimensions`로 파싱되는 경우 직접 쿼리 가능하며, JSON이 `message` 컬럼에 남아 있는 경우 먼저 `parse_json(message)`를 거쳐야 합니다.
 
 ```python
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
@@ -393,8 +393,11 @@ import logging
 
 setup_logging()
 
-# 1초 윈도우당 azure-core 메시지를 최대 10개까지 허용
-logging.getLogger("azure").addFilter(SamplingFilter(rate=10))
+# 시끄러운 azure.* 로거 샘플링: 1초 윈도우당 최대 10개 레코드 유지
+# 로거에 붙은 필터는 하위 로거에서 전파되는 레코드에는 실행되지 않으므로,
+# 루트 핸들러에 붙이고 로거 이름으로 범위를 제한하세요.
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SamplingFilter(rate=10, name="azure"))
 
 # 프로덕션에서 urllib3를 완전히 침묵
 logging.getLogger("urllib3").setLevel(logging.WARNING)

@@ -89,13 +89,13 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
         return func.HttpResponse("OK")
 ```
 
-本地终端输出 (彩色):
+独立运行时 (如 `python app.py`，彩色格式化器) 的本地终端输出:
 
 ```
 10:30:00 INFO     function_app  Processing order  [invocation_id=abc-123-def, function_name=process_order, cold_start=true]
 ```
 
-生产输出 (用于 Application Insights 的 NDJSON):
+在 `func start` / Azure 环境下的生产输出 (因为设置了 `functions_formatter`，适用于 Application Insights 的 NDJSON):
 
 ```json
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
@@ -339,7 +339,7 @@ setup_logging(functions_formatter=JsonFormatter())
  "extra": {"order_id": "o-999"}}
 ```
 
-额外字段出现在 `extra` 中，并可在 Application Insights 中索引:
+额外字段出现在发出的 JSON 的 `extra` 中。在 Application Insights 中是否可直接索引取决于您的 ingestion 管道: 当 JSON 被解析为 `customDimensions` 时可直接查询；当 JSON 保留在 `message` 列中时，需要先使用 `parse_json(message)`。
 
 ```python
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
@@ -393,8 +393,11 @@ import logging
 
 setup_logging()
 
-# 在 1 秒窗口内允许最多 10 条 azure-core 消息
-logging.getLogger("azure").addFilter(SamplingFilter(rate=10))
+# 对吵闹的 azure.* logger 进行采样: 每 1 秒窗口保留最多 10 条记录
+# 附加到 logger 的过滤器不会对从子 logger 传播的记录运行，
+# 所以附加到根处理程序并按 logger 名称限定范围。
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SamplingFilter(rate=10, name="azure"))
 
 # 在生产环境完全静默 urllib3
 logging.getLogger("urllib3").setLevel(logging.WARNING)
