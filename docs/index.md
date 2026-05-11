@@ -81,7 +81,7 @@ This combines context-managed invocation context and request binding in a safe, 
 Behavior changes intentionally by runtime:
 
 - Local standalone process: sets the target/root logger level; adds a `StreamHandler` (`color` or `json`) only if no handlers exist, otherwise just attaches filters to existing handlers.
-- Azure/Core Tools runtime: installs `ContextFilter` on existing root handlers **and on the root logger itself** (so direct calls on the root logger carry context); does not add handlers or change root level. To guarantee context on records that propagate from named child loggers to handlers attached later, call `install_context_factory()`.
+- Azure/Core Tools runtime: installs `ContextFilter` on existing root handlers **and on the root logger itself** (so direct calls on the root logger carry context); does not add handlers or change root level. To guarantee context on records that propagate from named child loggers to handlers attached later, pass `use_record_factory=True` to `setup_logging()` (preferred) or call `install_context_factory()` directly.
 
 !!! warning
     In Azure-hosted execution, host-level `host.json` settings can still suppress logs even when application-level setup appears correct.
