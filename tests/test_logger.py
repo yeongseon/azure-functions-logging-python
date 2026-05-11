@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import logging
+import sys
 from unittest.mock import MagicMock
+
+import pytest
 
 from azure_functions_logging._logger import FunctionLogger
 
@@ -187,6 +190,34 @@ def test_reserved_keys_via_real_stdlib_logger_does_not_raise() -> None:
     logger.info("hi", name="custom", message="user-supplied")
 
 
+def test_reserved_keys_are_derived_from_makelogrecord() -> None:
+    """Issue #83: the reserved set is derived from the running interpreter's LogRecord."""
+    import logging as stdlib_logging
+
+    from azure_functions_logging._logger import _RESERVED_LOG_RECORD_KEYS
+
+    derived = set(stdlib_logging.makeLogRecord({}).__dict__)
+    # Every attribute the stdlib puts on a fresh LogRecord must be reserved.
+    assert derived <= _RESERVED_LOG_RECORD_KEYS
+    # Computed-by-formatter keys are explicitly added even though they are not in __dict__.
+    assert {"message", "asctime"} <= _RESERVED_LOG_RECORD_KEYS
+    # Library-injected context keys remain reserved.
+    assert {"invocation_id", "function_name", "trace_id", "cold_start"} <= _RESERVED_LOG_RECORD_KEYS
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="taskName was added in 3.12")
+def test_taskname_is_reserved_on_python_3_12_plus() -> None:
+    """Issue #83: taskName (Python 3.12+) must be picked up via makeLogRecord-based derivation."""
+    from azure_functions_logging._logger import _RESERVED_LOG_RECORD_KEYS
+
+    assert "taskName" in _RESERVED_LOG_RECORD_KEYS
+
+
+def test_taskname_is_reserved_on_all_supported_versions_for_backward_compat() -> None:
+    """Issue #83: explicit forward-compat set keeps taskName reserved on 3.10/3.11 too."""
+    from azure_functions_logging._logger import _RESERVED_LOG_RECORD_KEYS
+
+    assert "taskName" in _RESERVED_LOG_RECORD_KEYS
 def test_merge_precedence_kwargs_override_extra_override_bind() -> None:
     """Issue #95: per-call kwargs > explicit extra > bind context."""
     underlying = _mock_underlying_logger()

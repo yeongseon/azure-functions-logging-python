@@ -5,36 +5,32 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-_RESERVED_LOG_RECORD_KEYS: frozenset[str] = frozenset(
+# Custom keys this library injects via the logger context (factory). They must be
+# treated as reserved alongside stdlib LogRecord attributes so that user-supplied
+# `extra` does not silently overwrite Azure Functions runtime metadata.
+_LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(
     {
-        "args",
-        "asctime",
         "cold_start",
-        "created",
-        "exc_info",
-        "exc_text",
-        "filename",
-        "funcName",
         "function_name",
         "invocation_id",
-        "levelname",
-        "levelno",
-        "lineno",
-        "message",
-        "module",
-        "msecs",
-        "msg",
-        "name",
-        "pathname",
-        "process",
-        "processName",
-        "relativeCreated",
-        "stack_info",
-        "taskName",
-        "thread",
-        "threadName",
         "trace_id",
     }
+)
+
+# Derive the stdlib LogRecord attribute set at import time from a fresh record.
+# This keeps the contract aligned with whatever Python version is running
+# (e.g. CPython added `taskName` in 3.12). `message` and `asctime` are computed
+# lazily by `LogRecord.getMessage()` / formatters and so are not present in
+# `__dict__`; we add them explicitly to preserve the original guarantee.
+#
+# `taskName` is also kept in the explicit forward-compat set so that user code
+# passing it as `extra` is sanitized identically across 3.10 / 3.11 / 3.12+.
+_FORWARD_COMPAT_RECORD_KEYS: frozenset[str] = frozenset({"message", "asctime", "taskName"})
+
+_RESERVED_LOG_RECORD_KEYS: frozenset[str] = (
+    frozenset(logging.makeLogRecord({}).__dict__)
+    | _FORWARD_COMPAT_RECORD_KEYS
+    | _LIBRARY_RESERVED_KEYS
 )
 
 
