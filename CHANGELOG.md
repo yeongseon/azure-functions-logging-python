@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [Unreleased]
+## [0.7.2] - 2026-05-12
 
 ### Bug Fixes
 
@@ -34,8 +34,13 @@ All notable changes to this project will be documented in this file.
 
 ### Miscellaneous Tasks
 
+- *(changelog)* Restore per-version section headers in cliff template 
 - *(deps)* Bump mypy from 1.20.2 to 2.0.0 
 - *(deps)* Bump github/codeql-action from 4.35.3 to 4.35.4 
+
+### Other
+
+- Bump version to 0.7.2 
 
 ### Refactor
 
