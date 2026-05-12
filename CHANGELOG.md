@@ -1,12 +1,54 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [Unreleased]
 
-## Unreleased
+### Bug Fixes
+
+- *(setup)* Preserve factory-injected context when use_record_factory=True (#132) 
+- *(context)* Tighten W3C traceparent validation in _extract_trace_id (#109) 
+- *(json)* Make JsonFormatter fully fail-safe in format() (#106) 
+
+### Documentation
+
+- Scope output examples to environment and fix SamplingFilter attachment (oracle iter 7) (#127) 
+- Clarify functions_formatter scope, fix color-format pattern and stray fence (oracle iter 6) (#126) 
+- Align quickstart with NDJSON output, fix host warning text and llms-full imports (oracle iter 5) (#125) 
+- Clarify root-logger filter scope and traceparent version semantics (oracle iter 4) (#124) 
+- Tighten env detection, trace_id wording, App Insights hedge, llms.txt signature (oracle iter 3) (#123) 
+- Precise environment-aware behavior summary (oracle iter 2) (#122) 
+- Address oracle iteration 1 findings (root logger contract, redaction, runnable snippets) (#121) 
+- P2 polish for type accuracy and feature visibility (#120) 
+- Fix broken runnable snippets in llms.txt and llms-full.txt (#119) 
+- Correct API documentation in llms.txt and llms-full.txt (#118) 
+- *(llms-full)* Replace bare inject_context() with safe context patterns (#117) 
+- Clarify Azure Functions JSON output requires functions_formatter (#116) 
+- Sync multilingual README, llms.txt, and docs with v0.7.x API (#110) 
+
+### Features
+
+- *(setup)* Add use_record_factory option and JSON-safe extra coercion (#131) 
+- *(json)* Truncate oversized fallback values in JsonFormatter (#129) 
+- *(logger)* Add FunctionLogger.log() and hasHandlers() for stdlib parity (#108) 
+- *(host-config)* Make host.json discovery deterministic and bounded (#107) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump mypy from 1.20.2 to 2.0.0 
+- *(deps)* Bump github/codeql-action from 4.35.3 to 4.35.4 
+
+### Refactor
+
+- *(logger)* Derive reserved LogRecord keys from logging.makeLogRecord (#83) (#130) 
+## [0.7.1] - 2026-05-08
 
 ### Bug Fixes
 
 - *(logger)* Correct merge precedence to bind < extra < kwargs 
+
+### Documentation
+
+- Regenerate changelog for v0.7.1 
 
 ### Miscellaneous Tasks
 
@@ -19,6 +61,7 @@ All notable changes to this project will be documented in this file.
 ### Testing
 
 - *(logger)* Add regression tests for control kwarg leakage and sanitize double-prefix 
+## [0.7.0] - 2026-05-08
 
 ### Bug Fixes
 
@@ -52,6 +95,7 @@ All notable changes to this project will be documented in this file.
 ### Testing
 
 - Raise coverage to 95%+ and enforce via AGENTS.md and pyproject.toml 
+## [0.5.3] - 2026-04-26
 
 ### Documentation
 
@@ -76,6 +120,7 @@ All notable changes to this project will be documented in this file.
 ### Testing
 
 - Bump expected __version__ to 0.5.3 ahead of release-patch 
+## [0.5.2] - 2026-04-26
 
 ### Bug Fixes
 
@@ -90,6 +135,7 @@ All notable changes to this project will be documented in this file.
 
 - *(deps)* Bump actions/github-script from 8.0.0 to 9.0.0 
 - *(deps)* Bump actions/upload-artifact from 7.0.0 to 7.0.1 
+## [0.5.0] - 2026-04-10
 
 ### Bug Fixes
 
@@ -137,6 +183,7 @@ All notable changes to this project will be documented in this file.
 ### Refactor
 
 - Rename metadata attr to _azure_functions_metadata (#67) 
+## [0.4.1] - 2026-03-29
 
 ### Documentation
 
@@ -161,6 +208,7 @@ All notable changes to this project will be documented in this file.
 ### Testing
 
 - Add runtime contract tests for observable behavior (#28) 
+## [0.4.0] - 2026-03-21
 
 ### Bug Fixes
 
@@ -193,6 +241,7 @@ All notable changes to this project will be documented in this file.
 - Add .editorconfig and mypy exclude for examples/ 
 - Add keywords to pyproject.toml 
 - Add AGENTS.md, Typing classifier, test_public_api, Dev Status 4-Beta, .venv-review in .gitignore 
+## [0.3.0] - 2026-03-15
 
 ### Bug Fixes
 
@@ -214,6 +263,7 @@ All notable changes to this project will be documented in this file.
 ### Testing
 
 - Cover host_config None level, malformed JSON, and unrecognized level paths 
+## [0.2.2] - 2026-03-14
 
 ### Documentation
 
@@ -237,10 +287,12 @@ All notable changes to this project will be documented in this file.
 ### Styling
 
 - Unify tooling — remove black, standardize pre-commit and Makefile 
+## [0.2.1] - 2026-03-12
 
 ### Bug Fixes
 
 - Add py.typed marker for PEP 561 compliance (v0.2.1) 
+## [0.2.0] - 2026-03-12
 
 ### Bug Fixes
 
