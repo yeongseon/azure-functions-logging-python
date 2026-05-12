@@ -25,8 +25,10 @@ class TestAPISurface:
             "with_context",
         }
 
-    def test_version_is_0_5_0(self) -> None:
-        assert azure_functions_logging.__version__ == "0.7.2"
+    def test_version_matches_distribution_metadata(self) -> None:
+        from importlib.metadata import version
+
+        assert azure_functions_logging.__version__ == version("azure-functions-logging")
 
     def test_version_is_string(self) -> None:
         assert isinstance(azure_functions_logging.__version__, str)
