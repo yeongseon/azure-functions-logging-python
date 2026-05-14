@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.3] - 2026-05-14
+
+### Other
+
+- Bump version to 0.7.3 
+
+### Testing
+
+- *(public-api)* Derive version assertion from distribution metadata 
 ## [0.7.2] - 2026-05-12
 
 ### Bug Fixes
@@ -11,6 +20,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Scope output examples to environment and fix SamplingFilter attachment (oracle iter 7) (#127) 
 - Clarify functions_formatter scope, fix color-format pattern and stray fence (oracle iter 6) (#126) 
 - Align quickstart with NDJSON output, fix host warning text and llms-full imports (oracle iter 5) (#125) 
