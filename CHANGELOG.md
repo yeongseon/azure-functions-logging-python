@@ -1,7 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.4] - 2026-05-23
+
+### Bug Fixes
+
+- *(decorator)* Drop functools.wraps to prevent Azure worker following __wrapped__ 
+
+### Other
+
+- Bump version to 0.7.4 
 ## [0.7.3] - 2026-05-14
+
+### Documentation
+
+- Update changelog 
 
 ### Other
 
