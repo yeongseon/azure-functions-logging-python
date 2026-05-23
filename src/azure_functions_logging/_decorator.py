@@ -9,7 +9,6 @@ Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 from __future__ import annotations
 
 import asyncio
-import functools
 import inspect
 from typing import Any, Callable, TypeVar, overload
 
@@ -22,18 +21,53 @@ _DEFAULT_PARAM = "context"
 _TOOLKIT_META_ATTR = "_azure_functions_metadata"
 
 
-def _merge_toolkit_metadata(
-    fn: Callable[..., Any],
+_SAFE_COPY_ATTRS = ("__name__", "__qualname__", "__doc__", "__module__")
+
+
+def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -> None:
+    """Copy safe metadata from ``func`` onto ``wrapper`` without setting ``__wrapped__``.
+
+    Unlike :func:`functools.wraps`, this helper deliberately:
+
+    * does NOT set ``__wrapped__`` — the Azure Functions worker may follow
+      it during function indexing and bind the original (un-wrapped)
+      handler instead of ours, defeating context injection;
+    * does NOT copy ``__dict__`` — sharing the dict object aliases
+      wrapper.__dict__ with func.__dict__, causing later setattr calls
+      (e.g. _azure_functions_metadata) to leak onto the original ``func``.
+
+    It still mirrors ``__signature__`` and ``__annotations__`` so the worker
+    can introspect parameter names/types for trigger binding.
+    """
+    for attr in _SAFE_COPY_ATTRS:
+        try:
+            object.__setattr__(wrapper, attr, getattr(func, attr))
+        except (AttributeError, TypeError):  # pragma: no cover
+            pass
+    try:
+        wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
+    except (TypeError, ValueError):  # pragma: no cover
+        pass
+    wrapper.__annotations__ = dict(getattr(func, "__annotations__", {}) or {})
+
+
+def _merge_toolkit_metadata_into_wrapper(
+    wrapper: Callable[..., Any],
+    func: Callable[..., Any],
     namespace: str,
     payload: dict[str, Any],
 ) -> None:
-    """Merge toolkit metadata into the convention attribute, preserving other namespaces."""
-    existing: dict[str, Any] = getattr(fn, _TOOLKIT_META_ATTR, {})
-    if not isinstance(existing, dict):
-        existing = {}
-    existing = {**existing, namespace: payload}
-    setattr(fn, _TOOLKIT_META_ATTR, existing)
+    """Merge toolkit metadata onto ``wrapper`` only, seeded from ``func``.
 
+    Reads any pre-existing convention attribute from ``func`` (set by other
+    decorators applied before this one), merges in our ``namespace`` payload,
+    and writes the result onto ``wrapper``. The original ``func`` is left
+    untouched so the metadata never leaks onto undecorated references.
+    """
+    existing: Any = getattr(func, _TOOLKIT_META_ATTR, None)
+    base: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+    base[namespace] = payload
+    setattr(wrapper, _TOOLKIT_META_ATTR, base)
 
 def _find_context_arg(
     func: Callable[..., Any],
@@ -62,7 +96,6 @@ def _find_context_arg(
 def _wrap_sync(func: _F, param: str) -> _F:
     """Wrap a synchronous handler."""
 
-    @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
@@ -74,14 +107,16 @@ def _wrap_sync(func: _F, param: str) -> _F:
         finally:
             restore_context(tokens)
 
-    _merge_toolkit_metadata(wrapper, "logging", {"version": 1, "context_param": param})
+    _copy_safe_metadata(wrapper, func)
+    _merge_toolkit_metadata_into_wrapper(
+        wrapper, func, "logging", {"version": 1, "context_param": param}
+    )
     return wrapper  # type: ignore[return-value]
 
 
 def _wrap_async(func: _F, param: str) -> _F:
     """Wrap an asynchronous handler."""
 
-    @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
@@ -93,7 +128,10 @@ def _wrap_async(func: _F, param: str) -> _F:
         finally:
             restore_context(tokens)
 
-    _merge_toolkit_metadata(wrapper, "logging", {"version": 1, "context_param": param})
+    _copy_safe_metadata(wrapper, func)
+    _merge_toolkit_metadata_into_wrapper(
+        wrapper, func, "logging", {"version": 1, "context_param": param}
+    )
     return wrapper  # type: ignore[return-value]
 
 
