@@ -124,6 +124,14 @@ The following screenshots are from a real deployed Azure Functions app queried i
 
 ![App Insights Logs — after](docs/assets/portal-after.png)
 
+**Drill-down by `invocation_id`** — one query, one execution, all logs in sequence:
+
+![App Insights Logs — invocation drill-down](docs/assets/portal-invocation.png)
+
+**Transaction Search** — visual execution timeline with `cold_start`, structured fields, and per-event offsets:
+
+![App Insights Transaction Search](docs/assets/portal-transaction.png)
+
 ### Query in Application Insights
 
 #### When JSON fields are parsed into `customDimensions`

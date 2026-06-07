@@ -336,6 +336,14 @@ Every record carries `invocation_id`, `function_name`, and `cold_start` from `in
 
 ![App Insights Logs — after azure-functions-logging](../docs/assets/portal-after.png)
 
+**Drill-down by `invocation_id`** — one query returns every log for a single execution, in chronological order:
+
+![App Insights Logs — invocation drill-down](../docs/assets/portal-invocation.png)
+
+**Transaction Search** — visual execution timeline showing `cold_start`, structured fields, and per-event elapsed time:
+
+![App Insights Transaction Search](../docs/assets/portal-transaction.png)
+
 ## If you need a different plan
 
 This guide uses Flex Consumption. If you need Premium or Dedicated, keep all logging steps the same and only replace Function App provisioning.
