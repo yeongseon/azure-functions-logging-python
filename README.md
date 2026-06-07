@@ -334,11 +334,15 @@ When enabled, `invocation_id`, `function_name`, `trace_id`, and `cold_start` bec
 reserved `LogRecord` attributes. Passing them via stdlib `extra=` will raise `KeyError`.
 Use `FunctionLogger` (which sanitizes keys automatically) or choose different key names.
 
-> **Relationship with `setup_logging()`:** `setup_logging()` still installs `ContextFilter`
-> on handlers by default. You can call both — they set the same values, so there is no
-> conflict. `install_context_factory()` ensures coverage even on handlers added later or
-> loggers that bypass the filter chain.
-
+> **Relationship with `setup_logging()`:** When `use_record_factory=False` (default),
+> `setup_logging()` installs `ContextFilter` on handlers. You can call both — they set the
+> same values, so there is no conflict. `install_context_factory()` ensures coverage even on
+> handlers added later or loggers that bypass the filter chain.
+>
+> When `use_record_factory=True`, `setup_logging()` switches to the factory mode: it actively
+> removes any `ContextFilter` instances from existing root handlers (cleanup), then registers
+> the `LogRecordFactory`. This avoids double-injection while ensuring all records carry context
+> regardless of handler/filter chain configuration.
 ## Structured JSON Output (Production)
 
 Use JSON format when logs feed Application Insights or any aggregation system:
@@ -377,6 +381,25 @@ Extra fields appear under `extra` in the emitted JSON. Whether they are directly
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
 ```
 
+### Truncating long string values (opt-in)
+
+By default, `JsonFormatter` leaves string values in `extra` at full length.
+Pass `truncate_native_strings=True` to clip them at `max_string_length` characters (default 2048).
+Truncated strings are suffixed with `…` so the cut-off is detectable:
+
+```python
+from azure_functions_logging import JsonFormatter, setup_logging
+
+setup_logging(functions_formatter=JsonFormatter(
+    truncate_native_strings=True,
+    max_string_length=512,  # clip strings longer than 512 chars
+))
+```
+
+> **Scope:** Only string values in `extra` are truncated (recursively through dicts and lists).
+> The `message` field, integers, floats, and booleans are not affected.
+> Unserializable objects fall through to the existing `_json_default` path which truncates
+> their `str()` representation to 2048 characters regardless of this setting.
 ## host.json Conflict Detection
 
 If your `host.json` suppresses log levels that your app emits, you get this warning at startup:
@@ -401,11 +424,17 @@ Recommended `host.json` baseline:
 
 ### Discovery order
 
-`host.json` is located by walking up from the current working directory:
+`host.json` is located by walking up from the current working directory (or from
+`AzureWebJobsScriptRoot` when that environment variable is set):
 
-1. `cwd/host.json`
-2. Each parent directory, up to 5 levels deep.
+| Priority | Source |
+|----------|--------|
+| 1 | Explicit `host_json_path` parameter passed to `setup_logging()` |
+| 2 | `AzureWebJobsScriptRoot` environment variable |
+| 3 | `cwd/host.json` and each parent directory, up to 5 levels |
 
+The first existing `host.json` wins. `AzureWebJobsScriptRoot` is the canonical env var
+set by the Azure Functions host; only the directory itself is probed (no ancestor walk).
 The first existing file wins. To bypass auto-discovery (e.g. in tests or
 non-standard layouts), pass an explicit path:
 

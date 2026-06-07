@@ -306,8 +306,9 @@ setup_logging()
 
 활성화되면 `invocation_id`, `function_name`, `trace_id`, `cold_start`는 예약된 `LogRecord` 속성이 됩니다. stdlib `extra=`를 통해 이들을 전달하면 `KeyError`가 발생합니다. 키를 자동으로 정제하는 `FunctionLogger`를 사용하거나 다른 키 이름을 선택하세요.
 
-> **`setup_logging()`과의 관계:** `setup_logging()`은 기본적으로 핸들러에 `ContextFilter`를 설치합니다. 둘 다 호출해도 됩니다 — 동일한 값을 설정하므로 충돌이 없습니다. `install_context_factory()`는 나중에 추가되는 핸들러나 필터 체인을 우회하는 로거에서도 적용됨을 보장합니다.
-
+> **`setup_logging()`과의 관계:** `use_record_factory=False` (기본값)일 때 `setup_logging()`은 핸들러에 `ContextFilter`를 설치합니다. 둘 다 호출해도 됩니다 — 동일한 값을 설정하므로 충돌이 없습니다. `install_context_factory()`는 나중에 추가되는 핸들러나 필터 체인을 우회하는 로거에서도 적용됨을 보장합니다.
+>
+> `use_record_factory=True`일 때 `setup_logging()`은 팩토리 모드로 전환합니다: 기존 루트 핸들러에서 `ContextFilter` 인스턴스를 제거한 후 `LogRecordFactory`를 등록합니다. 이중 주입을 방지하면서 모든 레코드에 컨텍스트가 실리도록 보장합니다.
 ## 구조화된 JSON 출력 (프로덕션)
 
 로그가 Application Insights나 어떤 집계 시스템으로 흘러갈 때는 JSON 포맷을 사용하세요:
@@ -345,6 +346,25 @@ setup_logging(functions_formatter=JsonFormatter())
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
 ```
 
+### 긴 문자열 값 자르기 (opt-in)
+
+기본적으로 `JsonFormatter`는 `extra`의 문자열 값을 전체 길이 그대로 유지합니다.
+`truncate_native_strings=True`를 전달하면 `max_string_length` 문자 (기본값 2048)로 잘립니다.
+잘린 문자열은 `…` 접미사가 붙어 잘림 여부를 감지할 수 있습니다:
+
+```python
+from azure_functions_logging import JsonFormatter, setup_logging
+
+setup_logging(functions_formatter=JsonFormatter(
+    truncate_native_strings=True,
+    max_string_length=512,
+))
+```
+
+> **범위:** `extra`의 문자열 값만 잘립니다 (dict와 list를 재귀적으로 탐색).
+> `message` 필드, 정수, 실수, 불리언은 영향을 받지 않습니다.
+```
+
 ## host.json 충돌 감지
 
 `host.json`이 앱이 발행하는 로그 레벨을 억제하면 시작 시 다음과 같은 경고가 표시됩니다:
@@ -369,10 +389,15 @@ host.json logLevel for default is set to 'Warning' which is more restrictive tha
 
 ### 발견 순서
 
-`host.json`은 현재 작업 디렉토리에서 위로 올라가며 탐색됩니다:
+`host.json`은 현재 작업 디렉토리 (또는 `AzureWebJobsScriptRoot` 환경 변수가 설정된 경우 해당 디렉토리)에서 위로 올라가며 탐색됩니다:
 
-1. `cwd/host.json`
-2. 각 상위 디렉토리, 최대 5단계 깊이까지.
+| 우선순위 | 소스 |
+|----------|------|
+| 1 | `setup_logging()`에 전달된 명시적 `host_json_path` 파라미터 |
+| 2 | `AzureWebJobsScriptRoot` 환경 변수 |
+| 3 | `cwd/host.json` 및 각 상위 디렉토리, 최대 5단계 |
+
+먼저 발견된 `host.json`이 사용됩니다. `AzureWebJobsScriptRoot`는 Azure Functions 호스트가 설정하는 공식 환경 변수이며, 해당 디렉토리 자체만 검사합니다 (상위 디렉토리 탐색 없음).
 
 먼저 발견된 파일이 사용됩니다. 자동 발견을 우회하려면 (예: 테스트 또는 비표준 레이아웃에서) 명시적 경로를 전달하세요:
 

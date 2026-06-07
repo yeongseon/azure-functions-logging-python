@@ -306,8 +306,9 @@ setup_logging()
 
 有効化されると、`invocation_id`, `function_name`, `trace_id`, `cold_start` は予約された `LogRecord` 属性となります。stdlib `extra=` 経由で渡すと `KeyError` が発生します。キーを自動的にサニタイズする `FunctionLogger` を使用するか、別のキー名を選択してください。
 
-> **`setup_logging()` との関係:** `setup_logging()` は引き続きデフォルトでハンドラに `ContextFilter` をインストールします。両方を呼び出しても問題ありません — 同じ値を設定するため衝突しません。`install_context_factory()` は、後で追加されたハンドラやフィルタチェーンをバイパスするロガーでもカバレッジを保証します。
-
+> **`setup_logging()` との関係:** `use_record_factory=False` (デフォルト) の場合、`setup_logging()` はハンドラに `ContextFilter` をインストールします。両方を呼び出しても問題ありません — 同じ値を設定するため衝突しません。`install_context_factory()` は後で追加されたハンドラやフィルタチェーンをバイパスするロガーでもカバレッジを保証します。
+>
+> `use_record_factory=True` の場合、`setup_logging()` はファクトリモードに切り替えます: 既存のルートハンドラから `ContextFilter` インスタンスを削除してから `LogRecordFactory` を登録します。これにより二重注入を防ぎながら、すべてのレコードにコンテキストが付与されることを保証します。
 ## 構造化 JSON 出力 (本番)
 
 ログが Application Insights や任意の集約システムに流れる場合は JSON フォーマットを使用してください:
@@ -339,7 +340,29 @@ setup_logging(functions_formatter=JsonFormatter())
  "extra": {"order_id": "o-999"}}
 ```
 
-追加フィールドは出力される JSON の `extra` に含まれます。Application Insights で直接インデックス可能かどうかは ingestion パイプラインに依存します: JSON が `customDimensions` にパースされる場合は直接クエリ可能ですが、JSON が `message` カラムに残る場合はまず `parse_json(message)` を通す必要があります。
+追加フィールドは出力される JSON の `extra` に含まれます。Application Insights で直接インデックス可能かどうかは ingestion パイプラインに依存します: JSON が `customDimensions` にパースされる場合は直接クエリ可能ですが、JSON が `message` カラムに残る場合はまず `parse_json(message)` を通す必要があります.
+
+```python
+logger.info("order accepted", order_id="o-999", tenant_id="t-1")
+```
+
+### 長い文字列値の切り詰め (オプトイン)
+
+デフォルトでは `JsonFormatter` は `extra` の文字列値を全長で保持します。
+`truncate_native_strings=True` を渡すと `max_string_length` 文字 (デフォルト 2048) でクリップします。
+切り詰められた文字列には `…` サフィックスが付加され、切り詰めを検出できます:
+
+```python
+from azure_functions_logging import JsonFormatter, setup_logging
+
+setup_logging(functions_formatter=JsonFormatter(
+    truncate_native_strings=True,
+    max_string_length=512,
+))
+```
+
+> **スコープ:** `extra` の文字列値のみが切り詰められます (dict と list を再帰的に探索)。
+> `message` フィールド、整数、浮動小数点数、ブール値は影響を受けません。
 
 ```python
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
@@ -369,10 +392,15 @@ host.json logLevel for default is set to 'Warning' which is more restrictive tha
 
 ### 探索順序
 
-`host.json` は現在の作業ディレクトリから上に向かって探索されます:
+`host.json` は現在の作業ディレクトリ (または `AzureWebJobsScriptRoot` 環境変数が設定されている場合はそのディレクトリ) から上に向かって探索されます:
 
-1. `cwd/host.json`
-2. 各親ディレクトリ、最大 5 階層まで。
+| 優先度 | ソース |
+|--------|--------|
+| 1 | `setup_logging()` に渡した明示的な `host_json_path` パラメータ |
+| 2 | `AzureWebJobsScriptRoot` 環境変数 |
+| 3 | `cwd/host.json` および各親ディレクトリ、最大 5 階層 |
+
+最初に存在する `host.json` が採用されます。`AzureWebJobsScriptRoot` はAzure Functions ホストが設定する公式の環境変数で、ディレクトリ自体のみを探索します (祖先ウォークなし)。
 
 最初に存在するファイルが採用されます。自動探索をバイパスするには (テストや非標準レイアウトなど)、明示的なパスを渡してください:
 
