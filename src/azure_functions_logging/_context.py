@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import contextvars
 import logging
+import threading
 from typing import Any
 
 # Type alias for the token mapping returned by inject_context()
@@ -23,16 +24,19 @@ cold_start_var: contextvars.ContextVar[bool | None] = contextvars.ContextVar(
     "cold_start", default=None
 )
 
-# Cold start detection
+# Cold start detection — lock ensures exactly one concurrent first invocation
+# sees cold_start=True even when multiple threads call inject_context() simultaneously.
 _cold_start: bool = True
+_cold_start_lock = threading.Lock()
 
 
 def _check_cold_start() -> bool:
-    """Check and consume the cold start flag. Returns True only on first call."""
+    """Check and consume the cold start flag atomically. Returns True only on first call."""
     global _cold_start
-    if _cold_start:
-        _cold_start = False
-        return True
+    with _cold_start_lock:
+        if _cold_start:
+            _cold_start = False
+            return True
     return False
 
 

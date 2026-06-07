@@ -122,6 +122,28 @@ def test_cold_start_first_true_then_false() -> None:
     assert _check_cold_start() is False
 
 
+def test_cold_start_thread_safe_exactly_one_true() -> None:
+    """Concurrent first calls: exactly one thread must observe cold_start=True."""
+    import threading
+
+    ctx_mod._cold_start = True  # reset for this test
+    results: list[bool] = []
+    barrier = threading.Barrier(10)
+
+    def worker() -> None:
+        barrier.wait()  # all threads start simultaneously
+        results.append(_check_cold_start())
+
+    threads = [threading.Thread(target=worker) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert results.count(True) == 1, f"Expected exactly one True, got: {results}"
+    assert results.count(False) == 9
+
+
 def test_context_filter_reads_contextvars_after_inject_context() -> None:
     context = SimpleNamespace(
         invocation_id="inv-z",
