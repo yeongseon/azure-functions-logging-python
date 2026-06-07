@@ -91,11 +91,14 @@ def _to_json_safe(
     return value
 
 def _truncate_native_strings(value: Any, max_length: int) -> Any:
-    """Recursively truncate string values to ``max_length`` characters.
+    """Recursively truncate string values in a JSON-safe structure.
 
-    Only plain ``str`` values are affected. Non-string scalars (int, float,
-    bool, None) and the structural types (dict, list) are recursed through
-    but not themselves modified.
+    Clips strings longer than ``max_length`` to exactly ``max_length`` characters
+    and appends a one-character ellipsis (``…``) suffix, so the returned string
+    length is ``max_length + 1``. Non-string scalars (int, float, bool, None)
+    pass through unchanged. Structural types (dict, list) are recursed through;
+    this helper expects a JSON-safe input (as produced by :func:`_to_json_safe`)
+    so tuples and sets are not encountered.
     """
     if isinstance(value, str):
         if len(value) > max_length:
@@ -133,6 +136,10 @@ class JsonFormatter(logging.Formatter):
         max_string_length: int = 2048,
         truncate_native_strings: bool = False,
     ) -> None:
+        if max_string_length < 0:
+            raise ValueError(
+                f"max_string_length must be ≥ 0, got {max_string_length}"
+            )
         super().__init__()
         self._max_string_length = max_string_length
         self._truncate_native_strings = truncate_native_strings

@@ -484,3 +484,47 @@ def test_truncate_native_strings_does_not_affect_fallback_truncation() -> None:
     payload = json.loads(formatter.format(record))
     # fallback truncation always applies
     assert payload["extra"]["obj"].endswith("...<truncated>")
+
+
+def test_truncate_native_strings_negative_max_raises() -> None:
+    """max_string_length < 0 raises ValueError."""
+    with pytest.raises(ValueError, match="max_string_length"):
+        JsonFormatter(truncate_native_strings=True, max_string_length=-1)
+
+
+def test_truncate_native_strings_zero_max_clips_all_non_empty() -> None:
+    """max_string_length=0 clips any non-empty string to the ellipsis suffix only."""
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=0)
+    record = _make_record(logging.INFO, "msg")
+    record.nonempty = "hello"
+    record.empty = ""
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["nonempty"] == "…"
+    assert payload["extra"]["empty"] == ""  # empty string ≤ 0 chars — not truncated
+
+
+def test_truncate_native_strings_with_non_serializable_in_extra() -> None:
+    """Non-serializable objects are coerced by _json_default; their coerced string
+    is not further truncated by _truncate_native_strings because _json_default fires
+    during json.dumps which runs AFTER _truncate_native_strings.
+    """
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=5)
+    record = _make_record(logging.INFO, "msg")
+
+    class _Short:
+        def __str__(self) -> str:
+            return "abc"  # well within max
+
+    class _Long:
+        def __str__(self) -> str:
+            return "x" * 3000  # beyond max — BUT truncated by _json_default, not native
+
+    record.short_obj = _Short()
+    record.long_obj = _Long()
+
+    payload = json.loads(formatter.format(record))
+    # _Short coerced to 'abc' by _json_default (within _MAX_SERIALIZED_EXTRA_LENGTH)
+    assert payload["extra"]["short_obj"] == "abc"
+    # _Long coerced by _json_default and truncated to _MAX_SERIALIZED_EXTRA_LENGTH (2048)
+    assert payload["extra"]["long_obj"].endswith("...<truncated>")
