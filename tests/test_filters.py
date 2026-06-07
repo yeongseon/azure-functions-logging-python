@@ -423,7 +423,7 @@ def test_redaction_filter_field_setattr_error_does_not_stop_subsequent_field_red
 
 
 # ---------------------------------------------------------------------------
-# PR 2: expanded default sensitive key set
+# RedactionFilter — default sensitive keys: Azure credential fields
 # ---------------------------------------------------------------------------
 
 

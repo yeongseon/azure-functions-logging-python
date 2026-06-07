@@ -156,7 +156,7 @@ class RedactionFilter(logging.Filter):
     ``JsonFormatter`` see redacted values.
 
     Args:
-        sensitive_keys: Iterable of lowercase key names to redact. When None,
+        sensitive_keys: Iterable of key names to redact (case-insensitive). When None,
             uses the built-in default set:
             ``password``, ``passwd``, ``token``, ``access_token``,
             ``refresh_token``, ``authorization``, ``secret``,
