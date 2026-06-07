@@ -365,3 +365,78 @@ def test_host_internal_category_warned_in_strict_mode(
     monkeypatch.chdir(nested)
     with pytest.warns(UserWarning, match="more restrictive"):
         warn_host_json_level_conflict(logging.INFO)
+
+
+# ---------------------------------------------------------------------------
+# discover_host_json — AzureWebJobsScriptRoot env var (issue #163)
+# ---------------------------------------------------------------------------
+
+
+def test_discover_uses_azurewebjobsscriptroot_when_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When AzureWebJobsScriptRoot is set, discover_host_json prefers that directory."""
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.setenv("AzureWebJobsScriptRoot", str(tmp_path))
+    # cwd is a different dir that has no host.json
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.chdir(other)
+
+    found = discover_host_json()
+    assert found == (tmp_path / "host.json").resolve()
+
+
+def test_discover_falls_through_when_azurewebjobsscriptroot_has_no_host_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env var set but no host.json inside — falls back to cwd walk."""
+    env_dir = tmp_path / "func_root"
+    env_dir.mkdir()
+    # no host.json in env_dir
+    monkeypatch.setenv("AzureWebJobsScriptRoot", str(env_dir))
+
+    # cwd has host.json via parent walk
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.chdir(cwd)
+
+    found = discover_host_json()
+    assert found == (tmp_path / "host.json").resolve()
+
+
+def test_discover_falls_through_when_azurewebjobsscriptroot_path_does_not_exist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env var set to a non-existent directory — falls back to cwd walk."""
+    monkeypatch.setenv("AzureWebJobsScriptRoot", "/nonexistent/path/that/does/not/exist")
+
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.chdir(tmp_path)
+
+    found = discover_host_json()
+    assert found == (tmp_path / "host.json").resolve()
+
+
+def test_discover_explicit_start_ignores_azurewebjobsscriptroot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit start param takes priority over AzureWebJobsScriptRoot env var."""
+    env_dir = tmp_path / "env_root"
+    env_dir.mkdir()
+    _write_host_json(env_dir / "host.json", {"version": "env"})
+    monkeypatch.setenv("AzureWebJobsScriptRoot", str(env_dir))
+
+    explicit_dir = tmp_path / "explicit"
+    explicit_dir.mkdir()
+    _write_host_json(explicit_dir / "host.json", {"version": "explicit"})
+
+    found = discover_host_json(start=explicit_dir)
+    assert found == (explicit_dir / "host.json").resolve()
+    # confirm the env dir's host.json was NOT returned
+    assert found != (env_dir / "host.json").resolve()
