@@ -34,13 +34,14 @@ def discover_host_json(start: Path | None = None) -> Path | None:
 
     Discovery order:
 
-    1. ``start`` (when supplied).
+    1. ``start`` (when supplied). If ``start.resolve()`` fails, returns ``None``
+       immediately; env var and cwd fallback are not attempted.
     2. ``AzureWebJobsScriptRoot`` environment variable (only when ``start`` is
-       ``None``).
+       ``None``). Only the directory itself is probed — no ancestor walk. Relative
+       values are resolved against cwd (Azure always sets an absolute path).
     3. :func:`Path.cwd` and each ancestor up to
        :data:`_HOST_JSON_DISCOVERY_MAX_DEPTH` levels (fallback when neither
        ``start`` nor the env var resolves to a file).
-
     Returns the first existing ``host.json`` path or ``None``. Never raises:
     filesystem errors are swallowed so callers stay silent on broken setups.
     """
@@ -56,7 +57,7 @@ def discover_host_json(start: Path | None = None) -> Path | None:
                 env_candidate = Path(env_root).resolve() / "host.json"
                 if env_candidate.is_file():
                     return env_candidate
-            except OSError:
+            except (OSError, RuntimeError):
                 pass  # invalid path — fall through to cwd walk
         try:
             base = Path.cwd().resolve()

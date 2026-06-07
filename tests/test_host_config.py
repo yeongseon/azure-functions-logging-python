@@ -440,3 +440,26 @@ def test_discover_explicit_start_ignores_azurewebjobsscriptroot(
     assert found == (explicit_dir / "host.json").resolve()
     # confirm the env dir's host.json was NOT returned
     assert found != (env_dir / "host.json").resolve()
+
+
+def test_discover_falls_through_when_env_root_resolve_raises_runtime_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RuntimeError (e.g. symlink loop) from Path.resolve() is swallowed; cwd walk used."""
+    monkeypatch.setenv("AzureWebJobsScriptRoot", "/some/path")
+    _write_host_json(tmp_path / "host.json", {"version": "2.0"})
+    monkeypatch.chdir(tmp_path)
+
+    original_resolve = Path.resolve
+
+    def _raise_on_some_path(self: Path, **kwargs: object) -> Path:
+        if str(self) == "/some/path":
+            raise RuntimeError("Too many levels of symbolic links")
+        return original_resolve(self, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", _raise_on_some_path)
+
+    # Must not raise; must fall back to cwd walk and find tmp_path/host.json
+    found = discover_host_json()
+    assert found == (tmp_path / "host.json").resolve()
