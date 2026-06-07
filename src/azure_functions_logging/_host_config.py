@@ -55,27 +55,38 @@ def discover_host_json(start: Path | None = None) -> Path | None:
     return None
 
 
+# Categories that directly affect user application logs.
+# Warnings are limited to these prefixes by default.
+# Host-internal categories (Host.Results, Host.Aggregator, etc.) are
+# excluded because they do not suppress user Python log output.
+_USER_RELEVANT_PREFIXES: tuple[str, ...] = ("default", "Function")
+
+
+def _is_user_relevant_category(category: str) -> bool:
+    """Return True for categories that can suppress user application logs."""
+    return category == "default" or category.startswith("Function")
+
+
 def warn_host_json_level_conflict(
     configured_level: int,
     *,
     host_json_path: Path | str | None = None,
+    strict: bool = False,
 ) -> None:
-    """Warn when any ``host.json`` ``logLevel`` entry suppresses logs below ``configured_level``.
+    """Warn when a ``host.json`` ``logLevel`` entry suppresses logs below ``configured_level``.
 
-    Azure Functions honors category-specific keys under ``logging.logLevel``
-    (e.g. ``Function``, ``Function.<name>``, ``Host.Results``,
-    ``Host.Aggregator``) in addition to ``default``. Inspecting only ``default``
-    misses the common case where ``default = Information`` while a specific
-    function category is set to ``Warning`` or ``None`` and silently drops the
-    user's logs.
-
-    This helper iterates every category and warns once per offending entry.
+    By default only user-relevant categories are checked (``default`` and anything
+    starting with ``Function``). Host-internal categories (``Host.Results``,
+    ``Host.Aggregator``, etc.) are skipped because they cannot suppress user Python
+    log output and generate false-positive warning fatigue.
 
     Args:
         configured_level: The numeric logging level configured by the app.
         host_json_path: Optional explicit path to a ``host.json`` file. When
             provided, auto-discovery is bypassed entirely. When ``None``,
             :func:`discover_host_json` is used.
+        strict: When ``True``, all categories are inspected (including
+            host-internal ones). Default: ``False``.
     """
     if host_json_path is not None:
         host_path = Path(host_json_path)
@@ -107,6 +118,8 @@ def warn_host_json_level_conflict(
 
     for category, raw_level in log_levels.items():
         if not isinstance(category, str):
+            continue
+        if not strict and not _is_user_relevant_category(category):
             continue
         resolved_level = _resolve_host_level(raw_level)
         if resolved_level is None:
