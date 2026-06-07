@@ -21,6 +21,7 @@ _CONTEXT_FIELDS: frozenset[str] = _LIBRARY_RESERVED_KEYS
 # booleans, lists, dicts) are NOT affected by this limit.
 _MAX_SERIALIZED_EXTRA_LENGTH = 2048
 _TRUNCATION_SUFFIX = "...<truncated>"
+_NATIVE_TRUNCATION_SUFFIX = "…"  # suffix appended to native strings truncated by JsonFormatter
 
 # Maximum recursion depth when walking the ``extra`` payload to coerce it into
 # a JSON-safe structure. Beyond this depth, the offending value is replaced
@@ -89,6 +90,25 @@ def _to_json_safe(
         return [_to_json_safe(item, seen, _depth + 1) for item in value]
     return value
 
+def _truncate_native_strings(value: Any, max_length: int) -> Any:
+    """Recursively truncate string values in a JSON-safe structure.
+
+    Clips strings longer than ``max_length`` to exactly ``max_length`` characters
+    and appends a one-character ellipsis (``…``) suffix, so the returned string
+    length is ``max_length + 1``. Non-string scalars (int, float, bool, None)
+    pass through unchanged. Structural types (dict, list) are recursed through;
+    this helper expects a JSON-safe input (as produced by :func:`_to_json_safe`)
+    so tuples and sets are not encountered.
+    """
+    if isinstance(value, str):
+        if len(value) > max_length:
+            return value[:max_length] + _NATIVE_TRUNCATION_SUFFIX
+        return value
+    if isinstance(value, dict):
+        return {k: _truncate_native_strings(v, max_length) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_truncate_native_strings(item, max_length) for item in value]
+    return value
 
 class JsonFormatter(logging.Formatter):
     """Structured JSON log formatter.
@@ -99,10 +119,30 @@ class JsonFormatter(logging.Formatter):
 
     Unserializable values in ``extra`` are coerced to strings via
     :func:`_json_default` rather than dropping the log record.
+
+    Args:
+        max_string_length: Maximum character length for each native string value
+            in ``extra`` when ``truncate_native_strings=True``. Default: 2048.
+        truncate_native_strings: When ``True``, recursively truncate string
+            values inside ``extra`` (dicts and lists walked) to
+            ``max_string_length`` characters. Truncated strings are suffixed
+            with ``…`` so callers can detect the truncation. Non-string scalar
+            values (int, float, bool) are not affected. Default: ``False``.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        max_string_length: int = 2048,
+        truncate_native_strings: bool = False,
+    ) -> None:
+        if max_string_length < 0:
+            raise ValueError(
+                f"max_string_length must be ≥ 0, got {max_string_length}"
+            )
         super().__init__()
+        self._max_string_length = max_string_length
+        self._truncate_native_strings = truncate_native_strings
 
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record as one NDJSON object.
@@ -123,6 +163,8 @@ class JsonFormatter(logging.Formatter):
         excluded_fields = _STANDARD_RECORD_FIELDS | _CONTEXT_FIELDS
         extra = {key: value for key, value in record.__dict__.items() if key not in excluded_fields}
         extra = _to_json_safe(extra)
+        if self._truncate_native_strings:
+            extra = _truncate_native_strings(extra, self._max_string_length)
 
         payload = {
             "timestamp": timestamp,
