@@ -12,6 +12,8 @@ import threading
 import time
 from typing import Any, Iterable
 
+from ._logger import _RESERVED_LOG_RECORD_KEYS
+
 # Default set of sensitive keys masked by RedactionFilter
 _DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
     {
@@ -47,38 +49,6 @@ def _redact_value(
     return value
 
 
-# Standard LogRecord fields that RedactionFilter should never touch
-_STANDARD_RECORD_FIELDS: frozenset[str] = frozenset(
-    {
-        "args",
-        "created",
-        "exc_info",
-        "exc_text",
-        "filename",
-        "funcName",
-        "levelname",
-        "levelno",
-        "lineno",
-        "message",
-        "module",
-        "msecs",
-        "msg",
-        "name",
-        "pathname",
-        "process",
-        "processName",
-        "relativeCreated",
-        "stack_info",
-        "taskName",
-        "thread",
-        "threadName",
-        # Context fields
-        "invocation_id",
-        "function_name",
-        "trace_id",
-        "cold_start",
-    }
-)
 
 
 class SamplingFilter(logging.Filter):
@@ -177,7 +147,7 @@ class RedactionFilter(logging.Filter):
             return True  # bypass redaction for non-matching loggers
 
         for key in list(record.__dict__.keys()):
-            if key in _STANDARD_RECORD_FIELDS:
+            if key in _RESERVED_LOG_RECORD_KEYS:
                 continue
             if key.lower() in self._sensitive_keys:
                 setattr(record, key, _MASK)

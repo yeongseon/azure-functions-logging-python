@@ -7,36 +7,10 @@ import json
 import logging
 from typing import Any
 
-_STANDARD_RECORD_FIELDS: set[str] = {
-    "args",
-    "created",
-    "exc_info",
-    "exc_text",
-    "filename",
-    "funcName",
-    "levelname",
-    "levelno",
-    "lineno",
-    "message",
-    "module",
-    "msecs",
-    "msg",
-    "name",
-    "pathname",
-    "process",
-    "processName",
-    "relativeCreated",
-    "stack_info",
-    "taskName",
-    "thread",
-    "threadName",
-}
-_CONTEXT_FIELDS: set[str] = {
-    "invocation_id",
-    "function_name",
-    "trace_id",
-    "cold_start",
-}
+from ._logger import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
+
+_STANDARD_RECORD_FIELDS: frozenset[str] = _STDLIB_RECORD_KEYS
+_CONTEXT_FIELDS: frozenset[str] = _LIBRARY_RESERVED_KEYS
 
 
 # Maximum length (in characters) of the string produced by the ``json.dumps``

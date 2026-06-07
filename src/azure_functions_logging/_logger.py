@@ -27,11 +27,13 @@ _LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(
 # passing it as `extra` is sanitized identically across 3.10 / 3.11 / 3.12+.
 _FORWARD_COMPAT_RECORD_KEYS: frozenset[str] = frozenset({"message", "asctime", "taskName"})
 
-_RESERVED_LOG_RECORD_KEYS: frozenset[str] = (
-    frozenset(logging.makeLogRecord({}).__dict__)
-    | _FORWARD_COMPAT_RECORD_KEYS
-    | _LIBRARY_RESERVED_KEYS
+# stdlib LogRecord fields only (no library context keys).
+# Use this in formatters that need to distinguish stdlib from application-added fields.
+_STDLIB_RECORD_KEYS: frozenset[str] = (
+    frozenset(logging.makeLogRecord({}).__dict__) | _FORWARD_COMPAT_RECORD_KEYS
 )
+
+_RESERVED_LOG_RECORD_KEYS: frozenset[str] = _STDLIB_RECORD_KEYS | _LIBRARY_RESERVED_KEYS
 
 
 def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
