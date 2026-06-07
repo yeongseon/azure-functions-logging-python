@@ -68,6 +68,8 @@ Processing order
 Order: {'customer': 'Alice', 'total': 99.99}
 ```
 
+![Local terminal — without azure-functions-logging](docs/assets/demo-before.png)
+
 > No invocation ID. No log level. Hard to correlate in Application Insights.
 
 **With** `azure-functions-logging` — structured, queryable, production-ready:
@@ -104,9 +106,31 @@ Production output under `func start` / Azure (Application Insights NDJSON, appli
  "exception": null, "extra": {"order_id": "o-999"}}
 ```
 
+![Local terminal — with azure-functions-logging](docs/assets/demo-after.png)
+
 > Every log carries `invocation_id` and `cold_start`. Queryable in Application Insights. Zero `print()` statements.
 
 > **Note:** The exact Application Insights schema depends on your ingestion pipeline. In some deployments JSON fields are parsed into `customDimensions`; in others the JSON stays inside the `message` column. Examples for both shapes are below.
+
+### Application Insights — Before / After
+
+The following screenshots are from a real deployed Azure Functions app queried in Application Insights Logs.
+
+**Before** — plain `logging.info()`, no `azure-functions-logging` (context fields not injected — `invocation_id`, `function_name`, `cold_start` are absent from the payload):
+
+![App Insights Logs — before](docs/assets/portal-before.png)
+
+**After** — `azure-functions-logging` with `inject_context(context)` (`invocation_id`, `function_name`, `cold_start` populated):
+
+![App Insights Logs — after](docs/assets/portal-after.png)
+
+**Drill-down by `invocation_id`** — one query, one execution, all logs in sequence:
+
+![App Insights Logs — invocation drill-down](docs/assets/portal-invocation.png)
+
+**Transaction Search** — visual execution timeline with `cold_start`, structured fields, and per-event offsets:
+
+![App Insights Transaction Search](docs/assets/portal-transaction.png)
 
 ### Query in Application Insights
 
