@@ -326,7 +326,7 @@ plain `logging.info()` and `azure-functions-logging` side by side.
 Context fields are not injected — `invocation_id`, `function_name`, and `cold_start`
 are absent from the JSON payload (shown as empty strings via `tostring(payload.invocation_id)`).
 The `correlation_id` is embedded in the message string; it is searchable via
-`| where message has "demo-123"` but not as a structured field.
+`| where message contains "demo-123"` but not as a structured field.
 
 ![App Insights Logs — before azure-functions-logging](assets/portal-before.png)
 
