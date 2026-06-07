@@ -6,6 +6,8 @@ import logging
 import sys
 from typing import Iterable
 
+from ._logger import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
+
 # ANSI color codes
 _COLORS: dict[int, str] = {
     logging.DEBUG: "\033[90m",  # Gray
@@ -21,36 +23,8 @@ _SENSITIVE_KEYS: frozenset[str] = frozenset(
     {"password", "token", "authorization", "secret", "api_key", "apikey", "passwd"}
 )
 
-_STANDARD_RECORD_FIELDS: frozenset[str] = frozenset(
-    {
-        "args",
-        "created",
-        "exc_info",
-        "exc_text",
-        "filename",
-        "funcName",
-        "levelname",
-        "levelno",
-        "lineno",
-        "message",
-        "module",
-        "msecs",
-        "msg",
-        "name",
-        "pathname",
-        "process",
-        "processName",
-        "relativeCreated",
-        "stack_info",
-        "taskName",
-        "thread",
-        "threadName",
-    }
-)
-
-_CONTEXT_FIELDS: frozenset[str] = frozenset(
-    {"invocation_id", "function_name", "trace_id", "cold_start"}
-)
+_STANDARD_RECORD_FIELDS: frozenset[str] = _STDLIB_RECORD_KEYS
+_CONTEXT_FIELDS: frozenset[str] = _LIBRARY_RESERVED_KEYS
 
 
 class ColorFormatter(logging.Formatter):
