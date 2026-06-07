@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ _HOST_LEVEL_TO_LOGGING: dict[str, int] = {
 # Maximum number of parent directories to walk when auto-discovering host.json.
 # Bounded to avoid scanning the entire filesystem on misconfigured environments.
 _HOST_JSON_DISCOVERY_MAX_DEPTH = 5
+_HOST_JSON_ENV_PREFIX = "AzureFunctionsJobHost__logging__logLevel__"
 
 
 def _resolve_host_level(value: object) -> int | None:
@@ -87,6 +89,62 @@ def _is_user_relevant_category(category: str) -> bool:
     return category == "default" or category.startswith("Function")
 
 
+def _iter_app_setting_log_levels() -> dict[str, str]:
+    levels: dict[str, str] = {}
+    prefix_len = len(_HOST_JSON_ENV_PREFIX)
+    for key, value in os.environ.items():
+        if not key.startswith(_HOST_JSON_ENV_PREFIX):
+            continue
+        category_parts = [part for part in key[prefix_len:].split("__") if part]
+        if not category_parts:
+            continue
+        category = ".".join(category_parts)
+        levels[category] = value
+    return levels
+
+
+def _warn_for_log_levels(
+    log_levels: Mapping[str, object],
+    configured_level: int,
+    *,
+    strict: bool,
+    source: str,
+    stacklevel: int,
+) -> None:
+    configured_level_name = logging.getLevelName(configured_level)
+
+    for category, raw_level in log_levels.items():
+        if not strict and not _is_user_relevant_category(category):
+            continue
+        resolved_level = _resolve_host_level(raw_level)
+        if resolved_level is None:
+            continue
+        if resolved_level <= configured_level:
+            continue
+
+        scope = "default" if category == "default" else f"category '{category}'"
+        warnings.warn(
+            (
+                f"{source} logLevel for {scope} is set to '{raw_level}' which is more "
+                f"restrictive than the configured level '{configured_level_name}'. Logs "
+                f"below '{raw_level}' will be suppressed by the Azure Functions host."
+            ),
+            stacklevel=stacklevel,
+        )
+
+
+def _string_key_mapping(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, object] = {}
+    for raw_key, raw_value in value.items():
+        key: object = raw_key
+        item: object = raw_value
+        if isinstance(key, str):
+            result[key] = item
+    return result
+
+
 def warn_host_json_level_conflict(
     configured_level: int,
     *,
@@ -108,51 +166,46 @@ def warn_host_json_level_conflict(
         strict: When ``True``, all categories are inspected (including
             host-internal ones). Default: ``False``.
     """
+    host_path: Path | None
     if host_json_path is not None:
         host_path = Path(host_json_path)
         try:
             if not host_path.is_file():
-                return
+                host_path = None
         except OSError:
-            return
+            host_path = None
     else:
         discovered = discover_host_json()
-        if discovered is None:
-            return
         host_path = discovered
 
-    try:
-        host_config = json.loads(host_path.read_text(encoding="utf-8"))
-    except Exception:
-        return
+    if host_path is not None:
+        log_levels: object = None
+        try:
+            host_config: object = json.loads(host_path.read_text(encoding="utf-8"))
+            host_mapping = _string_key_mapping(host_config)
+            if host_mapping is not None:
+                logging_mapping = _string_key_mapping(host_mapping.get("logging"))
+                if logging_mapping is not None:
+                    log_levels = logging_mapping.get("logLevel")
+        except Exception:
+            log_levels = None
 
-    try:
-        log_levels = host_config["logging"]["logLevel"]
-    except Exception:
-        return
+        normalized_log_levels = _string_key_mapping(log_levels)
+        if normalized_log_levels is not None:
+            _warn_for_log_levels(
+                normalized_log_levels,
+                configured_level,
+                strict=strict,
+                source="host.json",
+                stacklevel=3,
+            )
 
-    if not isinstance(log_levels, dict):
-        return
-
-    configured_level_name = logging.getLevelName(configured_level)
-
-    for category, raw_level in log_levels.items():
-        if not isinstance(category, str):
-            continue
-        if not strict and not _is_user_relevant_category(category):
-            continue
-        resolved_level = _resolve_host_level(raw_level)
-        if resolved_level is None:
-            continue
-        if resolved_level <= configured_level:
-            continue
-
-        scope = "default" if category == "default" else f"category '{category}'"
-        warnings.warn(
-            (
-                f"host.json logLevel for {scope} is set to '{raw_level}' which is more "
-                f"restrictive than the configured level '{configured_level_name}'. Logs "
-                f"below '{raw_level}' will be suppressed by the Azure Functions host."
-            ),
+    app_setting_log_levels = _iter_app_setting_log_levels()
+    if app_setting_log_levels:
+        _warn_for_log_levels(
+            app_setting_log_levels,
+            configured_level,
+            strict=strict,
+            source="AzureFunctionsJobHost app setting",
             stacklevel=3,
         )
