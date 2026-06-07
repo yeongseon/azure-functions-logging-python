@@ -120,19 +120,19 @@ def setup_logging(
     if use_record_factory:
         install_context_factory()
 
-    # When switching to record-factory mode, strip any previously-installed
-    # ContextFilter from the target logger and root logger.  This must happen
-    # BEFORE the idempotency guards so even a re-entry (same logger_name called
-    # twice) removes stale filters that would overwrite factory-injected fields
-    # at handler dispatch time.
-    if use_record_factory:
-        target_logger = logging.getLogger(logger_name)
-        root_logger = logging.getLogger()
-        _remove_context_filters(target_logger)
-        if root_logger is not target_logger:
-            _remove_context_filters(root_logger)
-
     with _configured_lock:
+        # When switching to record-factory mode, strip any previously-installed
+        # ContextFilter from the target logger and root logger.  Must run BEFORE
+        # the idempotency guards (so re-entry for the same logger_name still
+        # removes stale filters), and UNDER _configured_lock (so concurrent
+        # setup_logging() calls cannot race on the filter lists).
+        if use_record_factory:
+            _target = logging.getLogger(logger_name)
+            _root = logging.getLogger()
+            _remove_context_filters(_target)
+            if _root is not _target:
+                _remove_context_filters(_root)
+
         is_functions_env = _is_functions_environment()
 
         if is_functions_env:
