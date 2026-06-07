@@ -323,26 +323,27 @@ The screenshots below show actual query results from a deployed function app run
 plain `logging.info()` and `azure-functions-logging` side by side.
 
 **Before** (`log_before` — plain `logging.info()`):
-Context fields are absent from every record.
-`invocation_id`, `function_name`, and `cold_start` are `null`.
-The message embeds `correlation_id` as a raw string, making it unqueryable.
+Context fields are not injected — `invocation_id`, `function_name`, and `cold_start`
+are absent from the JSON payload (shown as empty strings via `tostring(payload.invocation_id)`).
+The `correlation_id` is embedded in the message string; it is searchable via
+`| where message has "demo-123"` but not as a structured field.
 
-![App Insights Logs — before azure-functions-logging](../docs/assets/portal-before.png)
+![App Insights Logs — before azure-functions-logging](assets/portal-before.png)
 
 **After** (`log_after` — `azure-functions-logging` with `inject_context(context)`):
 Every record carries `invocation_id`, `function_name`, and `cold_start` from `inject_context()`.
 `correlation_id` is a structured key in `extra`, enabling KQL filters like
 `| where parse_json(message).extra.correlation_id == "demo-123"`.
 
-![App Insights Logs — after azure-functions-logging](../docs/assets/portal-after.png)
+![App Insights Logs — after azure-functions-logging](assets/portal-after.png)
 
 **Drill-down by `invocation_id`** — one query returns every log for a single execution, in chronological order:
 
-![App Insights Logs — invocation drill-down](../docs/assets/portal-invocation.png)
+![App Insights Logs — invocation drill-down](assets/portal-invocation.png)
 
 **Transaction Search** — visual execution timeline showing `cold_start`, structured fields, and per-event elapsed time:
 
-![App Insights Transaction Search](../docs/assets/portal-transaction.png)
+![App Insights Transaction Search](assets/portal-transaction.png)
 
 ## If you need a different plan
 

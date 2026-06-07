@@ -116,7 +116,7 @@ Production output under `func start` / Azure (Application Insights NDJSON, appli
 
 The following screenshots are from a real deployed Azure Functions app queried in Application Insights Logs.
 
-**Before** — plain `logging.info()`, no `azure-functions-logging` (all context fields are `null`):
+**Before** — plain `logging.info()`, no `azure-functions-logging` (context fields not injected — `invocation_id`, `function_name`, `cold_start` are absent from the payload):
 
 ![App Insights Logs — before](docs/assets/portal-before.png)
 

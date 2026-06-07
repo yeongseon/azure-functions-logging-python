@@ -60,7 +60,7 @@ def log_before(req: func.HttpRequest) -> func.HttpResponse:
 #   - invocation_id   (unique per function execution)
 #   - function_name   (name of the triggered function)
 #   - cold_start      (true on first invocation after scale-out)
-#   - correlation_id  (user-supplied extra field, safe from PII leaks)
+#   - correlation_id  (user-supplied extra field — do not log PII values here)
 
 
 @app.route(route="after", auth_level=func.AuthLevel.ANONYMOUS)
@@ -73,7 +73,10 @@ def log_after(req: func.HttpRequest, context: func.Context) -> func.HttpResponse
 
     try:
         logger.info(
-            "Processing request",
+            # Include correlation_id in the message string so it is searchable
+            # regardless of ingestion shape (customDimensions or raw message column).
+            "Processing request correlation_id=%s",
+            correlation_id,
             extra={
                 "correlation_id": correlation_id,
                 "endpoint": "after",
@@ -93,5 +96,23 @@ def log_after(req: func.HttpRequest, context: func.Context) -> func.HttpResponse
 
 @app.route(route="logme", auth_level=func.AuthLevel.ANONYMOUS)
 def logme(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    """Alias for /api/after — keeps existing e2e tests working."""
-    return log_after(req, context)
+    """Backward-compatible alias — keeps existing e2e tests working.
+
+    Returns {"logged": true, "correlation_id": ...} to preserve the
+    historical response shape expected by e2e tests and the deployment guide.
+    """
+    tokens = afl.inject_context(context)
+    logger = afl.get_logger(__name__)
+    correlation_id = req.params.get("correlation_id", "logme-demo")
+    try:
+        logger.info(
+            "Processing request correlation_id=%s",
+            correlation_id,
+            extra={"correlation_id": correlation_id, "endpoint": "logme"},
+        )
+        return func.HttpResponse(
+            json.dumps({"logged": True, "correlation_id": correlation_id}),
+            mimetype="application/json",
+        )
+    finally:
+        afl.restore_context(tokens)
