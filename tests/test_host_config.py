@@ -453,10 +453,10 @@ def test_discover_falls_through_when_env_root_resolve_raises_runtime_error(
 
     original_resolve = Path.resolve
 
-    def _raise_on_some_path(self: Path, **kwargs: object) -> Path:
+    def _raise_on_some_path(self: Path, *, strict: bool = False) -> Path:
         if str(self) == "/some/path":
             raise RuntimeError("Too many levels of symbolic links")
-        return original_resolve(self, **kwargs)
+        return original_resolve(self, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", _raise_on_some_path)
 
