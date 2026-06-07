@@ -20,10 +20,14 @@ _DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
         "password",
         "passwd",
         "token",
+        "access_token",
+        "refresh_token",
         "authorization",
         "secret",
+        "client_secret",
         "api_key",
         "apikey",
+        "connection_string",
     }
 )
 
@@ -152,9 +156,11 @@ class RedactionFilter(logging.Filter):
     ``JsonFormatter`` see redacted values.
 
     Args:
-        sensitive_keys: Iterable of lowercase key names to redact. When None,
-            uses the built-in default set (password, passwd, token,
-            authorization, secret, api_key, apikey).
+        sensitive_keys: Iterable of key names to redact (case-insensitive). When None,
+            uses the built-in default set:
+            ``password``, ``passwd``, ``token``, ``access_token``,
+            ``refresh_token``, ``authorization``, ``secret``,
+            ``client_secret``, ``api_key``, ``apikey``, ``connection_string``.
         name: Optional logger-name scope. When set, only matching loggers are
             subject to redaction; non-matching records pass through unchanged.
     Example::
