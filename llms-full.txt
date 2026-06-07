@@ -48,8 +48,9 @@ def setup_logging(
                 Passing format="json" in Azure without functions_formatter emits a warning.
         logger_name: Optional logger name to configure. None = root logger.
         functions_formatter: Custom formatter for Azure/Core Tools host-managed handlers.
-        host_json_path: Explicit path to host.json. When None, walks up from cwd up to 5
-                        levels deep to discover host.json automatically.
+        host_json_path: Explicit path to host.json. When None, discovery order is:
+                        1) AzureWebJobsScriptRoot env var (directory itself, no walk),
+                        2) cwd walk up to 5 parent levels.
 
     Raises:
         ValueError: If format not in {"color", "json"}.
@@ -120,6 +121,13 @@ class JsonFormatter(logging.Formatter):
     Output is newline-delimited JSON (NDJSON), one JSON object per line.
     Context fields (invocation_id, function_name, etc.) included when present.
     
+    Args:
+        max_string_length: Maximum chars per native string value in extra when
+            truncate_native_strings=True. Default: 2048.
+        truncate_native_strings: When True, recursively clips string values in extra
+            (dicts and lists walked) to max_string_length chars, appending '…' suffix.
+            Non-string scalars unaffected. Default: False.
+    
     Example output:
         {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", 
          "logger": "my_app", "message": "Request received",
@@ -127,7 +135,8 @@ class JsonFormatter(logging.Formatter):
          "extra": {"user_id": "123"}}
     """
     
-    def __init__(self) -> None:
+    def __init__(self, *, max_string_length: int = 2048, truncate_native_strings: bool = False) -> None:
+        """Initialize JSON formatter. max_string_length must be >= 0."""
         """Initialize JSON formatter (no args)."""
         ...
     
@@ -341,8 +350,8 @@ helpers above instead of importing them directly.
    include trailing fields, which are ignored after validating the first four:
    2/32/16/2 hex; version `ff` and all-zero trace/span ids are rejected;
    forward-compatible with future versions)
-9. **Bounded host.json discovery** — walks up from cwd, max 5 parent levels;
-   override with host_json_path= for tests / non-standard layouts
+9. **Bounded host.json discovery** — priority: AzureWebJobsScriptRoot env var > cwd walk
+   (max 5 parent levels); override with host_json_path= for tests / non-standard layouts
 
 ## Common Patterns
 

@@ -306,8 +306,9 @@ setup_logging()
 
 启用后，`invocation_id`、`function_name`、`trace_id` 和 `cold_start` 将成为保留的 `LogRecord` 属性。通过 stdlib `extra=` 传递它们将引发 `KeyError`。请使用 `FunctionLogger` (它会自动清理键名) 或选择不同的键名。
 
-> **与 `setup_logging()` 的关系:** `setup_logging()` 默认仍然在处理程序上安装 `ContextFilter`。两者可以同时调用 — 它们设置相同的值，因此不会冲突。`install_context_factory()` 确保在稍后添加的处理程序或绕过过滤器链的 logger 上也能覆盖。
-
+> **与 `setup_logging()` 的关系:** 当 `use_record_factory=False` (默认値) 时，`setup_logging()` 会在处理程序上安装 `ContextFilter`。两者可以同时调用 — 它们设置相同的値，因此不会冲突。`install_context_factory()` 确保在稍后添加的处理程序或绕过过滤器链的 logger 上也能覆盖。
+>
+> 当 `use_record_factory=True` 时，`setup_logging()` 切换到工厂模式: 先从现有 root 处理程序中删除所有 `ContextFilter` 实例，然后注册 `LogRecordFactory`。这样可以防止重复注入，同时确保所有记录都携带上下文。
 ## 结构化 JSON 输出 (生产)
 
 当日志流向 Application Insights 或任何聚合系统时，请使用 JSON 格式:
@@ -345,6 +346,28 @@ setup_logging(functions_formatter=JsonFormatter())
 logger.info("order accepted", order_id="o-999", tenant_id="t-1")
 ```
 
+### 裁剪长字符串値 (opt-in)
+
+默认情况下，`JsonFormatter` 对 `extra` 中的字符串値保持完整长度。
+传入 `truncate_native_strings=True` 可将它们裁剪到 `max_string_length` 个字符 (默认 2048)。
+被裁剪的字符串会以 `…` 后缀结尾，使调用者可以检测到裁剪:
+
+```python
+from azure_functions_logging import JsonFormatter, setup_logging
+
+setup_logging(functions_formatter=JsonFormatter(
+    truncate_native_strings=True,
+    max_string_length=512,
+))
+```
+
+> **范围:** 仅裁剪 `extra` 中的字符串値 (递归遍历 dict 和 list)。
+> `message` 字段、整数、浮点数和布尔子不受影响。
+
+```python
+logger.info("order accepted", order_id="o-999", tenant_id="t-1")
+```
+
 ## host.json 冲突检测
 
 如果您的 `host.json` 抑制了应用发出的日志级别，启动时会出现以下警告:
@@ -369,10 +392,15 @@ host.json logLevel for default is set to 'Warning' which is more restrictive tha
 
 ### 发现顺序
 
-`host.json` 通过从当前工作目录向上遍历来定位:
+`host.json` 通过从当前工作目录 (或 `AzureWebJobsScriptRoot` 环境变量指向的目录) 向上遍历来定位:
 
-1. `cwd/host.json`
-2. 每个父目录，最多 5 层深。
+| 优先级 | 来源 |
+|--------|------|
+| 1 | 传入 `setup_logging()` 的显式 `host_json_path` 参数 |
+| 2 | `AzureWebJobsScriptRoot` 环境变量 |
+| 3 | `cwd/host.json` 及各父目录，最多 5 层 |
+
+第一个存在的 `host.json` 被采用。`AzureWebJobsScriptRoot` 是 Azure Functions 主机设置的官方环境变量，仅探测该目录本身 (不进行祖先遍历)。
 
 第一个存在的文件被采用。要绕过自动发现 (例如在测试或非标准布局中)，请传递显式路径:
 

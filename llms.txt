@@ -28,7 +28,7 @@ Key features:
 - `setup_logging(*, level=logging.INFO, format="color", logger_name=None, functions_formatter=None, host_json_path=None)` — Keyword-only. One-call logging setup for local or Azure (pass `logger_name=None` for root logger configuration in standalone mode).
 - `get_logger(name)` → `FunctionLogger` — Create a logger with context binding support
 - `FunctionLogger` — Enhanced logger wrapper with `bind()`, `log()`, `hasHandlers()`, `setLevel()`, `isEnabledFor()`, `getEffectiveLevel()` for stdlib parity
-- `JsonFormatter` — JSON log formatter (NDJSON), use with `functions_formatter=` in Azure
+- `JsonFormatter(*, max_string_length=2048, truncate_native_strings=False)` — JSON log formatter (NDJSON). Set `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` chars.
 - `RedactionFilter` — Filter to redact sensitive fields (password, token, api_key, etc.)
 - `SamplingFilter` — Filter for log sampling/rate-limiting noisy loggers
 - `logging_context(context)` — **Recommended** context manager: injects on enter, always restores on exit
