@@ -486,10 +486,14 @@ Any log record with extra fields whose keys match a sensitive key will have thos
 
 | Key | Key | Key |
 |-----|-----|-----|
-| `password` | `passwd` | `token` |
-| `access_token` | `refresh_token` | `authorization` |
-| `secret` | `client_secret` | `api_key` |
-| `apikey` | `connection_string` | |
+| `password` | `passwd` | `pwd` |
+| `token` | `access_token` | `refresh_token` |
+| `id_token` | `authorization` | `auth` |
+| `secret` | `client_secret` | `secret_key` |
+| `api_key` | `apikey` | `subscription_key` |
+| `connection_string` | `conn_str` | `sas_token` |
+| `x_functions_key` | `function_key` | `master_key` |
+| `private_key` | `credential` | |
 
 Pass `sensitive_keys=[...]` to override with your own list:
 

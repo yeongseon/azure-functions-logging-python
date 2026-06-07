@@ -506,3 +506,134 @@ def test_redaction_filter_new_keys_case_insensitive() -> None:
     flt.filter(record)
     assert getattr(record, "Access_Token") == "***"
     assert getattr(record, "CONNECTION_STRING") == "***"
+
+
+# ---------------------------------------------------------------------------
+# RedactionFilter — Azure-specific keys added in issue #169
+# ---------------------------------------------------------------------------
+
+
+def test_redaction_filter_masks_pwd() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "pwd", "hunter2")
+    flt.filter(record)
+    assert getattr(record, "pwd") == "***"
+
+
+def test_redaction_filter_masks_id_token() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "id_token", "eyJ...")
+    flt.filter(record)
+    assert getattr(record, "id_token") == "***"
+
+
+def test_redaction_filter_masks_auth() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "auth", "Basic abc123")
+    flt.filter(record)
+    assert getattr(record, "auth") == "***"
+
+
+def test_redaction_filter_masks_secret_key() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "secret_key", "sk_live_xxx")
+    flt.filter(record)
+    assert getattr(record, "secret_key") == "***"
+
+
+def test_redaction_filter_masks_subscription_key() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "subscription_key", "abc123")
+    flt.filter(record)
+    assert getattr(record, "subscription_key") == "***"
+
+
+def test_redaction_filter_masks_conn_str() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "conn_str", "Server=tcp:...")
+    flt.filter(record)
+    assert getattr(record, "conn_str") == "***"
+
+
+def test_redaction_filter_masks_sas_token() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "sas_token", "sv=2021-12-02&ss=b...")
+    flt.filter(record)
+    assert getattr(record, "sas_token") == "***"
+
+
+def test_redaction_filter_masks_x_functions_key() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "x_functions_key", "host_key_abc")
+    flt.filter(record)
+    assert getattr(record, "x_functions_key") == "***"
+
+
+def test_redaction_filter_masks_function_key() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "function_key", "func_key_xyz")
+    flt.filter(record)
+    assert getattr(record, "function_key") == "***"
+
+
+def test_redaction_filter_masks_master_key() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "master_key", "_master_abc")
+    flt.filter(record)
+    assert getattr(record, "master_key") == "***"
+
+
+def test_redaction_filter_masks_private_key() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "private_key", "-----BEGIN RSA PRIVATE KEY-----")
+    flt.filter(record)
+    assert getattr(record, "private_key") == "***"
+
+
+def test_redaction_filter_masks_credential() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "credential", "client_id:client_secret")
+    flt.filter(record)
+    assert getattr(record, "credential") == "***"
+
+
+def test_redaction_filter_azure_keys_in_nested_dict() -> None:
+    """All 12 new Azure keys must be redacted inside nested dicts."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "azure_ctx", {
+        "pwd": "p",
+        "id_token": "t",
+        "auth": "a",
+        "secret_key": "sk",
+        "subscription_key": "subk",
+        "conn_str": "cs",
+        "sas_token": "sas",
+        "x_functions_key": "xfk",
+        "function_key": "fk",
+        "master_key": "mk",
+        "private_key": "pk",
+        "credential": "cred",
+        "safe_field": "visible",
+    })
+    flt.filter(record)
+    result = getattr(record, "azure_ctx")
+    for key in (
+        "pwd", "id_token", "auth", "secret_key", "subscription_key",
+        "conn_str", "sas_token", "x_functions_key", "function_key",
+        "master_key", "private_key", "credential",
+    ):
+        assert result[key] == "***", f"{key!r} was not redacted"
+    assert result["safe_field"] == "visible"

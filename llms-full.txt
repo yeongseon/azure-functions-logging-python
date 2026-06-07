@@ -186,8 +186,11 @@ class RedactionFilter(logging.Filter):
     lowercase name is in sensitive_keys. Both ColorFormatter and
     JsonFormatter see redacted values.
     
-    Default sensitive keys: password, passwd, token, authorization,
-    secret, api_key, apikey.
+    Default sensitive keys (23): password, passwd, pwd, token,
+    access_token, refresh_token, id_token, authorization, auth,
+    secret, client_secret, secret_key, api_key, apikey,
+    subscription_key, connection_string, conn_str, sas_token,
+    x_functions_key, function_key, master_key, private_key, credential.
     
     Args:
         sensitive_keys: Iterable of lowercase key names to redact.

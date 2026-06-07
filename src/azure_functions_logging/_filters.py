@@ -19,15 +19,27 @@ _DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
     {
         "password",
         "passwd",
+        "pwd",
         "token",
         "access_token",
         "refresh_token",
+        "id_token",
         "authorization",
+        "auth",
         "secret",
         "client_secret",
+        "secret_key",
         "api_key",
         "apikey",
+        "subscription_key",
         "connection_string",
+        "conn_str",
+        "sas_token",
+        "x_functions_key",
+        "function_key",
+        "master_key",
+        "private_key",
+        "credential",
     }
 )
 
@@ -157,10 +169,13 @@ class RedactionFilter(logging.Filter):
 
     Args:
         sensitive_keys: Iterable of key names to redact (case-insensitive). When None,
-            uses the built-in default set:
-            ``password``, ``passwd``, ``token``, ``access_token``,
-            ``refresh_token``, ``authorization``, ``secret``,
-            ``client_secret``, ``api_key``, ``apikey``, ``connection_string``.
+            uses the built-in default set (23 keys):
+            ``password``, ``passwd``, ``pwd``, ``token``, ``access_token``,
+            ``refresh_token``, ``id_token``, ``authorization``, ``auth``,
+            ``secret``, ``client_secret``, ``secret_key``, ``api_key``, ``apikey``,
+            ``subscription_key``, ``connection_string``, ``conn_str``,
+            ``sas_token``, ``x_functions_key``, ``function_key``, ``master_key``,
+            ``private_key``, ``credential``.
         name: Optional logger-name scope. When set, only matching loggers are
             subject to redaction; non-matching records pass through unchanged.
     Example::
