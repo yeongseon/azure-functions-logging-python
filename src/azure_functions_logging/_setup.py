@@ -13,10 +13,16 @@ from ._formatter import ColorFormatter
 from ._host_config import warn_host_json_level_conflict
 from ._json_formatter import JsonFormatter
 
-# Track configured logger names to ensure per-logger idempotency
+# Track configured logger names to ensure per-logger idempotency (local mode).
 _configured_loggers: set[str | None] = set()
 _configured_lock = threading.Lock()
 
+# Azure mode: track which handler ids have been configured and whether the
+# root-level ContextFilter has been installed for a given call signature.
+# Maps logger_name -> (ContextFilter | None, set[handler_id])
+# The ContextFilter is reused across calls to preserve identity and avoid
+# adding duplicate filter objects to root.filters.
+_azure_state: dict[str | None, tuple[ContextFilter | None, set[int]]] = {}
 
 def _is_functions_environment() -> bool:
     """Check if running inside Azure Functions (hosted or Core Tools)."""
@@ -96,34 +102,57 @@ def setup_logging(
         install_context_factory()
 
     with _configured_lock:
-        if logger_name in _configured_loggers:
-            return
-
-        # When the LogRecordFactory is active, attaching ContextFilter would
-        # overwrite factory-injected fields with current contextvar values at
-        # handler dispatch time, defeating the record-creation-time guarantee.
-        context_filter: ContextFilter | None = None if use_record_factory else ContextFilter()
         is_functions_env = _is_functions_environment()
 
         if is_functions_env:
-            # Azure or Core Tools: install filter only, don't touch handlers/level
+            # Azure or Core Tools: install filter on handlers, don't touch level.
+            #
+            # Recovery semantics: if the host attaches new handlers after the
+            # first call, subsequent calls will pick them up. We track which
+            # handler ids have already been configured so we don't add duplicate
+            # filters/formatters, and reuse the same ContextFilter instance so
+            # that root.addFilter() is idempotent (identity-based check).
             if format != "color" and functions_formatter is None:
                 warnings.warn(
                     "The 'format' parameter is ignored in Azure Functions environment. "
                     "Pass functions_formatter=JsonFormatter() to set JSON output on host handlers.",
                     stacklevel=2,
                 )
+
+            # Retrieve or create the per-call-signature state.
+            if logger_name not in _azure_state:
+                ctx_filter: ContextFilter | None = (
+                    None if use_record_factory else ContextFilter()
+                )
+                _azure_state[logger_name] = (ctx_filter, set())
+            context_filter, configured_handler_ids = _azure_state[logger_name]
+
             root = logging.getLogger()
             for handler in root.handlers:
+                h_id = id(handler)
+                if h_id in configured_handler_ids:
+                    continue  # already configured — skip to avoid duplicates
                 if functions_formatter is not None:
                     handler.setFormatter(functions_formatter)
                 if context_filter is not None:
                     handler.addFilter(context_filter)
-            # Also install on any future handlers via the logger itself
-            if context_filter is not None:
+                configured_handler_ids.add(h_id)
+
+            # Install filter on root logger itself so handlers attached later
+            # (before the next setup_logging() call) also inherit it.
+            if context_filter is not None and context_filter not in root.filters:
                 root.addFilter(context_filter)
+
+            warn_host_json_level_conflict(level, host_json_path=host_json_path)
+
         else:
-            # Standalone local development
+            # Standalone local development: full idempotency via logger name.
+            if logger_name in _configured_loggers:
+                return
+
+            # When the LogRecordFactory is active, attaching ContextFilter would
+            # overwrite factory-injected fields at handler dispatch time.
+            context_filter = None if use_record_factory else ContextFilter()
             target = logging.getLogger(logger_name)
             target.setLevel(level)
 
@@ -139,7 +168,4 @@ def setup_logging(
                 for handler in target.handlers:
                     handler.addFilter(context_filter)
 
-        if is_functions_env:
-            warn_host_json_level_conflict(level, host_json_path=host_json_path)
-
-        _configured_loggers.add(logger_name)
+            _configured_loggers.add(logger_name)

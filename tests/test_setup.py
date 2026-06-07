@@ -20,10 +20,12 @@ from azure_functions_logging._setup import (
 @pytest.fixture(autouse=True)
 def reset_setup_state() -> Iterator[None]:
     setup_mod._configured_loggers.clear()
+    setup_mod._azure_state.clear()
     saved_factory = logging.getLogRecordFactory()
     yield
     logging.setLogRecordFactory(saved_factory)
     setup_mod._configured_loggers.clear()
+    setup_mod._azure_state.clear()
 
 
 def test_setup_logging_local_dev_adds_handler_with_color_formatter() -> None:
@@ -343,5 +345,61 @@ def test_setup_logging_invalid_format_leaves_no_global_side_effects() -> None:
         with pytest.raises(ValueError, match="format must be"):
             setup_logging(format="bogus", use_record_factory=True)
 
+
     # Factory must not have been swapped despite use_record_factory=True
     assert logging.getLogRecordFactory() is baseline_factory
+
+
+def test_azure_setup_picks_up_handlers_added_after_first_call() -> None:
+    """Recovery: a handler added after setup_logging() must get the filter on the next call."""
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_filters = root.filters[:]
+
+    try:
+        env = {"FUNCTIONS_WORKER_RUNTIME": "python"}
+        with patch.dict(os.environ, env, clear=True):
+            # First call — root has no handlers yet
+            root.handlers.clear()
+            setup_logging()
+
+            # Simulate host attaching a handler after the first call
+            late_handler = logging.StreamHandler()
+            root.addHandler(late_handler)
+
+            # Second call — should pick up the late handler
+            setup_logging()
+
+        # The late handler must now carry the ContextFilter
+        filter_types = [type(f).__name__ for f in late_handler.filters]
+        assert "ContextFilter" in filter_types, (
+            f"Expected ContextFilter on late handler, got: {filter_types}"
+        )
+    finally:
+        root.handlers[:] = original_handlers
+        root.filters[:] = original_filters
+
+
+def test_azure_setup_does_not_duplicate_filter_on_repeated_calls() -> None:
+    """Calling setup_logging() multiple times must not add duplicate filters."""
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_filters = root.filters[:]
+
+    try:
+        handler = logging.StreamHandler()
+        root.addHandler(handler)
+
+        env = {"FUNCTIONS_WORKER_RUNTIME": "python"}
+        with patch.dict(os.environ, env, clear=True):
+            setup_logging()
+            setup_logging()
+            setup_logging()
+
+        context_filter_count = sum(
+            1 for f in handler.filters if type(f).__name__ == "ContextFilter"
+        )
+        assert context_filter_count == 1, (", ".join(type(f).__name__ for f in handler.filters))
+    finally:
+        root.handlers[:] = original_handlers
+        root.filters[:] = original_filters
