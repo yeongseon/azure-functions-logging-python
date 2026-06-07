@@ -68,6 +68,8 @@ Processing order
 Order: {'customer': 'Alice', 'total': 99.99}
 ```
 
+![Local terminal — without azure-functions-logging](docs/assets/demo-before.png)
+
 > No invocation ID. No log level. Hard to correlate in Application Insights.
 
 **With** `azure-functions-logging` — structured, queryable, production-ready:
@@ -103,6 +105,8 @@ Production output under `func start` / Azure (Application Insights NDJSON, appli
  "function_name": "process_order", "trace_id": null, "cold_start": true,
  "exception": null, "extra": {"order_id": "o-999"}}
 ```
+
+![Local terminal — with azure-functions-logging](docs/assets/demo-after.png)
 
 > Every log carries `invocation_id` and `cold_start`. Queryable in Application Insights. Zero `print()` statements.
 
