@@ -463,3 +463,113 @@ def test_discover_falls_through_when_env_root_resolve_raises_runtime_error(
     # Must not raise; must fall back to cwd walk and find tmp_path/host.json
     found = discover_host_json()
     assert found == (tmp_path / "host.json").resolve()
+
+
+# ---------------------------------------------------------------------------
+# AzureFunctionsJobHost app setting logLevel overrides (issue #171)
+# ---------------------------------------------------------------------------
+
+
+def test_warns_when_app_setting_override_sets_default_more_restrictive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "Warning",
+    )
+
+    with pytest.warns(UserWarning, match="more restrictive") as warning_list:
+        warn_host_json_level_conflict(logging.INFO)
+
+    message = str(warning_list[0].message)
+    assert "AzureFunctionsJobHost app setting" in message
+    assert "default" in message
+    assert "'Warning'" in message
+    assert "'INFO'" in message
+
+
+def test_warns_when_app_setting_override_sets_function_category(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__Function__MyFunction",
+        "Error",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    messages = [str(w.message) for w in warning_list]
+    assert any("Function.MyFunction" in message and "'Error'" in message for message in messages)
+
+
+def test_app_setting_override_ignores_host_internal_categories_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__Host__Results",
+        "Error",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    assert len(warning_list) == 0
+
+
+def test_app_setting_override_warns_for_host_internal_categories_in_strict_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__Host__Results",
+        "Error",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO, strict=True)
+
+    messages = [str(w.message) for w in warning_list]
+    assert any("Host.Results" in message for message in messages)
+
+
+def test_app_setting_override_ignores_unrecognized_level(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "SuperVerbose",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    assert len(warning_list) == 0
+
+
+def test_app_setting_override_is_checked_even_when_host_json_is_malformed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "host.json").write_text("not valid json", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "Warning",
+    )
+
+    with pytest.warns(UserWarning, match="AzureFunctionsJobHost app setting"):
+        warn_host_json_level_conflict(logging.INFO)

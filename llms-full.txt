@@ -51,6 +51,8 @@ def setup_logging(
         host_json_path: Explicit path to host.json. When None, discovery order is:
                         1) AzureWebJobsScriptRoot env var (directory itself, no walk),
                         2) cwd walk up to 5 parent levels.
+                        Warnings also consider AzureFunctionsJobHost__logging__logLevel__...
+                        app setting overrides.
 
     Raises:
         ValueError: If format not in {"color", "json"}.
@@ -161,6 +163,8 @@ class SamplingFilter(logging.Filter):
         rate: Max records per window (must be >= 1, default: 100).
         window: Rolling time window in seconds (default: 1.0).
         name: Logger name filter. Empty string = all (default).
+        per_logger: False = one shared bucket per filter instance;
+                    True = independent buckets per record.name.
     
     Raises:
         ValueError: If rate < 1 or window <= 0.
@@ -171,6 +175,8 @@ class SamplingFilter(logging.Filter):
         rate: int = 100,
         window: float = 1.0,
         name: str = "",
+        *,
+        per_logger: bool = False,
     ) -> None:
         ...
     

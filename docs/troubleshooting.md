@@ -78,6 +78,8 @@ The library detected host policy that can suppress lower log levels than your co
 ### Action
 
 - Review `host.json` log level defaults.
+- Review `AzureFunctionsJobHost__logging__logLevel__...` app settings that
+  override `host.json` in Azure.
 - Align defaults with operational visibility needs.
 - Keep stricter per-category levels only where justified.
 

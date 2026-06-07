@@ -186,6 +186,8 @@ Why this matters:
 
 - You may set `level=logging.INFO` in code.
 - Host config can still suppress `INFO` lines.
+- App settings such as `AzureFunctionsJobHost__logging__logLevel__default`
+  can override the deployed `host.json` file.
 - Without a warning, this looks like missing logs.
 
 Recommended `host.json` baseline:
@@ -199,6 +201,12 @@ Recommended `host.json` baseline:
   }
 }
 ```
+
+The warning checks both file-based `host.json` and Azure Functions app setting
+overrides using the `AzureFunctionsJobHost__logging__logLevel__...` naming
+convention. Function-specific overrides such as
+`AzureFunctionsJobHost__logging__logLevel__Function__MyFunction=Warning` are
+reported as category `Function.MyFunction`.
 
 ## Color vs JSON Format Selection
 

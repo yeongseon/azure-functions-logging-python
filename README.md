@@ -438,6 +438,10 @@ set by the Azure Functions host; only the directory itself is probed (no ancesto
 The first existing file wins. To bypass auto-discovery (e.g. in tests or
 non-standard layouts), pass an explicit path:
 
+The warning also considers Azure Functions app setting overrides that use the
+`AzureFunctionsJobHost__logging__logLevel__...` convention, for example
+`AzureFunctionsJobHost__logging__logLevel__Function__MyFunction=Warning`.
+
 ```python
 from pathlib import Path
 from azure_functions_logging import setup_logging
@@ -455,11 +459,11 @@ import logging
 
 setup_logging()
 
-# Sample noisy azure.* loggers: keep up to 10 records per 1-second window.
+# Sample noisy azure.* loggers: keep up to 10 records per logger per 1-second window.
 # Filters attached to a logger don't run for records propagated from
 # descendants, so attach to the root handlers and scope by logger name.
 for handler in logging.getLogger().handlers:
-    handler.addFilter(SamplingFilter(rate=10, name="azure"))
+    handler.addFilter(SamplingFilter(rate=10, name="azure", per_logger=True))
 
 # Silence urllib3 completely in production
 logging.getLogger("urllib3").setLevel(logging.WARNING)
