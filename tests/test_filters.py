@@ -69,6 +69,59 @@ def test_sampling_filter_invalid_window_raises() -> None:
         SamplingFilter(rate=1, window=0.0)
 
 
+def test_sampling_filter_default_shared_bucket_across_logger_names() -> None:
+    flt = SamplingFilter(rate=1, window=10.0)
+    first = _make_record(msg="first")
+    second = _make_record(msg="second")
+    first.name = "app.alpha"
+    second.name = "app.beta"
+
+    assert flt.filter(first) is True
+    assert flt.filter(second) is False
+
+
+def test_sampling_filter_per_logger_tracks_counts_independently() -> None:
+    flt = SamplingFilter(rate=1, window=10.0, name="app", per_logger=True)
+    alpha_1 = _make_record(msg="alpha-1")
+    alpha_2 = _make_record(msg="alpha-2")
+    beta_1 = _make_record(msg="beta-1")
+    alpha_1.name = "app.alpha"
+    alpha_2.name = "app.alpha"
+    beta_1.name = "app.beta"
+
+    assert flt.filter(alpha_1) is True
+    assert flt.filter(alpha_2) is False
+    assert flt.filter(beta_1) is True
+
+
+def test_sampling_filter_per_logger_resets_each_logger_after_window() -> None:
+    flt = SamplingFilter(rate=1, window=0.05, name="app", per_logger=True)
+    alpha = _make_record(msg="alpha")
+    beta = _make_record(msg="beta")
+    alpha.name = "app.alpha"
+    beta.name = "app.beta"
+
+    assert flt.filter(alpha) is True
+    assert flt.filter(alpha) is False
+    assert flt.filter(beta) is True
+    assert flt.filter(beta) is False
+    time.sleep(0.06)
+    assert flt.filter(alpha) is True
+    assert flt.filter(beta) is True
+
+
+def test_sampling_filter_per_logger_always_passes_warning_and_above() -> None:
+    flt = SamplingFilter(rate=1, window=10.0, name="app", per_logger=True)
+    info = _make_record(logging.INFO)
+    warning = _make_record(logging.WARNING)
+    info.name = "app.alpha"
+    warning.name = "app.alpha"
+
+    assert flt.filter(info) is True
+    assert flt.filter(info) is False
+    assert flt.filter(warning) is True
+
+
 # ---------------------------------------------------------------------------
 # RedactionFilter tests
 # ---------------------------------------------------------------------------
@@ -284,8 +337,13 @@ class TestRedactionFilterHardening:
     def test_cyclic_dict_does_not_raise(self) -> None:
         flt = RedactionFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="msg", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="msg",
+            args=(),
+            exc_info=None,
         )
         cyclic: dict[str, object] = {"a": 1}
         cyclic["self"] = cyclic  # self-reference
@@ -298,8 +356,13 @@ class TestRedactionFilterHardening:
 
         flt = RedactionFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="msg", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="msg",
+            args=(),
+            exc_info=None,
         )
         # Build a dict nested deeper than the limit
         deep: dict[str, object] = {}
@@ -314,8 +377,13 @@ class TestRedactionFilterHardening:
     def test_cyclic_list_does_not_raise(self) -> None:
         flt = RedactionFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="msg", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="msg",
+            args=(),
+            exc_info=None,
         )
         cyclic_list: list[object] = [1, 2]
         cyclic_list.append(cyclic_list)  # self-reference
@@ -332,8 +400,13 @@ class TestRedactionFilterHardening:
 
         flt = RedactionFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="msg", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="msg",
+            args=(),
+            exc_info=None,
         )
         record.__dict__["broken"] = ExplodingDict({"password": "secret"})
         assert flt.filter(record) is True  # catch-all must swallow the error
@@ -407,8 +480,13 @@ def test_redaction_filter_field_setattr_error_does_not_stop_subsequent_field_red
 
     flt = RedactionFilter()
     record = _RecordWithReadOnlyToken(
-        name="test", level=logging.INFO, pathname="", lineno=0,
-        msg="msg", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="msg",
+        args=(),
+        exc_info=None,
     )
     # Bypass the descriptor to seed 'token' into __dict__ so the filter iterates it
     record.__dict__["token"] = "secret_token_value"
@@ -463,13 +541,17 @@ def test_redaction_filter_masks_new_keys_inside_nested_dict() -> None:
     """New default keys must be redacted inside nested dicts, not just at top level."""
     flt = RedactionFilter()
     record = _make_record()
-    setattr(record, "credentials", {
-        "access_token": "tok-1",
-        "refresh_token": "rt-1",
-        "client_secret": "cs-1",
-        "connection_string": "conn-1",
-        "safe_field": "visible",
-    })
+    setattr(
+        record,
+        "credentials",
+        {
+            "access_token": "tok-1",
+            "refresh_token": "rt-1",
+            "client_secret": "cs-1",
+            "connection_string": "conn-1",
+            "safe_field": "visible",
+        },
+    )
     flt.filter(record)
     assert getattr(record, "credentials") == {
         "access_token": "***",
@@ -484,11 +566,15 @@ def test_redaction_filter_masks_new_keys_inside_list_of_dicts() -> None:
     """New default keys must be redacted inside lists of dicts."""
     flt = RedactionFilter()
     record = _make_record()
-    setattr(record, "items", [
-        {"access_token": "tok-a", "user": "alice"},
-        {"refresh_token": "rt-b", "client_secret": "cs-b"},
-        {"connection_string": "conn-c", "safe": "ok"},
-    ])
+    setattr(
+        record,
+        "items",
+        [
+            {"access_token": "tok-a", "user": "alice"},
+            {"refresh_token": "rt-b", "client_secret": "cs-b"},
+            {"connection_string": "conn-c", "safe": "ok"},
+        ],
+    )
     flt.filter(record)
     assert getattr(record, "items") == [
         {"access_token": "***", "user": "alice"},
@@ -613,27 +699,40 @@ def test_redaction_filter_azure_keys_in_nested_dict() -> None:
     """All 12 new Azure keys must be redacted inside nested dicts."""
     flt = RedactionFilter()
     record = _make_record()
-    setattr(record, "azure_ctx", {
-        "pwd": "p",
-        "id_token": "t",
-        "auth": "a",
-        "secret_key": "sk",
-        "subscription_key": "subk",
-        "conn_str": "cs",
-        "sas_token": "sas",
-        "x_functions_key": "xfk",
-        "function_key": "fk",
-        "master_key": "mk",
-        "private_key": "pk",
-        "credential": "cred",
-        "safe_field": "visible",
-    })
+    setattr(
+        record,
+        "azure_ctx",
+        {
+            "pwd": "p",
+            "id_token": "t",
+            "auth": "a",
+            "secret_key": "sk",
+            "subscription_key": "subk",
+            "conn_str": "cs",
+            "sas_token": "sas",
+            "x_functions_key": "xfk",
+            "function_key": "fk",
+            "master_key": "mk",
+            "private_key": "pk",
+            "credential": "cred",
+            "safe_field": "visible",
+        },
+    )
     flt.filter(record)
     result = getattr(record, "azure_ctx")
     for key in (
-        "pwd", "id_token", "auth", "secret_key", "subscription_key",
-        "conn_str", "sas_token", "x_functions_key", "function_key",
-        "master_key", "private_key", "credential",
+        "pwd",
+        "id_token",
+        "auth",
+        "secret_key",
+        "subscription_key",
+        "conn_str",
+        "sas_token",
+        "x_functions_key",
+        "function_key",
+        "master_key",
+        "private_key",
+        "credential",
     ):
         assert result[key] == "***", f"{key!r} was not redacted"
     assert result["safe_field"] == "visible"

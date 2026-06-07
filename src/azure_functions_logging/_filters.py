@@ -79,9 +79,7 @@ def _redact_value(
                 key: (
                     mask
                     if isinstance(key, str) and key.lower() in sensitive_keys
-                    else _redact_value(
-                        item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1
-                    )
+                    else _redact_value(item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1)
                 )
                 for key, item in value.items()
             }
@@ -100,8 +98,6 @@ def _redact_value(
         return value
 
 
-
-
 class SamplingFilter(logging.Filter):
     """Rate-limit a logger to emit at most ``rate`` records per ``window`` seconds.
 
@@ -117,6 +113,9 @@ class SamplingFilter(logging.Filter):
         name: Optional logger-name scope. When set, only matching loggers are
             subject to sampling; non-matching records pass through unchanged.
             Empty string matches all loggers (default).
+        per_logger: When False (default), all matching records share one rate
+            bucket per filter instance. When True, each ``record.name`` has an
+            independent bucket/window.
 
     Example::
 
@@ -124,7 +123,14 @@ class SamplingFilter(logging.Filter):
         handler.addFilter(filter)
     """
 
-    def __init__(self, rate: int = 100, window: float = 1.0, name: str = "") -> None:
+    def __init__(
+        self,
+        rate: int = 100,
+        window: float = 1.0,
+        name: str = "",
+        *,
+        per_logger: bool = False,
+    ) -> None:
         super().__init__(name)
         if rate < 1:
             msg = "rate must be >= 1"
@@ -132,11 +138,14 @@ class SamplingFilter(logging.Filter):
         if window <= 0:
             msg = "window must be > 0"
             raise ValueError(msg)
-        self._rate = rate
-        self._window = window
-        self._lock = threading.Lock()
+        self._rate: int = rate
+        self._window: float = window
+        self._lock: threading.Lock = threading.Lock()
+        self._per_logger: bool = per_logger
         self._count: int = 0
         self._window_start: float = time.monotonic()
+        self._counts: dict[str, int] = {}
+        self._window_starts: dict[str, float] = {}
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True to emit the record, False to drop it."""
@@ -150,6 +159,15 @@ class SamplingFilter(logging.Filter):
 
         now = time.monotonic()
         with self._lock:
+            if self._per_logger:
+                window_start = self._window_starts.get(record.name)
+                if window_start is None or now - window_start >= self._window:
+                    self._window_starts[record.name] = now
+                    self._counts[record.name] = 1
+                    return True
+                self._counts[record.name] = self._counts.get(record.name, 0) + 1
+                return self._counts[record.name] <= self._rate
+
             if now - self._window_start >= self._window:
                 self._count = 0
                 self._window_start = now
