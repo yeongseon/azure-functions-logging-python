@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 import warnings
 
@@ -33,16 +34,35 @@ def discover_host_json(start: Path | None = None) -> Path | None:
 
     Discovery order:
 
-    1. ``start`` (defaults to :func:`Path.cwd`).
-    2. Each ancestor up to :data:`_HOST_JSON_DISCOVERY_MAX_DEPTH` levels.
-
+    1. ``start`` (when supplied). If ``start.resolve()`` fails, returns ``None``
+       immediately; env var and cwd fallback are not attempted.
+    2. ``AzureWebJobsScriptRoot`` environment variable (only when ``start`` is
+       ``None``). Only the directory itself is probed — no ancestor walk. Relative
+       values are resolved against cwd (Azure always sets an absolute path).
+    3. :func:`Path.cwd` and each ancestor up to
+       :data:`_HOST_JSON_DISCOVERY_MAX_DEPTH` levels (fallback when neither
+       ``start`` nor the env var resolves to a file).
     Returns the first existing ``host.json`` path or ``None``. Never raises:
     filesystem errors are swallowed so callers stay silent on broken setups.
     """
     try:
-        base = (start or Path.cwd()).resolve()
+        base = start.resolve() if start is not None else None
     except Exception:
         return None
+
+    if base is None:
+        env_root = os.environ.get("AzureWebJobsScriptRoot")
+        if env_root:
+            try:
+                env_candidate = Path(env_root).resolve() / "host.json"
+                if env_candidate.is_file():
+                    return env_candidate
+            except (OSError, RuntimeError):
+                pass  # invalid path — fall through to cwd walk
+        try:
+            base = Path.cwd().resolve()
+        except Exception:
+            return None
 
     candidates = [base, *list(base.parents)[:_HOST_JSON_DISCOVERY_MAX_DEPTH]]
     for directory in candidates:
