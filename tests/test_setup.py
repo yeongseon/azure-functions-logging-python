@@ -443,3 +443,129 @@ def test_azure_setup_different_use_record_factory_flags_have_isolated_filter_sta
     finally:
         root.handlers[:] = original_handlers
         root.filters[:] = original_filters
+
+
+# ---------------------------------------------------------------------------
+# PR 1 regression tests: remove ContextFilter when enabling record factory
+# ---------------------------------------------------------------------------
+
+
+def test_upgrade_to_record_factory_removes_existing_context_filter_local() -> None:
+    """Regression: switching same logger from filter-mode to factory-mode removes stale filter.
+
+    Scenario:
+    1. setup_logging() installs ContextFilter on handler.
+    2. setup_logging(use_record_factory=True) must strip that filter.
+    3. Record created under context A, contextvar reset to B, handler filters run.
+    4. Record must still carry context A (factory snapshot, not overwritten).
+    """
+    from azure_functions_logging._context import invocation_id_var
+
+    logger_name = "afl.test.upgrade.local"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        # Step 1: install ContextFilter mode
+        setup_logging(logger_name=logger_name)
+        assert any(isinstance(f, ContextFilter) for h in logger.handlers for f in h.filters), \
+            "precondition: ContextFilter should be on handler"
+
+        # Step 2: upgrade to factory mode — must remove the filter
+        setup_mod._configured_loggers.discard(logger_name)  # allow re-entry
+        setup_logging(logger_name=logger_name, use_record_factory=True)
+
+    # Assert filter is gone
+    for handler in logger.handlers:
+        assert not any(isinstance(f, ContextFilter) for f in handler.filters), \
+            "ContextFilter must be removed after switching to use_record_factory=True"
+
+    # Step 3: create record under context A
+    token = invocation_id_var.set("context-A")
+    try:
+        record = logger.makeRecord(logger_name, logging.INFO, "f.py", 1, "msg", (), None)
+    finally:
+        invocation_id_var.reset(token)
+
+    # Step 4: reset contextvar to a different value
+    invocation_id_var.set("context-B")
+
+    # Run handler filters (there should be none — assert snapshot is preserved)
+    for handler in logger.handlers:
+        for f in handler.filters:
+            if hasattr(f, "filter"):
+                f.filter(record)
+
+    # Factory snapshot must survive
+    assert getattr(record, "invocation_id", None) == "context-A", \
+        f"Factory snapshot overwritten — got {getattr(record, 'invocation_id', None)!r}"
+
+    logger.handlers.clear()
+    logger.filters.clear()
+    invocation_id_var.set(None)
+
+
+def test_upgrade_to_record_factory_removes_context_filter_before_idempotency_guard() -> None:
+    """Regression: cleanup must run even when logger_name is already in _configured_loggers.
+
+    The early-return guard must NOT block filter removal.
+    """
+    logger_name = "afl.test.upgrade.idempotency"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+
+    handler = logging.StreamHandler()
+    cf = ContextFilter()
+    handler.addFilter(cf)
+    logger.addHandler(handler)
+
+    # Simulate: logger was already configured in filter-mode
+    setup_mod._configured_loggers.add(logger_name)
+
+    with patch.dict(os.environ, {}, clear=True):
+        # Even though logger_name is in _configured_loggers, cleanup must run
+        setup_logging(logger_name=logger_name, use_record_factory=True)
+
+    assert not any(isinstance(f, ContextFilter) for f in handler.filters), \
+        "ContextFilter must be removed even when re-entering via idempotency guard"
+
+    logger.handlers.clear()
+    logger.filters.clear()
+
+
+def test_upgrade_to_record_factory_removes_context_filter_azure_mode() -> None:
+    """Regression: Azure mode — root handlers must have no ContextFilter after factory upgrade.
+
+    When setup_logging(use_record_factory=False) is called first (adds ContextFilter),
+    then setup_logging(use_record_factory=True) is called, the stale filter must be
+    removed from all root handlers and root.filters.
+    """
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_filters = root.filters[:]
+
+    try:
+        env = {"FUNCTIONS_WORKER_RUNTIME": "python"}
+        test_handler = logging.StreamHandler()
+        root.handlers[:] = [test_handler]
+        root.filters.clear()
+
+        with patch.dict(os.environ, env, clear=True):
+            # First call — installs ContextFilter
+            setup_logging(use_record_factory=False)
+            assert any(isinstance(f, ContextFilter) for f in test_handler.filters), \
+                "precondition: ContextFilter must be on handler after filter-mode call"
+
+            # Second call — must remove ContextFilter
+            setup_logging(use_record_factory=True)
+
+        # After factory upgrade: no ContextFilter on handler or root logger
+        assert not any(isinstance(f, ContextFilter) for f in test_handler.filters), \
+            "ContextFilter must be removed from root handler after use_record_factory=True"
+        assert not any(isinstance(f, ContextFilter) for f in root.filters), \
+            "ContextFilter must be removed from root.filters after use_record_factory=True"
+    finally:
+        root.handlers[:] = original_handlers
+        root.filters[:] = original_filters

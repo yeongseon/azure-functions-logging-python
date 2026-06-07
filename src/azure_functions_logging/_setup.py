@@ -28,6 +28,21 @@ _AzureStateKey = tuple[str | None, bool]
 _AzureStateValue = tuple[ContextFilter | None, "weakref.WeakSet[logging.Handler]"]
 _azure_state: dict[_AzureStateKey, _AzureStateValue] = {}
 
+
+def _remove_context_filters(logger: logging.Logger) -> None:
+    """Remove all package-owned ContextFilter instances from *logger* and its handlers.
+
+    Uses ``type(f) is ContextFilter`` so user subclasses with additional behaviour
+    are preserved.
+    """
+    for f in tuple(logger.filters):
+        if type(f) is ContextFilter:
+            logger.removeFilter(f)
+    for handler in logger.handlers:
+        for f in tuple(handler.filters):
+            if type(f) is ContextFilter:
+                handler.removeFilter(f)
+
 def _is_functions_environment() -> bool:
     """Check if running inside Azure Functions (hosted or Core Tools)."""
     return bool(os.environ.get("FUNCTIONS_WORKER_RUNTIME"))
@@ -106,6 +121,18 @@ def setup_logging(
         install_context_factory()
 
     with _configured_lock:
+        # When switching to record-factory mode, strip any previously-installed
+        # ContextFilter from the target logger and root logger.  Must run BEFORE
+        # the idempotency guards (so re-entry for the same logger_name still
+        # removes stale filters), and UNDER _configured_lock (so concurrent
+        # setup_logging() calls cannot race on the filter lists).
+        if use_record_factory:
+            _target = logging.getLogger(logger_name)
+            _root = logging.getLogger()
+            _remove_context_filters(_target)
+            if _root is not _target:
+                _remove_context_filters(_root)
+
         is_functions_env = _is_functions_environment()
 
         if is_functions_env:
