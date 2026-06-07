@@ -373,3 +373,50 @@ class TestRedactionFilterNameScoping:
         setattr(record, "password", "secret123")
         assert flt.filter(record) is True
         assert getattr(record, "password") == "***"
+
+
+def test_redact_value_at_depth_limit_is_masked_not_returned() -> None:
+    """At _REDACT_MAX_DEPTH the function must return the mask string (fail-closed)
+    rather than the original value, so sensitive data buried below the depth
+    limit cannot leak through unredacted."""
+    from azure_functions_logging._filters import _REDACT_MAX_DEPTH, _redact_value
+
+    sensitive: frozenset[str] = frozenset({"password"})
+    payload = {"safe_key": "safe_value"}  # non-sensitive; would pass through without limit
+    result = _redact_value(payload, sensitive, _depth=_REDACT_MAX_DEPTH)
+    assert result == "***", f"Expected mask at depth limit but got: {result!r}"
+
+
+def test_redaction_filter_field_setattr_error_does_not_stop_subsequent_field_redaction() -> None:
+    """If setattr() raises for one field (e.g. a read-only class descriptor), the
+    per-field try/except must catch the error so subsequent sensitive fields are still
+    redacted on the same record."""
+
+    class _RecordWithReadOnlyToken(logging.LogRecord):
+        """LogRecord subclass where setting 'token' raises AttributeError."""
+
+    class _ReadOnlyDescriptor:
+        def __get__(self, obj: object, objtype: object = None) -> str:
+            return "secret_token_value"
+
+        def __set__(self, obj: object, value: object) -> None:
+            msg = "token is read-only on this record subclass"
+            raise AttributeError(msg)
+
+    _RecordWithReadOnlyToken.token = _ReadOnlyDescriptor()  # type: ignore[attr-defined]
+
+    flt = RedactionFilter()
+    record = _RecordWithReadOnlyToken(
+        name="test", level=logging.INFO, pathname="", lineno=0,
+        msg="msg", args=(), exc_info=None,
+    )
+    # Bypass the descriptor to seed 'token' into __dict__ so the filter iterates it
+    record.__dict__["token"] = "secret_token_value"
+    # Place 'password' AFTER 'token' so it only gets redacted if the loop continues
+    record.__dict__["password"] = "should_be_redacted"
+
+    assert flt.filter(record) is True
+    assert record.__dict__.get("password") == "***", (
+        f"Expected password to be redacted after broken token field; "
+        f"got: {record.__dict__.get('password')!r}"
+    )

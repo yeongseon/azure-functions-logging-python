@@ -403,3 +403,43 @@ def test_azure_setup_does_not_duplicate_filter_on_repeated_calls() -> None:
     finally:
         root.handlers[:] = original_handlers
         root.filters[:] = original_filters
+
+
+def test_azure_setup_different_use_record_factory_flags_have_isolated_filter_state() -> None:
+    """setup_logging(use_record_factory=True) must use separate state from
+    setup_logging(use_record_factory=False) so the factory-snapshot guarantee
+    is not undermined by reusing a ContextFilter created for a different mode."""
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_filters = root.filters[:]
+
+    try:
+        handler_no_factory = logging.StreamHandler()
+        handler_with_factory = logging.StreamHandler()
+
+        env = {"FUNCTIONS_WORKER_RUNTIME": "python"}
+        with patch.dict(os.environ, env, clear=True):
+            # Call with use_record_factory=False — should install ContextFilter
+            root.handlers[:] = [handler_no_factory]
+            setup_logging(use_record_factory=False)
+
+            # Call with use_record_factory=True — must NOT install ContextFilter
+            root.handlers[:] = [handler_with_factory]
+            setup_logging(use_record_factory=True)
+
+        filter_no_factory = next(
+            (f for f in handler_no_factory.filters if type(f).__name__ == "ContextFilter"), None
+        )
+        filter_with_factory = next(
+            (f for f in handler_with_factory.filters if type(f).__name__ == "ContextFilter"), None
+        )
+
+        assert filter_no_factory is not None, \
+            "use_record_factory=False should install a ContextFilter on the handler"
+        assert filter_with_factory is None, \
+            "use_record_factory=True must not install a ContextFilter (factory provides context)"
+        # The filter installed by the first call must not bleed onto the second handler
+        assert filter_no_factory not in handler_with_factory.filters
+    finally:
+        root.handlers[:] = original_handlers
+        root.filters[:] = original_filters

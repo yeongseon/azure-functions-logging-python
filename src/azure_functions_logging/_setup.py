@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import threading
 import warnings
+import weakref
 
 from ._context import ContextFilter, install_context_factory
 from ._formatter import ColorFormatter
@@ -17,12 +18,15 @@ from ._json_formatter import JsonFormatter
 _configured_loggers: set[str | None] = set()
 _configured_lock = threading.Lock()
 
-# Azure mode: track which handler ids have been configured and whether the
-# root-level ContextFilter has been installed for a given call signature.
-# Maps logger_name -> (ContextFilter | None, set[handler_id])
-# The ContextFilter is reused across calls to preserve identity and avoid
-# adding duplicate filter objects to root.filters.
-_azure_state: dict[str | None, tuple[ContextFilter | None, set[int]]] = {}
+# Azure mode: track which handlers have been configured for a given call
+# signature. Keyed by (logger_name, use_record_factory) so that a later call
+# with different factory semantics gets its own ContextFilter instance.
+# WeakSet is used for handlers so stale references are cleaned up automatically
+# when the host replaces a handler — preventing both false 'already configured'
+# hits from id reuse and unbounded set growth in long-lived workers.
+_AzureStateKey = tuple[str | None, bool]
+_AzureStateValue = tuple[ContextFilter | None, "weakref.WeakSet[logging.Handler]"]
+_azure_state: dict[_AzureStateKey, _AzureStateValue] = {}
 
 def _is_functions_environment() -> bool:
     """Check if running inside Azure Functions (hosted or Core Tools)."""
@@ -120,24 +124,22 @@ def setup_logging(
                 )
 
             # Retrieve or create the per-call-signature state.
-            if logger_name not in _azure_state:
+            _state_key: _AzureStateKey = (logger_name, use_record_factory)
+            if _state_key not in _azure_state:
                 ctx_filter: ContextFilter | None = (
                     None if use_record_factory else ContextFilter()
                 )
-                _azure_state[logger_name] = (ctx_filter, set())
-            context_filter, configured_handler_ids = _azure_state[logger_name]
-
+                _azure_state[_state_key] = (ctx_filter, weakref.WeakSet())
+            context_filter, configured_handlers = _azure_state[_state_key]
             root = logging.getLogger()
             for handler in root.handlers:
-                h_id = id(handler)
-                if h_id in configured_handler_ids:
+                if handler in configured_handlers:
                     continue  # already configured — skip to avoid duplicates
                 if functions_formatter is not None:
                     handler.setFormatter(functions_formatter)
                 if context_filter is not None:
                     handler.addFilter(context_filter)
-                configured_handler_ids.add(h_id)
-
+                configured_handlers.add(handler)
             # Install filter on root logger itself so handlers attached later
             # (before the next setup_logging() call) also inherit it.
             if context_filter is not None and context_filter not in root.filters:
