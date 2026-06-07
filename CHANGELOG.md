@@ -1,6 +1,23 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.6] - 2026-06-07
+
+### Bug Fixes
+
+- Post-v0.7.5 Oracle review — factory isolation, azure state key, handler WeakSet, redaction fail-closed (#156) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump ruff from 0.15.12 to 0.15.16 (#149) 
+- *(deps)* Bump github/codeql-action from 4.35.4 to 4.36.2 (#148) 
+- *(deps)* Bump codecov/codecov-action from 6.0.0 to 6.0.1 (#145) 
+- *(deps)* Bump actions/stale from 10.2.0 to 10.3.0 (#143) 
+- *(deps)* Bump mypy from 2.0.0 to 2.1.0 (#141) 
+
+### Other
+
+- Bump version to 0.7.6 
 ## [0.7.5] - 2026-06-07
 
 ### Bug Fixes
@@ -9,6 +26,10 @@ All notable changes to this project will be documented in this file.
 - *(host_config)* Narrow host.json conflict warnings to user-relevant categories (#153) 
 - *(filters)* Harden RedactionFilter with cycle guard and depth limit (#152) 
 - *(context)* Make cold-start detection thread-safe (#151) 
+
+### Documentation
+
+- Update changelog 
 
 ### Other
 
