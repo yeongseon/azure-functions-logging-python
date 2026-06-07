@@ -164,6 +164,31 @@ logger = get_logger("manual")
 logger.info("manual formatter configured")
 ```
 
+## SamplingFilter
+
+::: azure_functions_logging.SamplingFilter
+
+### Usage Notes
+
+- `WARNING` and above always pass.
+- `name=` scopes sampling to matching logger names; non-matching records bypass sampling.
+- `per_logger=False` shares one bucket across all matching records on the filter instance.
+- `per_logger=True` gives each `record.name` an independent bucket/window.
+
+### Example: Per-Logger Buckets for Azure SDK Logs
+
+```python
+import logging
+from azure_functions_logging import SamplingFilter
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SamplingFilter(rate=10, window=1.0, name="azure", per_logger=True))
+```
+
+## RedactionFilter
+
+::: azure_functions_logging.RedactionFilter
+
 ## inject_context
 
 ::: azure_functions_logging.inject_context

@@ -30,7 +30,7 @@ Key features:
 - `FunctionLogger` — Enhanced logger wrapper with `bind()`, `log()`, `hasHandlers()`, `setLevel()`, `isEnabledFor()`, `getEffectiveLevel()` for stdlib parity
 - `JsonFormatter(*, max_string_length=2048, truncate_native_strings=False)` — JSON log formatter (NDJSON). Set `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` chars.
 - `RedactionFilter` — Filter to redact sensitive fields (password, token, api_key, etc.)
-- `SamplingFilter` — Filter for log sampling/rate-limiting noisy loggers
+- `SamplingFilter(rate=100, window=1.0, name="", per_logger=False)` — Filter for log sampling/rate-limiting noisy loggers. Set `per_logger=True` for independent buckets per logger name.
 - `logging_context(context)` — **Recommended** context manager: injects on enter, always restores on exit
 - `inject_context(context)` → `ContextTokens` — Set contextvars; returns tokens for paired restore
 - `restore_context(tokens)` — Restore previous contextvars from tokens (paired with `inject_context`)
