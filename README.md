@@ -108,6 +108,18 @@ Production output under `func start` / Azure (Application Insights NDJSON, appli
 
 > **Note:** The exact Application Insights schema depends on your ingestion pipeline. In some deployments JSON fields are parsed into `customDimensions`; in others the JSON stays inside the `message` column. Examples for both shapes are below.
 
+### Application Insights — Before / After
+
+The following screenshots are from a real deployed Azure Functions app queried in Application Insights Logs.
+
+**Before** — plain `logging.info()`, no `azure-functions-logging` (all context fields are `null`):
+
+![App Insights Logs — before](docs/assets/portal-before.png)
+
+**After** — `azure-functions-logging` with `inject_context(context)` (`invocation_id`, `function_name`, `cold_start` populated):
+
+![App Insights Logs — after](docs/assets/portal-after.png)
+
 ### Query in Application Insights
 
 #### When JSON fields are parsed into `customDimensions`

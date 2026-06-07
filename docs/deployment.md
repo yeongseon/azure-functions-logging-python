@@ -317,6 +317,25 @@ requests
 | order by timestamp desc
 ```
 
+### Application Insights — Before / After
+
+The screenshots below show actual query results from a deployed function app running both
+plain `logging.info()` and `azure-functions-logging` side by side.
+
+**Before** (`log_before` — plain `logging.info()`):
+Context fields are absent from every record.
+`invocation_id`, `function_name`, and `cold_start` are `null`.
+The message embeds `correlation_id` as a raw string, making it unqueryable.
+
+![App Insights Logs — before azure-functions-logging](../docs/assets/portal-before.png)
+
+**After** (`log_after` — `azure-functions-logging` with `inject_context(context)`):
+Every record carries `invocation_id`, `function_name`, and `cold_start` from `inject_context()`.
+`correlation_id` is a structured key in `extra`, enabling KQL filters like
+`| where parse_json(message).extra.correlation_id == "demo-123"`.
+
+![App Insights Logs — after azure-functions-logging](../docs/assets/portal-after.png)
+
 ## If you need a different plan
 
 This guide uses Flex Consumption. If you need Premium or Dedicated, keep all logging steps the same and only replace Function App provisioning.
