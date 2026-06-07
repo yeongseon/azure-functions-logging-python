@@ -169,7 +169,8 @@ def test_warns_per_category_when_specific_category_is_more_restrictive(
 
     messages = [str(w.message) for w in warning_list]
     assert any("Function.MyFunction" in m and "'Warning'" in m for m in messages)
-    assert any("Host.Results" in m and "'Error'" in m for m in messages)
+    # Host.Results is a host-internal category and should NOT warn by default
+    assert not any("Host.Results" in m for m in messages)
     assert not any("default" in m for m in messages)
 
 
@@ -313,6 +314,48 @@ def test_warn_walks_parents_to_find_host_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Auto-discovery must reach host.json even when cwd is a subdirectory."""
+    nested = tmp_path / "src" / "functions"
+    nested.mkdir(parents=True)
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"default": "Warning"}}},
+    )
+    monkeypatch.chdir(nested)
+    with pytest.warns(UserWarning, match="more restrictive"):
+        warn_host_json_level_conflict(logging.INFO)
+
+
+def test_host_internal_category_not_warned_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host-internal categories (Host.*) must not warn in default mode."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"Host.Results": "Error", "Host.Aggregator": "Error"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+    assert warning_list == [], "Expected no warnings for host-internal categories"
+
+
+def test_host_internal_category_warned_in_strict_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """strict=True must include host-internal categories."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"Host.Results": "Error"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO, strict=True)
+    messages = [str(w.message) for w in warning_list]
+    assert any("Host.Results" in m for m in messages)
     nested = tmp_path / "src" / "functions"
     nested.mkdir(parents=True)
     _write_host_json(
