@@ -400,3 +400,87 @@ def test_format_does_not_misclassify_dag_as_cycle() -> None:
         "a": {"name": "shared"},
         "b": {"name": "shared"},
     }
+
+
+# ---------------------------------------------------------------------------
+# JsonFormatter — native string truncation (issue #165)
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_native_strings_disabled_by_default() -> None:
+    """Default formatter leaves long native strings intact."""
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "msg")
+    record.long_field = "x" * 5000
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["long_field"] == "x" * 5000
+
+
+def test_truncate_native_strings_enabled() -> None:
+    """truncate_native_strings=True clips strings at max_string_length."""
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=10)
+    record = _make_record(logging.INFO, "msg")
+    record.long_field = "abcdefghij" + "extra"
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["long_field"] == "abcdefghij…"
+
+
+def test_truncate_native_strings_exact_length_not_truncated() -> None:
+    """Strings at exactly max_string_length are not truncated."""
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=5)
+    record = _make_record(logging.INFO, "msg")
+    record.exact = "hello"
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["exact"] == "hello"
+
+
+def test_truncate_native_strings_nested_dict() -> None:
+    """Truncation recurses into nested dicts."""
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=3)
+    record = _make_record(logging.INFO, "msg")
+    record.data = {"inner": "toolong", "num": 42}
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["data"]["inner"] == "too…"
+    assert payload["extra"]["data"]["num"] == 42
+
+
+def test_truncate_native_strings_nested_list() -> None:
+    """Truncation recurses into lists."""
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=4)
+    record = _make_record(logging.INFO, "msg")
+    record.items = ["short", "ab", "toolongstring"]
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["items"] == ["shor…", "ab", "tool…"]
+
+
+def test_truncate_native_strings_custom_max_length() -> None:
+    """max_string_length is respected."""
+    formatter = JsonFormatter(truncate_native_strings=True, max_string_length=2048)
+    record = _make_record(logging.INFO, "msg")
+    record.exact = "x" * 2048
+    record.over = "x" * 2049
+
+    payload = json.loads(formatter.format(record))
+    assert payload["extra"]["exact"] == "x" * 2048
+    assert payload["extra"]["over"] == "x" * 2048 + "…"
+
+
+def test_truncate_native_strings_does_not_affect_fallback_truncation() -> None:
+    """Existing fallback truncation (_json_default path) is unaffected."""
+    formatter = JsonFormatter(truncate_native_strings=False)
+    record = _make_record(logging.INFO, "msg")
+
+    class _Big:
+        def __str__(self) -> str:
+            return "z" * 3000
+
+    record.obj = _Big()
+
+    payload = json.loads(formatter.format(record))
+    # fallback truncation always applies
+    assert payload["extra"]["obj"].endswith("...<truncated>")
