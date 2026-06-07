@@ -448,10 +448,25 @@ setup_logging()
 root = logging.getLogger()
 # Attach the filter to handlers so records from named child loggers are also redacted.
 for handler in root.handlers:
-    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
+    handler.addFilter(RedactionFilter())
 ```
 
 Any log record with extra fields whose keys match a sensitive key will have those values replaced with `***`.
+
+**Default sensitive keys** (case-insensitive, applied to nested dicts and lists too):
+
+| Key | Key | Key |
+|-----|-----|-----|
+| `password` | `passwd` | `token` |
+| `access_token` | `refresh_token` | `authorization` |
+| `secret` | `client_secret` | `api_key` |
+| `apikey` | `connection_string` | |
+
+Pass `sensitive_keys=[...]` to override with your own list:
+
+```python
+handler.addFilter(RedactionFilter(sensitive_keys=["account_number", "ssn"]))
+```
 
 ## Local vs Cloud
 

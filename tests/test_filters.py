@@ -420,3 +420,89 @@ def test_redaction_filter_field_setattr_error_does_not_stop_subsequent_field_red
         f"Expected password to be redacted after broken token field; "
         f"got: {record.__dict__.get('password')!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# PR 2: expanded default sensitive key set
+# ---------------------------------------------------------------------------
+
+
+def test_redaction_filter_masks_access_token() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "access_token", "eyJ...")
+    flt.filter(record)
+    assert getattr(record, "access_token") == "***"
+
+
+def test_redaction_filter_masks_refresh_token() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "refresh_token", "rt_abc")
+    flt.filter(record)
+    assert getattr(record, "refresh_token") == "***"
+
+
+def test_redaction_filter_masks_client_secret() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "client_secret", "cs_xyz")
+    flt.filter(record)
+    assert getattr(record, "client_secret") == "***"
+
+
+def test_redaction_filter_masks_connection_string() -> None:
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "connection_string", "DefaultEndpointsProtocol=https;AccountName=...")
+    flt.filter(record)
+    assert getattr(record, "connection_string") == "***"
+
+
+def test_redaction_filter_masks_new_keys_inside_nested_dict() -> None:
+    """New default keys must be redacted inside nested dicts, not just at top level."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "credentials", {
+        "access_token": "tok-1",
+        "refresh_token": "rt-1",
+        "client_secret": "cs-1",
+        "connection_string": "conn-1",
+        "safe_field": "visible",
+    })
+    flt.filter(record)
+    assert getattr(record, "credentials") == {
+        "access_token": "***",
+        "refresh_token": "***",
+        "client_secret": "***",
+        "connection_string": "***",
+        "safe_field": "visible",
+    }
+
+
+def test_redaction_filter_masks_new_keys_inside_list_of_dicts() -> None:
+    """New default keys must be redacted inside lists of dicts."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "items", [
+        {"access_token": "tok-a", "user": "alice"},
+        {"refresh_token": "rt-b", "client_secret": "cs-b"},
+        {"connection_string": "conn-c", "safe": "ok"},
+    ])
+    flt.filter(record)
+    assert getattr(record, "items") == [
+        {"access_token": "***", "user": "alice"},
+        {"refresh_token": "***", "client_secret": "***"},
+        {"connection_string": "***", "safe": "ok"},
+    ]
+
+
+def test_redaction_filter_new_keys_case_insensitive() -> None:
+    """New default keys must match case-insensitively."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "Access_Token", "tok")
+    setattr(record, "CONNECTION_STRING", "cs")
+    flt.filter(record)
+    assert getattr(record, "Access_Token") == "***"
+    assert getattr(record, "CONNECTION_STRING") == "***"
