@@ -17,10 +17,12 @@ _LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# Derive the stdlib LogRecord attribute set at import time from a fresh record.
-# This keeps the contract aligned with whatever Python version is running
-# (e.g. CPython added `taskName` in 3.12). `message` and `asctime` are computed
-# lazily by `LogRecord.getMessage()` / formatters and so are not present in
+# Derive the stdlib LogRecord attribute set at import time from a pristine record
+# created directly via the base class, bypassing the global LogRecordFactory.
+# Using logging.makeLogRecord({}) would pick up any custom factory already
+# installed by third-party libraries, misclassifying their injected fields as
+# reserved stdlib attributes and breaking extra-key sanitization and redaction.
+# `message` and `asctime` are computed lazily by formatters and absent from
 # `__dict__`; we add them explicitly to preserve the original guarantee.
 #
 # `taskName` is also kept in the explicit forward-compat set so that user code
@@ -30,7 +32,7 @@ _FORWARD_COMPAT_RECORD_KEYS: frozenset[str] = frozenset({"message", "asctime", "
 # stdlib LogRecord fields only (no library context keys).
 # Use this in formatters that need to distinguish stdlib from application-added fields.
 _STDLIB_RECORD_KEYS: frozenset[str] = (
-    frozenset(logging.makeLogRecord({}).__dict__) | _FORWARD_COMPAT_RECORD_KEYS
+    frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | _FORWARD_COMPAT_RECORD_KEYS
 )
 
 _RESERVED_LOG_RECORD_KEYS: frozenset[str] = _STDLIB_RECORD_KEYS | _LIBRARY_RESERVED_KEYS

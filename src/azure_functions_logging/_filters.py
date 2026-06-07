@@ -45,12 +45,14 @@ def _redact_value(
 
     Guarded against:
     - Cyclic references (via id-based seen set)
-    - Pathologically deep structures (via _depth / _REDACT_MAX_DEPTH)
+    - Pathologically deep structures (via _depth / _REDACT_MAX_DEPTH);
+      over-limit values are masked (fail-closed) to prevent leaking sensitive
+      data buried in unexpectedly deep payloads
     - All exceptions (returns value unmodified on any error)
     """
     try:
         if _depth >= _REDACT_MAX_DEPTH:
-            return value
+            return mask  # treat over-deep structures as potentially sensitive
         if isinstance(value, dict):
             seen = _seen if _seen is not None else set()
             obj_id = id(value)
@@ -181,14 +183,17 @@ class RedactionFilter(logging.Filter):
 
         try:
             for key in list(record.__dict__.keys()):
-                if key in _RESERVED_LOG_RECORD_KEYS:
-                    continue
-                if key.lower() in self._sensitive_keys:
-                    setattr(record, key, _MASK)
-                else:
-                    value = record.__dict__[key]
-                    if isinstance(value, (dict, list)):
-                        setattr(record, key, _redact_value(value, self._sensitive_keys))
+                try:
+                    if key in _RESERVED_LOG_RECORD_KEYS:
+                        continue
+                    if key.lower() in self._sensitive_keys:
+                        setattr(record, key, _MASK)
+                    else:
+                        value = record.__dict__[key]
+                        if isinstance(value, (dict, list)):
+                            setattr(record, key, _redact_value(value, self._sensitive_keys))
+                except Exception:  # nosec B110 — one broken field must not stop others
+                    pass
         except Exception:  # nosec B110 — filter must never raise
             pass
         return True

@@ -358,3 +358,37 @@ def test_has_handlers_false() -> None:
     underlying.hasHandlers.return_value = False
     logger = FunctionLogger(underlying)
     assert logger.hasHandlers() is False
+
+
+def test_stdlib_record_keys_are_immune_to_custom_logrecord_factory() -> None:
+    """_STDLIB_RECORD_KEYS must equal the base LogRecord fields regardless of any
+    LogRecordFactory currently installed.  It is derived from logging.LogRecord(...)
+    directly, not from logging.makeLogRecord({}) which respects the ambient factory.
+    A third-party factory installed before our module loads must not cause its
+    injected fields to be misclassified as reserved stdlib attributes."""
+    from azure_functions_logging._logger import _FORWARD_COMPAT_RECORD_KEYS, _STDLIB_RECORD_KEYS
+
+    original_factory = logging.getLogRecordFactory()
+
+    def polluting_factory(*args: object, **kwargs: object) -> logging.LogRecord:
+        record = original_factory(*args, **kwargs)
+        record._third_party_injected_field = "injected"
+        return record
+
+    logging.setLogRecordFactory(polluting_factory)
+    try:
+        # Confirm the factory is polluting makeLogRecord
+        factory_fields = set(logging.makeLogRecord({}).__dict__)
+        assert "_third_party_injected_field" in factory_fields, \
+            "Precondition failed: factory should inject field into makeLogRecord output"
+
+        # _STDLIB_RECORD_KEYS must match what the base class produces, not the factory
+        expected = (
+            frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
+            | _FORWARD_COMPAT_RECORD_KEYS
+        )
+        assert _STDLIB_RECORD_KEYS == expected
+        assert "_third_party_injected_field" not in _STDLIB_RECORD_KEYS, \
+            "Factory-injected fields must not appear in _STDLIB_RECORD_KEYS"
+    finally:
+        logging.setLogRecordFactory(original_factory)
