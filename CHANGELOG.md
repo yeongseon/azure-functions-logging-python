@@ -1,11 +1,31 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.5] - 2026-06-07
+
+### Bug Fixes
+
+- *(setup)* Recover Azure mode when host handlers attach after first call (#154) 
+- *(host_config)* Narrow host.json conflict warnings to user-relevant categories (#153) 
+- *(filters)* Harden RedactionFilter with cycle guard and depth limit (#152) 
+- *(context)* Make cold-start detection thread-safe (#151) 
+
+### Other
+
+- Bump version to 0.7.5 
+
+### Refactor
+
+- *(logger)* Centralize standard LogRecord field definitions (#150) 
 ## [0.7.4] - 2026-05-23
 
 ### Bug Fixes
 
 - *(decorator)* Drop functools.wraps to prevent Azure worker following __wrapped__ 
+
+### Documentation
+
+- Update changelog 
 
 ### Other
 
