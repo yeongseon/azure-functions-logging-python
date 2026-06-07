@@ -278,6 +278,67 @@ class TestSamplingFilterNameScoping:
         assert flt.filter(record) is False  # second is rate-limited
 
 
+class TestRedactionFilterHardening:
+    """Tests for cycle guard, depth limit, and catch-all exception handling."""
+
+    def test_cyclic_dict_does_not_raise(self) -> None:
+        flt = RedactionFilter()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg="msg", args=(), exc_info=None,
+        )
+        cyclic: dict[str, object] = {"a": 1}
+        cyclic["self"] = cyclic  # self-reference
+        record.__dict__["payload"] = cyclic
+        # Must not raise, must return True
+        assert flt.filter(record) is True
+
+    def test_deeply_nested_dict_is_handled_gracefully(self) -> None:
+        from azure_functions_logging._filters import _REDACT_MAX_DEPTH
+
+        flt = RedactionFilter()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg="msg", args=(), exc_info=None,
+        )
+        # Build a dict nested deeper than the limit
+        deep: dict[str, object] = {}
+        node = deep
+        for _ in range(_REDACT_MAX_DEPTH + 5):
+            child: dict[str, object] = {}
+            node["next"] = child
+            node = child
+        record.__dict__["deep"] = deep
+        assert flt.filter(record) is True  # must not raise
+
+    def test_cyclic_list_does_not_raise(self) -> None:
+        flt = RedactionFilter()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg="msg", args=(), exc_info=None,
+        )
+        cyclic_list: list[object] = [1, 2]
+        cyclic_list.append(cyclic_list)  # self-reference
+        record.__dict__["items"] = cyclic_list
+        assert flt.filter(record) is True
+
+    def test_malformed_payload_does_not_crash_filter(self) -> None:
+        """A __iter__ that raises must not crash the filter."""
+
+        class ExplodingDict(dict[str, object]):
+            def items(self) -> object:  # type: ignore[override]
+                msg = "boom"
+                raise RuntimeError(msg)
+
+        flt = RedactionFilter()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg="msg", args=(), exc_info=None,
+        )
+        record.__dict__["broken"] = ExplodingDict({"password": "secret"})
+        assert flt.filter(record) is True  # catch-all must swallow the error
+
+
 class TestRedactionFilterNameScoping:
     """Tests for name-based filter scoping in RedactionFilter."""
 

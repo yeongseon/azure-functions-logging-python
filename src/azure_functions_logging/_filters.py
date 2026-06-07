@@ -30,23 +30,56 @@ _DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
 _MASK = "***"
 
 
+_REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
+
+
 def _redact_value(
     value: Any,
     sensitive_keys: frozenset[str],
     mask: str = _MASK,
+    *,
+    _seen: set[int] | None = None,
+    _depth: int = 0,
 ) -> Any:
-    if isinstance(value, dict):
-        return {
-            key: (
-                mask
-                if isinstance(key, str) and key.lower() in sensitive_keys
-                else _redact_value(item, sensitive_keys, mask)
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_value(item, sensitive_keys, mask) for item in value]
-    return value
+    """Recursively redact sensitive keys from dicts/lists.
+
+    Guarded against:
+    - Cyclic references (via id-based seen set)
+    - Pathologically deep structures (via _depth / _REDACT_MAX_DEPTH)
+    - All exceptions (returns value unmodified on any error)
+    """
+    try:
+        if _depth >= _REDACT_MAX_DEPTH:
+            return value
+        if isinstance(value, dict):
+            seen = _seen if _seen is not None else set()
+            obj_id = id(value)
+            if obj_id in seen:
+                return mask  # cyclic reference detected
+            seen = seen | {obj_id}  # copy to avoid cross-branch pollution
+            return {
+                key: (
+                    mask
+                    if isinstance(key, str) and key.lower() in sensitive_keys
+                    else _redact_value(
+                        item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1
+                    )
+                )
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            seen = _seen if _seen is not None else set()
+            obj_id = id(value)
+            if obj_id in seen:
+                return mask
+            seen = seen | {obj_id}
+            return [
+                _redact_value(item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1)
+                for item in value
+            ]
+        return value
+    except Exception:  # nosec B110 — filter must never raise
+        return value
 
 
 
@@ -146,13 +179,16 @@ class RedactionFilter(logging.Filter):
         if not super().filter(record):
             return True  # bypass redaction for non-matching loggers
 
-        for key in list(record.__dict__.keys()):
-            if key in _RESERVED_LOG_RECORD_KEYS:
-                continue
-            if key.lower() in self._sensitive_keys:
-                setattr(record, key, _MASK)
-            else:
-                value = record.__dict__[key]
-                if isinstance(value, (dict, list)):
-                    setattr(record, key, _redact_value(value, self._sensitive_keys))
+        try:
+            for key in list(record.__dict__.keys()):
+                if key in _RESERVED_LOG_RECORD_KEYS:
+                    continue
+                if key.lower() in self._sensitive_keys:
+                    setattr(record, key, _MASK)
+                else:
+                    value = record.__dict__[key]
+                    if isinstance(value, (dict, list)):
+                        setattr(record, key, _redact_value(value, self._sensitive_keys))
+        except Exception:  # nosec B110 — filter must never raise
+            pass
         return True
