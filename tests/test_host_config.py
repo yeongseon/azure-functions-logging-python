@@ -573,3 +573,126 @@ def test_app_setting_override_is_checked_even_when_host_json_is_malformed(
 
     with pytest.warns(UserWarning, match="AzureFunctionsJobHost app setting"):
         warn_host_json_level_conflict(logging.INFO)
+
+
+# ---------------------------------------------------------------------------
+# Precedence: app setting overrides host.json (issue #174)
+# ---------------------------------------------------------------------------
+
+
+def test_app_setting_overrides_restrictive_host_json_no_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """App setting relaxes host.json category — effective level is non-restrictive, no warning."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"default": "Error"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    # App setting overrides default to Information (less restrictive)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "Information",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    assert len(warning_list) == 0
+
+
+def test_app_setting_overrides_one_category_but_not_another(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """App setting overrides one category; other host.json categories still warn."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"default": "Error", "Function.MyFunc": "Warning"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    # Override only default to Debug (non-restrictive)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "Debug",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    messages = [str(w.message) for w in warning_list]
+    # default was overridden to Debug — no warning
+    assert not any("default" in m for m in messages)
+    # Function.MyFunc is still Warning (from host.json, not overridden) — warns
+    assert any("Function.MyFunc" in m and "'Warning'" in m for m in messages)
+
+
+def test_both_sources_restrictive_emits_single_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When both host.json and app setting agree on a restrictive level, only one warning."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"default": "Error"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "Warning",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    # App setting wins (Warning), so effective is Warning — one warning only
+    messages = [str(w.message) for w in warning_list]
+    assert len(messages) == 1
+    assert "'Warning'" in messages[0]
+
+
+# ---------------------------------------------------------------------------
+# Dotted category names and Default casing (issue #174)
+# ---------------------------------------------------------------------------
+
+
+def test_dotted_category_name_in_env_var_is_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Category names with dots after the prefix are preserved correctly."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__Function.MyFunction",
+        "Error",
+    )
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        warn_host_json_level_conflict(logging.INFO)
+
+    messages = [str(w.message) for w in warning_list]
+    assert any("Function.MyFunction" in m for m in messages)
+
+
+def test_capitalized_default_category_triggers_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """'Default' (capitalized) should be treated same as 'default'."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"Default": "Warning"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.warns(UserWarning, match="more restrictive") as warning_list:
+        warn_host_json_level_conflict(logging.INFO)
+
+    message = str(warning_list[0].message)
+    assert "default" in message  # scope shown as 'default'
+    assert "'Warning'" in message

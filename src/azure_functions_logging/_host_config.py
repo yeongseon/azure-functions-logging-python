@@ -86,7 +86,7 @@ _USER_RELEVANT_PREFIXES: tuple[str, ...] = ("default", "Function")
 
 def _is_user_relevant_category(category: str) -> bool:
     """Return True for categories that can suppress user application logs."""
-    return category == "default" or category.startswith("Function")
+    return category.lower() == "default" or category.startswith("Function")
 
 
 def _iter_app_setting_log_levels() -> dict[str, str]:
@@ -122,7 +122,7 @@ def _warn_for_log_levels(
         if resolved_level <= configured_level:
             continue
 
-        scope = "default" if category == "default" else f"category '{category}'"
+        scope = "default" if category.lower() == "default" else f"category '{category}'"
         warnings.warn(
             (
                 f"{source} logLevel for {scope} is set to '{raw_level}' which is more "
@@ -151,7 +151,13 @@ def warn_host_json_level_conflict(
     host_json_path: Path | str | None = None,
     strict: bool = False,
 ) -> None:
-    """Warn when a ``host.json`` ``logLevel`` entry suppresses logs below ``configured_level``.
+    """Warn when a ``host.json`` or app-setting ``logLevel`` entry suppresses logs.
+
+    Fires when an effective log level is more restrictive than ``configured_level``.
+
+    Effective log levels are computed by merging host.json with
+    ``AzureFunctionsJobHost__logging__logLevel__*`` app settings (app settings
+    take precedence per-category, matching Azure Functions runtime behavior).
 
     By default only user-relevant categories are checked (``default`` and anything
     starting with ``Function``). Host-internal categories (``Host.Results``,
@@ -178,34 +184,43 @@ def warn_host_json_level_conflict(
         discovered = discover_host_json()
         host_path = discovered
 
+    # Collect host.json log levels
+    host_json_log_levels: dict[str, object] = {}
     if host_path is not None:
-        log_levels: object = None
         try:
             host_config: object = json.loads(host_path.read_text(encoding="utf-8"))
             host_mapping = _string_key_mapping(host_config)
             if host_mapping is not None:
                 logging_mapping = _string_key_mapping(host_mapping.get("logging"))
                 if logging_mapping is not None:
-                    log_levels = logging_mapping.get("logLevel")
+                    raw_levels = _string_key_mapping(logging_mapping.get("logLevel"))
+                    if raw_levels is not None:
+                        host_json_log_levels = raw_levels
         except Exception:
-            log_levels = None
+            pass
 
-        normalized_log_levels = _string_key_mapping(log_levels)
-        if normalized_log_levels is not None:
-            _warn_for_log_levels(
-                normalized_log_levels,
-                configured_level,
-                strict=strict,
-                source="host.json",
-                stacklevel=3,
-            )
-
+    # Collect app setting overrides
     app_setting_log_levels = _iter_app_setting_log_levels()
-    if app_setting_log_levels:
-        _warn_for_log_levels(
-            app_setting_log_levels,
-            configured_level,
-            strict=strict,
-            source="AzureFunctionsJobHost app setting",
-            stacklevel=3,
-        )
+
+    # Merge: app settings override host.json per category (runtime precedence)
+    effective_levels: dict[str, object] = {**host_json_log_levels, **app_setting_log_levels}
+
+    if not effective_levels:
+        return
+
+    # Determine source label for the warning message
+    source: str
+    if host_json_log_levels and app_setting_log_levels:
+        source = "host.json / app setting"
+    elif app_setting_log_levels:
+        source = "AzureFunctionsJobHost app setting"
+    else:
+        source = "host.json"
+
+    _warn_for_log_levels(
+        effective_levels,
+        configured_level,
+        strict=strict,
+        source=source,
+        stacklevel=3,
+    )
