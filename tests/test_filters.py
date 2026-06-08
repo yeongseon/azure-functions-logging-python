@@ -122,6 +122,31 @@ def test_sampling_filter_per_logger_always_passes_warning_and_above() -> None:
     assert flt.filter(warning) is True
 
 
+def test_sampling_filter_per_logger_evicts_stale_buckets() -> None:
+    """When bucket count exceeds _MAX_BUCKETS, stale entries are evicted."""
+    flt = SamplingFilter(rate=1, window=0.05, name="app", per_logger=True)
+    # Lower threshold for testing
+    flt._MAX_BUCKETS = 5
+
+    # Create 6 loggers (exceed threshold)
+    for i in range(6):
+        record = _make_record(msg=f"logger-{i}")
+        record.name = f"app.logger{i}"
+        flt.filter(record)
+
+    # All 6 buckets exist before eviction triggers
+    # (eviction fires only on new window reset)
+    assert len(flt._buckets) == 6
+
+    # Wait for window to expire, then log with a new logger to trigger eviction
+    time.sleep(0.06)
+    record = _make_record(msg="new")
+    record.name = "app.new_logger"
+    flt.filter(record)
+
+    # Stale entries evicted; only the new logger remains
+    assert len(flt._buckets) <= 2  # new_logger + possibly one fresh entry
+
 # ---------------------------------------------------------------------------
 # RedactionFilter tests
 # ---------------------------------------------------------------------------
