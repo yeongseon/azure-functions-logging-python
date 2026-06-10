@@ -66,12 +66,14 @@ def setup_logging(
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
 
-    - **Azure / Core Tools**: Installs ``ContextFilter`` on the root logger's
-      existing handlers **and** on the root logger itself (so handlers attached
-      later also receive context fields). Does NOT add new handlers or modify
-      the root logger level (respects ``host.json`` configuration). If
-      ``functions_formatter`` is provided, it is applied to every root handler
-      before the filter is added.
+    - **Azure / Core Tools** (``use_record_factory=False``, default): Installs
+      ``ContextFilter`` on the root logger's existing handlers **and** on the
+      root logger itself (so handlers attached later also receive context
+      fields). Does NOT add new handlers or modify the root logger level
+      (respects ``host.json`` configuration). If ``functions_formatter`` is
+      provided, it is applied to every root handler before the filter is added.
+      When ``use_record_factory=True``, no ``ContextFilter`` is attached;
+      context injection happens via the global ``LogRecordFactory`` instead.
     - **Standalone local development**: Adds a ``StreamHandler`` with
       ``ColorFormatter`` or ``JsonFormatter`` to the specified logger
       (or root logger if ``logger_name`` is None). Sets the level.
