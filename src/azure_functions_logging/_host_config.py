@@ -196,7 +196,7 @@ def warn_host_json_level_conflict(
                     raw_levels = _string_key_mapping(logging_mapping.get("logLevel"))
                     if raw_levels is not None:
                         host_json_log_levels = raw_levels
-        except Exception:
+        except Exception:  # nosec B110 — host.json read failure is non-fatal
             pass
 
     # Collect app setting overrides

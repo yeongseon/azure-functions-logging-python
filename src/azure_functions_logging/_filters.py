@@ -127,13 +127,17 @@ class SamplingFilter(logging.Filter):
             Empty string matches all loggers (default).
         per_logger: When False (default), all matching records share one rate
             bucket per filter instance. When True, each ``record.name`` has an
-            independent bucket/window.
+            independent bucket/window. Best suited for finite logger-name
+            cardinality (e.g. module-based loggers). Stale buckets are
+            automatically evicted to prevent unbounded memory growth.
 
     Example::
 
         filter = SamplingFilter(rate=10, window=1.0)
         handler.addFilter(filter)
     """
+
+    _MAX_BUCKETS: int = 1024  # evict stale entries when exceeded
 
     def __init__(
         self,
@@ -156,8 +160,30 @@ class SamplingFilter(logging.Filter):
         self._per_logger: bool = per_logger
         self._count: int = 0
         self._window_start: float = time.monotonic()
-        self._counts: dict[str, int] = {}
-        self._window_starts: dict[str, float] = {}
+        # per_logger state: {record.name: (window_start, count)}
+        self._buckets: dict[str, tuple[float, int]] = {}
+        self._last_eviction: float = 0.0  # monotonic timestamp of last eviction
+
+    def _evict_stale_buckets(self, now: float) -> None:
+        """Remove per-logger buckets whose window has expired, then enforce hard cap.
+
+        First removes stale entries (window expired). If the bucket count still
+        exceeds _MAX_BUCKETS, drops the oldest buckets by window_start to enforce
+        a deterministic memory bound.
+
+        Called opportunistically when bucket count exceeds _MAX_BUCKETS.
+        Must be called while holding self._lock.
+        """
+        stale_cutoff = now - self._window
+        self._buckets = {
+            name: entry
+            for name, entry in self._buckets.items()
+            if entry[0] > stale_cutoff
+        }
+        # Hard cap: if still over limit after stale removal, drop oldest buckets
+        if len(self._buckets) > self._MAX_BUCKETS:
+            sorted_entries = sorted(self._buckets.items(), key=lambda x: x[1][0])
+            self._buckets = dict(sorted_entries[len(sorted_entries) - self._MAX_BUCKETS :])
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True to emit the record, False to drop it."""
@@ -172,20 +198,32 @@ class SamplingFilter(logging.Filter):
         now = time.monotonic()
         with self._lock:
             if self._per_logger:
-                window_start = self._window_starts.get(record.name)
-                if window_start is None or now - window_start >= self._window:
-                    self._window_starts[record.name] = now
-                    self._counts[record.name] = 1
+                bucket = self._buckets.get(record.name)
+                if bucket is None or now - bucket[0] >= self._window:
+                    self._buckets[record.name] = (now, 1)
+                    # Opportunistic eviction when over capacity
+                    if len(self._buckets) > self._MAX_BUCKETS:
+                        if now - self._last_eviction >= self._window:
+                            # Full stale sweep (throttled to once per window)
+                            self._evict_stale_buckets(now)
+                            self._last_eviction = now
+                        elif len(self._buckets) > self._MAX_BUCKETS:
+                            # Throttle blocked full sweep; enforce hard cap
+                            # by dropping the single oldest bucket
+                            oldest_name = min(
+                                self._buckets, key=lambda k: self._buckets[k][0]
+                            )
+                            del self._buckets[oldest_name]
                     return True
-                self._counts[record.name] = self._counts.get(record.name, 0) + 1
-                return self._counts[record.name] <= self._rate
+                count = bucket[1] + 1
+                self._buckets[record.name] = (bucket[0], count)
+                return count <= self._rate
 
             if now - self._window_start >= self._window:
                 self._count = 0
                 self._window_start = now
             self._count += 1
             return self._count <= self._rate
-
 
 class RedactionFilter(logging.Filter):
     """Mask PII / sensitive values on LogRecord extra attributes in-place.

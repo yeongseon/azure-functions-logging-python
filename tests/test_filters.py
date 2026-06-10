@@ -122,6 +122,47 @@ def test_sampling_filter_per_logger_always_passes_warning_and_above() -> None:
     assert flt.filter(warning) is True
 
 
+def test_sampling_filter_per_logger_evicts_stale_buckets() -> None:
+    """When bucket count exceeds _MAX_BUCKETS, stale entries are evicted."""
+    flt = SamplingFilter(rate=1, window=0.05, name="app", per_logger=True)
+    # Lower threshold for testing
+    flt._MAX_BUCKETS = 5
+
+    # Create 6 loggers (exceed threshold)
+    for i in range(6):
+        record = _make_record(msg=f"logger-{i}")
+        record.name = f"app.logger{i}"
+        flt.filter(record)
+
+    # Hard cap enforced: entry 6 triggered eviction, which trimmed to 5
+    # (no stale entries but hard cap drops oldest).
+    assert len(flt._buckets) <= flt._MAX_BUCKETS + 1  # at most MAX + 1 (just-inserted)
+
+    # Wait for window to expire, then log with a new logger to trigger eviction
+    time.sleep(0.06)
+    record = _make_record(msg="new")
+    record.name = "app.new_logger"
+    flt.filter(record)
+
+    # Stale entries evicted; only the new logger (created this window) remains
+    assert len(flt._buckets) <= 2  # new_logger + possibly one fresh entry
+
+
+def test_sampling_filter_per_logger_enforces_hard_cap_on_burst() -> None:
+    """Even when all buckets are fresh, hard cap is enforced after eviction."""
+    flt = SamplingFilter(rate=1, window=10.0, name="app", per_logger=True)
+    # Use a very long window so nothing is 'stale'
+    flt._MAX_BUCKETS = 5
+
+    # Create 20 unique loggers in rapid burst (all within same window)
+    for i in range(20):
+        record = _make_record(msg=f"burst-{i}")
+        record.name = f"app.burst{i}"
+        flt.filter(record)
+
+    # Hard cap must be enforced: at most _MAX_BUCKETS entries remain
+    assert len(flt._buckets) <= 5
+
 # ---------------------------------------------------------------------------
 # RedactionFilter tests
 # ---------------------------------------------------------------------------
