@@ -192,7 +192,7 @@ class RedactionFilter(logging.Filter):
 
     Iterates over all non-standard attributes on the ``LogRecord`` and
     replaces the value of any key whose *normalized* name is in
-    ``sensitive_keys`` with ``\"***\"``.
+    ``sensitive_keys`` with ``"***"``.
 
     Key normalization: lowercased, hyphens replaced with underscores.
     This means ``X-Functions-Key`` matches the entry ``x_functions_key``.
@@ -213,6 +213,11 @@ class RedactionFilter(logging.Filter):
             ``credential``, ``account_key``, ``access_key``.
         name: Optional logger-name scope. When set, only matching loggers are
             subject to redaction; non-matching records pass through unchanged.
+
+    Note:
+        The default set includes ``credential`` which may over-redact
+        in codebases that use generic attribute names. Pass an explicit
+        ``sensitive_keys`` set if false positives occur.
     Example::
 
         filter = RedactionFilter()
@@ -226,7 +231,7 @@ class RedactionFilter(logging.Filter):
     ) -> None:
         super().__init__(name)
         self._sensitive_keys: frozenset[str] = (
-            frozenset(k.lower() for k in sensitive_keys)
+            frozenset(_normalize_key(k) for k in sensitive_keys)
             if sensitive_keys is not None
             else _DEFAULT_SENSITIVE_KEYS
         )

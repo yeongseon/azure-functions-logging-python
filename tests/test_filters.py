@@ -801,3 +801,22 @@ def test_redaction_filter_masks_access_key() -> None:
     setattr(record, "access_key", "AKIAIOSFODNN7EXAMPLE")
     flt.filter(record)
     assert getattr(record, "access_key") == "***"
+
+
+def test_redaction_filter_constructor_normalizes_hyphenated_sensitive_keys() -> None:
+    """Hyphenated keys passed via sensitive_keys constructor arg are normalized.
+
+    Passing 'X-Functions-Key' should redact a record attribute named
+    'x_functions_key' because __init__ applies _normalize_key to user input.
+    """
+    flt = RedactionFilter(sensitive_keys=["X-Functions-Key", "Ocp-Apim-Subscription-Key"])
+    record = _make_record()
+    setattr(record, "x_functions_key", "secret-func-key")
+    setattr(record, "ocp_apim_subscription_key", "sub-key-value")
+    setattr(record, "safe_attr", "visible")
+
+    flt.filter(record)
+
+    assert getattr(record, "x_functions_key") == "***"
+    assert getattr(record, "ocp_apim_subscription_key") == "***"
+    assert getattr(record, "safe_attr") == "visible"
