@@ -13,7 +13,7 @@
 - Maintain test coverage at **95% or above** for committed changes and PRs.
 - Run `hatch run pytest --cov --cov-report=term-missing -q` to verify before submitting changes.
 - Any PR that drops coverage below 95% must include additional tests to compensate.
-- The root logger is never modified by this library — only named loggers are configured.
+- In Azure/Core Tools mode, `setup_logging()` installs `ContextFilter` on the root logger's existing handlers (and the root logger itself for late-attaching handlers) but never adds new handlers or changes the root level. In standalone local mode, the root logger is configured by default (`logger_name=None`); pass an explicit `logger_name` to avoid modifying the root logger.
 - No runtime dependency on `azure-functions` — it is an optional import only.
 - Runtime code must remain compatible with Python 3.10+.
 - Public APIs must be fully typed.
