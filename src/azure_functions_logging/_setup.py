@@ -43,6 +43,7 @@ def _remove_context_filters(logger: logging.Logger) -> None:
             if type(f) is ContextFilter:
                 handler.removeFilter(f)
 
+
 def _is_functions_environment() -> bool:
     """Check if running inside Azure Functions (hosted or Core Tools)."""
     return bool(os.environ.get("FUNCTIONS_WORKER_RUNTIME"))
@@ -65,13 +66,18 @@ def setup_logging(
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
 
-    - **Azure / Core Tools**: Installs ``ContextFilter`` on the root logger's
-      handlers only. Does NOT add handlers or modify the root logger level
+    - **Azure / Core Tools** (``use_record_factory=False``, default): Installs
+      ``ContextFilter`` on the root logger's existing handlers **and** on the
+      root logger itself (so handlers attached later also receive context
+      fields). Does NOT add new handlers or modify the root logger level
       (respects ``host.json`` configuration). If ``functions_formatter`` is
       provided, it is applied to every root handler before the filter is added.
+      When ``use_record_factory=True``, no ``ContextFilter`` is attached;
+      context injection happens via the global ``LogRecordFactory`` instead.
     - **Standalone local development**: Adds a ``StreamHandler`` with
       ``ColorFormatter`` or ``JsonFormatter`` to the specified logger
       (or root logger if ``logger_name`` is None). Sets the level.
+      Pass an explicit ``logger_name`` to avoid modifying the root logger.
 
     This function is idempotent per ``logger_name`` — calling it multiple times
     for the same logger has no additional effect.
@@ -153,9 +159,7 @@ def setup_logging(
             # Retrieve or create the per-call-signature state.
             _state_key: _AzureStateKey = (logger_name, use_record_factory)
             if _state_key not in _azure_state:
-                ctx_filter: ContextFilter | None = (
-                    None if use_record_factory else ContextFilter()
-                )
+                ctx_filter: ContextFilter | None = None if use_record_factory else ContextFilter()
                 _azure_state[_state_key] = (ctx_filter, weakref.WeakSet())
             context_filter, configured_handlers = _azure_state[_state_key]
             root = logging.getLogger()
