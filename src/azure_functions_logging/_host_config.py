@@ -202,25 +202,30 @@ def warn_host_json_level_conflict(
     # Collect app setting overrides
     app_setting_log_levels = _iter_app_setting_log_levels()
 
-    # Merge: app settings override host.json per category (runtime precedence)
-    effective_levels: dict[str, object] = {**host_json_log_levels, **app_setting_log_levels}
+    # Merge: app settings override host.json per category (runtime precedence).
+    # Normalize 'default'/'Default' to lowercase for consistent merging.
+    # Only allow recognized app-setting values to override; unrecognized values
+    # (e.g. typos) must not mask a restrictive host.json entry.
+    normalized_host: dict[str, object] = {
+        (k.lower() if k.lower() == "default" else k): v
+        for k, v in host_json_log_levels.items()
+    }
+    normalized_app: dict[str, object] = {}
+    for k, v in app_setting_log_levels.items():
+        norm_k = k.lower() if k.lower() == "default" else k
+        if _resolve_host_level(v) is not None:
+            normalized_app[norm_k] = v
+        # else: unrecognized value — do not override host.json entry
+
+    effective_levels: dict[str, object] = {**normalized_host, **normalized_app}
 
     if not effective_levels:
         return
-
-    # Determine source label for the warning message
-    source: str
-    if host_json_log_levels and app_setting_log_levels:
-        source = "host.json / app setting"
-    elif app_setting_log_levels:
-        source = "AzureFunctionsJobHost app setting"
-    else:
-        source = "host.json"
 
     _warn_for_log_levels(
         effective_levels,
         configured_level,
         strict=strict,
-        source=source,
+        source="host configuration",
         stacklevel=3,
     )

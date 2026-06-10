@@ -484,7 +484,7 @@ def test_warns_when_app_setting_override_sets_default_more_restrictive(
         warn_host_json_level_conflict(logging.INFO)
 
     message = str(warning_list[0].message)
-    assert "AzureFunctionsJobHost app setting" in message
+    assert "host configuration" in message
     assert "default" in message
     assert "'Warning'" in message
     assert "'INFO'" in message
@@ -571,7 +571,7 @@ def test_app_setting_override_is_checked_even_when_host_json_is_malformed(
         "Warning",
     )
 
-    with pytest.warns(UserWarning, match="AzureFunctionsJobHost app setting"):
+    with pytest.warns(UserWarning, match="host configuration"):
         warn_host_json_level_conflict(logging.INFO)
 
 
@@ -634,7 +634,7 @@ def test_both_sources_restrictive_emits_single_warning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When both host.json and app setting agree on a restrictive level, only one warning."""
+    """App setting overrides host.json for same category; effective level wins (one warning)."""
     _write_host_json(
         tmp_path / "host.json",
         {"logging": {"logLevel": {"default": "Error"}}},
@@ -696,3 +696,27 @@ def test_capitalized_default_category_triggers_warning(
     message = str(warning_list[0].message)
     assert "default" in message  # scope shown as 'default'
     assert "'Warning'" in message
+
+
+def test_unrecognized_app_setting_does_not_mask_restrictive_host_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unrecognized app setting value (e.g. typo) must not suppress host.json warning."""
+    _write_host_json(
+        tmp_path / "host.json",
+        {"logging": {"logLevel": {"default": "Error"}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    # Typo: 'Warnign' is not a recognized level
+    monkeypatch.setenv(
+        "AzureFunctionsJobHost__logging__logLevel__default",
+        "Warnign",
+    )
+
+    with pytest.warns(UserWarning, match="more restrictive") as warning_list:
+        warn_host_json_level_conflict(logging.INFO)
+
+    # host.json Error should still warn since the override is unrecognized
+    message = str(warning_list[0].message)
+    assert "'Error'" in message
