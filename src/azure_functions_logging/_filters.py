@@ -162,6 +162,7 @@ class SamplingFilter(logging.Filter):
         self._window_start: float = time.monotonic()
         # per_logger state: {record.name: (window_start, count)}
         self._buckets: dict[str, tuple[float, int]] = {}
+        self._last_eviction: float = 0.0  # monotonic timestamp of last eviction
 
     def _evict_stale_buckets(self, now: float) -> None:
         """Remove per-logger buckets whose window has expired.
@@ -192,9 +193,13 @@ class SamplingFilter(logging.Filter):
                 bucket = self._buckets.get(record.name)
                 if bucket is None or now - bucket[0] >= self._window:
                     self._buckets[record.name] = (now, 1)
-                    # Opportunistic eviction
-                    if len(self._buckets) > self._MAX_BUCKETS:
+                    # Opportunistic eviction (throttled to once per window)
+                    if (
+                        len(self._buckets) > self._MAX_BUCKETS
+                        and now - self._last_eviction >= self._window
+                    ):
                         self._evict_stale_buckets(now)
+                        self._last_eviction = now
                     return True
                 count = bucket[1] + 1
                 self._buckets[record.name] = (bucket[0], count)

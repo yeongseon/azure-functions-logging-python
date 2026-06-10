@@ -134,8 +134,8 @@ def test_sampling_filter_per_logger_evicts_stale_buckets() -> None:
         record.name = f"app.logger{i}"
         flt.filter(record)
 
-    # All 6 buckets exist before eviction triggers
-    # (eviction fires only on new window reset)
+    # All 6 buckets exist; eviction ran on entry 6 but removed nothing
+    # because all buckets were fresh (created within the current window).
     assert len(flt._buckets) == 6
 
     # Wait for window to expire, then log with a new logger to trigger eviction
@@ -144,7 +144,7 @@ def test_sampling_filter_per_logger_evicts_stale_buckets() -> None:
     record.name = "app.new_logger"
     flt.filter(record)
 
-    # Stale entries evicted; only the new logger remains
+    # Stale entries evicted; only the new logger (created this window) remains
     assert len(flt._buckets) <= 2  # new_logger + possibly one fresh entry
 
 # ---------------------------------------------------------------------------
