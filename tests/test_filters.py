@@ -736,3 +736,87 @@ def test_redaction_filter_azure_keys_in_nested_dict() -> None:
     ):
         assert result[key] == "***", f"{key!r} was not redacted"
     assert result["safe_field"] == "visible"
+
+
+# ---------------------------------------------------------------------------
+# RedactionFilter — key normalization: hyphens treated as underscores (issue #175)
+# ---------------------------------------------------------------------------
+
+
+def test_redaction_filter_normalizes_hyphenated_key_x_functions_key() -> None:
+    """X-Functions-Key (HTTP header form) matches x_functions_key."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "X-Functions-Key", "host_key_abc")
+    flt.filter(record)
+    assert getattr(record, "X-Functions-Key") == "***"
+
+
+def test_redaction_filter_normalizes_hyphenated_key_lowercase() -> None:
+    """x-functions-key (lowercase hyphenated) matches x_functions_key."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "x-functions-key", "host_key_abc")
+    flt.filter(record)
+    assert getattr(record, "x-functions-key") == "***"
+
+
+def test_redaction_filter_normalizes_ocp_apim_subscription_key() -> None:
+    """Ocp-Apim-Subscription-Key normalizes to ocp_apim_subscription_key."""
+    flt = RedactionFilter(sensitive_keys=["ocp_apim_subscription_key"])
+    record = _make_record()
+    setattr(record, "Ocp-Apim-Subscription-Key", "sub_key_123")
+    flt.filter(record)
+    assert getattr(record, "Ocp-Apim-Subscription-Key") == "***"
+
+
+def test_redaction_filter_hyphenated_key_in_nested_dict() -> None:
+    """Hyphenated keys inside nested dicts are also normalized."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(
+        record,
+        "headers",
+        {"X-Functions-Key": "secret", "Content-Type": "application/json"},
+    )
+    flt.filter(record)
+    result = getattr(record, "headers")
+    assert result["X-Functions-Key"] == "***"
+    assert result["Content-Type"] == "application/json"  # not sensitive
+
+
+def test_redaction_filter_masks_account_key() -> None:
+    """account_key is in the default sensitive keys set."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "account_key", "base64encodedkey==")
+    flt.filter(record)
+    assert getattr(record, "account_key") == "***"
+
+
+def test_redaction_filter_masks_access_key() -> None:
+    """access_key is in the default sensitive keys set."""
+    flt = RedactionFilter()
+    record = _make_record()
+    setattr(record, "access_key", "AKIAIOSFODNN7EXAMPLE")
+    flt.filter(record)
+    assert getattr(record, "access_key") == "***"
+
+
+def test_redaction_filter_constructor_normalizes_hyphenated_sensitive_keys() -> None:
+    """Hyphenated keys passed via sensitive_keys constructor arg are normalized.
+
+    Passing 'X-Functions-Key' should redact a record attribute named
+    'x_functions_key' because __init__ applies _normalize_key to user input.
+    """
+    flt = RedactionFilter(sensitive_keys=["X-Functions-Key", "Ocp-Apim-Subscription-Key"])
+    record = _make_record()
+    setattr(record, "x_functions_key", "secret-func-key")
+    setattr(record, "ocp_apim_subscription_key", "sub-key-value")
+    setattr(record, "safe_attr", "visible")
+
+    flt.filter(record)
+
+    assert getattr(record, "x_functions_key") == "***"
+    assert getattr(record, "ocp_apim_subscription_key") == "***"
+    assert getattr(record, "safe_attr") == "visible"

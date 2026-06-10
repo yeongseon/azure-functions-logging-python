@@ -189,18 +189,28 @@ class RedactionFilter(logging.Filter):
     """Mask PII / sensitive values on LogRecord extra attributes.
     
     Mutates record in-place, redacting any non-standard field whose
-    lowercase name is in sensitive_keys. Both ColorFormatter and
-    JsonFormatter see redacted values.
+    *normalized* name (lowercased, hyphens → underscores) is in
+    sensitive_keys. Both ColorFormatter and JsonFormatter see redacted values.
     
-    Default sensitive keys (23): password, passwd, pwd, token,
+    Key normalization: keys are lowercased and hyphens are replaced with
+    underscores before comparison, so ``X-Functions-Key`` in the log record
+    matches ``x_functions_key`` in the sensitive set. The same normalization
+    applies to keys passed via the ``sensitive_keys`` constructor argument.
+    
+    Default sensitive keys (25): password, passwd, pwd, token,
     access_token, refresh_token, id_token, authorization, auth,
     secret, client_secret, secret_key, api_key, apikey,
     subscription_key, connection_string, conn_str, sas_token,
-    x_functions_key, function_key, master_key, private_key, credential.
+    x_functions_key, function_key, master_key, private_key,
+    credential, account_key, access_key.
+    
+    Note: The default set includes ``credential`` which may over-redact in
+    codebases that use generic attribute names. Pass an explicit
+    ``sensitive_keys`` set if false positives occur.
     
     Args:
-        sensitive_keys: Iterable of lowercase key names to redact.
-                       None = uses default set.
+        sensitive_keys: Iterable of key names to redact (case-insensitive,
+                       hyphen-insensitive). None = uses default set (25 keys).
         name: Logger name filter. Empty string = all (default).
     """
     

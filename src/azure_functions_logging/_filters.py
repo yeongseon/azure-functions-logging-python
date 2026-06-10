@@ -40,6 +40,8 @@ _DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
         "master_key",
         "private_key",
         "credential",
+        "account_key",
+        "access_key",
     }
 )
 
@@ -47,6 +49,16 @@ _MASK = "***"
 
 
 _REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
+
+
+def _normalize_key(key: str) -> str:
+    """Normalize a key for sensitive-key lookup: lowercase and replace hyphens with underscores.
+
+    This ensures that HTTP header forms like ``X-Functions-Key`` match the
+    underscore-based entries in the sensitive keys set.
+    """
+    return key.lower().replace("-", "_")
+
 
 
 def _redact_value(
@@ -78,7 +90,7 @@ def _redact_value(
             return {
                 key: (
                     mask
-                    if isinstance(key, str) and key.lower() in sensitive_keys
+                    if isinstance(key, str) and _normalize_key(key) in sensitive_keys
                     else _redact_value(item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1)
                 )
                 for key, item in value.items()
@@ -179,23 +191,33 @@ class RedactionFilter(logging.Filter):
     """Mask PII / sensitive values on LogRecord extra attributes in-place.
 
     Iterates over all non-standard attributes on the ``LogRecord`` and
-    replaces the value of any key whose *lowercased* name is in
+    replaces the value of any key whose *normalized* name is in
     ``sensitive_keys`` with ``"***"``.
+
+    Key normalization: lowercased, hyphens replaced with underscores.
+    This means ``X-Functions-Key`` matches the entry ``x_functions_key``.
 
     This filter mutates the record in-place so both ``ColorFormatter`` and
     ``JsonFormatter`` see redacted values.
 
     Args:
-        sensitive_keys: Iterable of key names to redact (case-insensitive). When None,
-            uses the built-in default set (23 keys):
+        sensitive_keys: Iterable of key names to redact (case-insensitive,
+            hyphen-insensitive). When None, uses the built-in default set
+            (25 keys):
             ``password``, ``passwd``, ``pwd``, ``token``, ``access_token``,
             ``refresh_token``, ``id_token``, ``authorization``, ``auth``,
-            ``secret``, ``client_secret``, ``secret_key``, ``api_key``, ``apikey``,
-            ``subscription_key``, ``connection_string``, ``conn_str``,
-            ``sas_token``, ``x_functions_key``, ``function_key``, ``master_key``,
-            ``private_key``, ``credential``.
+            ``secret``, ``client_secret``, ``secret_key``, ``api_key``,
+            ``apikey``, ``subscription_key``, ``connection_string``,
+            ``conn_str``, ``sas_token``, ``x_functions_key``,
+            ``function_key``, ``master_key``, ``private_key``,
+            ``credential``, ``account_key``, ``access_key``.
         name: Optional logger-name scope. When set, only matching loggers are
             subject to redaction; non-matching records pass through unchanged.
+
+    Note:
+        The default set includes ``credential`` which may over-redact
+        in codebases that use generic attribute names. Pass an explicit
+        ``sensitive_keys`` set if false positives occur.
     Example::
 
         filter = RedactionFilter()
@@ -209,7 +231,7 @@ class RedactionFilter(logging.Filter):
     ) -> None:
         super().__init__(name)
         self._sensitive_keys: frozenset[str] = (
-            frozenset(k.lower() for k in sensitive_keys)
+            frozenset(_normalize_key(k) for k in sensitive_keys)
             if sensitive_keys is not None
             else _DEFAULT_SENSITIVE_KEYS
         )
@@ -225,7 +247,7 @@ class RedactionFilter(logging.Filter):
                 try:
                     if key in _RESERVED_LOG_RECORD_KEYS:
                         continue
-                    if key.lower() in self._sensitive_keys:
+                    if _normalize_key(key) in self._sensitive_keys:
                         setattr(record, key, _MASK)
                     else:
                         value = record.__dict__[key]
