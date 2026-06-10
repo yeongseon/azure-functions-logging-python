@@ -165,7 +165,11 @@ class SamplingFilter(logging.Filter):
         self._last_eviction: float = 0.0  # monotonic timestamp of last eviction
 
     def _evict_stale_buckets(self, now: float) -> None:
-        """Remove per-logger buckets whose window has expired.
+        """Remove per-logger buckets whose window has expired, then enforce hard cap.
+
+        First removes stale entries (window expired). If the bucket count still
+        exceeds _MAX_BUCKETS, drops the oldest buckets by window_start to enforce
+        a deterministic memory bound.
 
         Called opportunistically when bucket count exceeds _MAX_BUCKETS.
         Must be called while holding self._lock.
@@ -176,6 +180,10 @@ class SamplingFilter(logging.Filter):
             for name, entry in self._buckets.items()
             if entry[0] > stale_cutoff
         }
+        # Hard cap: if still over limit after stale removal, drop oldest buckets
+        if len(self._buckets) > self._MAX_BUCKETS:
+            sorted_entries = sorted(self._buckets.items(), key=lambda x: x[1][0])
+            self._buckets = dict(sorted_entries[len(sorted_entries) - self._MAX_BUCKETS :])
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True to emit the record, False to drop it."""
@@ -193,13 +201,19 @@ class SamplingFilter(logging.Filter):
                 bucket = self._buckets.get(record.name)
                 if bucket is None or now - bucket[0] >= self._window:
                     self._buckets[record.name] = (now, 1)
-                    # Opportunistic eviction (throttled to once per window)
-                    if (
-                        len(self._buckets) > self._MAX_BUCKETS
-                        and now - self._last_eviction >= self._window
-                    ):
-                        self._evict_stale_buckets(now)
-                        self._last_eviction = now
+                    # Opportunistic eviction when over capacity
+                    if len(self._buckets) > self._MAX_BUCKETS:
+                        if now - self._last_eviction >= self._window:
+                            # Full stale sweep (throttled to once per window)
+                            self._evict_stale_buckets(now)
+                            self._last_eviction = now
+                        elif len(self._buckets) > self._MAX_BUCKETS:
+                            # Throttle blocked full sweep; enforce hard cap
+                            # by dropping the single oldest bucket
+                            oldest_name = min(
+                                self._buckets, key=lambda k: self._buckets[k][0]
+                            )
+                            del self._buckets[oldest_name]
                     return True
                 count = bucket[1] + 1
                 self._buckets[record.name] = (bucket[0], count)
