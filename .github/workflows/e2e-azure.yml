@@ -23,7 +23,7 @@ jobs:
       appinsights_name: ${{ steps.names.outputs.ai }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Compute resource names
         id: names
