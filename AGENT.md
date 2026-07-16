@@ -70,7 +70,7 @@ Do not bypass the Makefile in CI or contributor guidance.
 
 - Public APIs require tests.
 - Bug fixes require regression tests.
-- `make check-all` is the minimum merge gate.
+- `make check && make test` is the minimum merge gate.
 
 ## Commit Rules
 
