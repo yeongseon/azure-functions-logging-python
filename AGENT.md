@@ -44,7 +44,7 @@ Use Makefile entry points only.
 | --- | --- |
 | Environment setup | `make install` |
 | Format code | `make format` |
-| Lint | `make style` |
+| Lint | `make lint` |
 | Type check | `make typecheck` |
 | Tests | `make test` |
 | Clean | `make clean` |
@@ -70,7 +70,7 @@ Do not bypass the Makefile in CI or contributor guidance.
 
 - Public APIs require tests.
 - Bug fixes require regression tests.
-- `make test && make style && make typecheck` is the minimum merge gate.
+- `make check-all` is the minimum merge gate.
 
 ## Commit Rules
 
