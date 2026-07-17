@@ -569,3 +569,63 @@ def test_upgrade_to_record_factory_removes_context_filter_azure_mode() -> None:
     finally:
         root.handlers[:] = original_handlers
         root.filters[:] = original_filters
+
+
+class TestInjectionModeParity:
+    """Guard: ContextFilter and LogRecordFactory modes enrich records with
+    identical context fields, so neither mode implicitly relies on the other
+    for coverage (design-review #210).
+    """
+
+    CONTEXT_FIELDS = ("invocation_id", "function_name", "trace_id", "cold_start")
+
+    class _Ctx:
+        invocation_id = "inv-parity-1"
+        function_name = "parity_fn"
+        trace_parent = "00-" + "a" * 32 + "-" + "b" * 16 + "-01"
+
+    def _fields(self, record: logging.LogRecord) -> dict[str, object]:
+        return {f: getattr(record, f, "<<missing>>") for f in self.CONTEXT_FIELDS}
+
+    def test_both_modes_enrich_identical_fields(self) -> None:
+        from azure_functions_logging import inject_context, reset_context
+
+        # --- ContextFilter mode ---
+        reset_context()
+        inject_context(self._Ctx())
+        cf_record = logging.makeLogRecord({"msg": "m"})
+        assert ContextFilter().filter(cf_record) is True
+        filter_fields = self._fields(cf_record)
+        reset_context()
+
+        # --- LogRecordFactory mode ---
+        logger_name = "afl.test.parity.factory"
+        logger = logging.getLogger(logger_name)
+        logger.handlers.clear()
+        logger.filters.clear()
+        with patch.dict(os.environ, {}, clear=True):
+            setup_logging(logger_name=logger_name, use_record_factory=True)
+        reset_context()
+        inject_context(self._Ctx())
+        factory_record = logger.makeRecord(
+            logger_name, logging.INFO, "f.py", 1, "m", (), None,
+        )
+        factory_fields = self._fields(factory_record)
+        reset_context()
+        logger.handlers.clear()
+        logger.filters.clear()
+
+        # Every context field must be present (not the missing sentinel).
+        assert "<<missing>>" not in filter_fields.values(), filter_fields
+        assert "<<missing>>" not in factory_fields.values(), factory_fields
+        # cold_start is a one-shot process-global, so compare the context-derived
+        # fields for equality and assert cold_start is a bool in both modes.
+        context_derived = ("invocation_id", "function_name", "trace_id")
+        assert {k: filter_fields[k] for k in context_derived} == {
+            k: factory_fields[k] for k in context_derived
+        }, (
+            "Injection modes diverged: "
+            f"ContextFilter={filter_fields} LogRecordFactory={factory_fields}"
+        )
+        assert isinstance(filter_fields["cold_start"], bool)
+        assert isinstance(factory_fields["cold_start"], bool)
