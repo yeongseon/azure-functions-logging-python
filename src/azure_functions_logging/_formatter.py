@@ -6,7 +6,8 @@ import logging
 import sys
 from typing import Iterable
 
-from ._logger import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
+from ._constants import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
+from ._redaction import mask_value
 
 # ANSI color codes
 _COLORS: dict[int, str] = {
@@ -18,10 +19,6 @@ _COLORS: dict[int, str] = {
 }
 _RESET = "\033[0m"
 
-# Keys whose values are masked in extra output
-_SENSITIVE_KEYS: frozenset[str] = frozenset(
-    {"password", "token", "authorization", "secret", "api_key", "apikey", "passwd"}
-)
 
 _STANDARD_RECORD_FIELDS: frozenset[str] = _STDLIB_RECORD_KEYS
 _CONTEXT_FIELDS: frozenset[str] = _LIBRARY_RESERVED_KEYS
@@ -92,7 +89,7 @@ class ColorFormatter(logging.Formatter):
                     continue
                 if self._extra_allowlist is not None and key not in self._extra_allowlist:
                     continue
-                masked_value = "***" if key.lower() in _SENSITIVE_KEYS else value
+                masked_value = mask_value(key, value)
                 context_parts.append(f"{key}={masked_value}")
 
         # Build output
