@@ -16,7 +16,8 @@
 1. Confirm whether the change affects logging API, redaction behavior, configuration, or docs only.
 2. Update examples when they are used as public contract material.
 3. Keep tests and docs in lockstep for public behavior changes.
-4. Do not broaden supported Python versions or dependency ranges casually.
+4. When changing the public API or `README.md`, propagate the same updates to the i18n READMEs (`README.ja.md`, `README.ko.md`, `README.zh-CN.md`) and to `docs/api.md` in the same PR.
+5. Do not broaden supported Python versions or dependency ranges casually.
 
 ## Validation
 - `make test`
