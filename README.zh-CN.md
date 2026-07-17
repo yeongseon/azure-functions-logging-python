@@ -44,6 +44,26 @@ Azure Functions Python 的日志记录有一些通用日志库无法处理的特
 
 > **范围免责声明。** 本包将结构化 JSON 写入 Python `logging` / stdout。这些字段在 Application Insights 中如何呈现取决于 Azure Functions host、worker、日志配置和 ingestion 管道。本库不拥有 ingestion 或 schema 映射 — `customDimensions` 解析形式和原始 `message` 形式在生产中都是有效的。
 
+## 流水线一览
+
+```mermaid
+flowchart TD
+    A["setup_logging()"] -->|Azure / Core Tools| B[Azure host handler]
+    A -->|local dev| C[Console/Color handler]
+    D["inject_context() / with_context / logging_context"] --> E[contextvars]
+    E --> F{injection mode}
+    F -->|"default"| G[ContextFilter]
+    F -->|"use_record_factory=True"| H[LogRecordFactory]
+    G --> I[FunctionLogger]
+    H --> I
+    B --> I
+    C --> I
+    I --> J[JsonFormatter / ColorFormatter]
+    J --> K[Host / stdout &rarr; Application Insights]
+```
+
+> The two injection modes are **mutually exclusive**: do not attach `ContextFilter` when `use_record_factory=True`.
+
 ## Before / After
 
 **未使用** `azure-functions-logging` — 简单的 `print()` 输出，无上下文，无结构:
