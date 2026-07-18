@@ -63,10 +63,15 @@ class TestDocsCoverage:
         from pathlib import Path
 
         api_doc = Path(__file__).resolve().parents[1] / "docs" / "api.md"
+        assert api_doc.exists(), f"API documentation file is missing: {api_doc}"
         text = api_doc.read_text(encoding="utf-8")
         missing = [
             name
             for name in azure_functions_logging.__all__
-            if name != "__version__" and name not in text
+            if name != "__version__"
+            and f"::: azure_functions_logging.{name}" not in text
         ]
-        assert not missing, f"Undocumented public symbols in docs/api.md: {missing}"
+        assert not missing, (
+            "Public symbols missing an mkdocstrings directive "
+            f"(`::: azure_functions_logging.<name>`) in docs/api.md: {missing}"
+        )
