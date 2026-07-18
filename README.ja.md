@@ -59,10 +59,10 @@ flowchart TD
     B --> I
     C --> I
     I --> J[JsonFormatter / ColorFormatter]
-    J --> K[Host / stdout &rarr; Application Insights]
+    J --> K[Host / stdout → Application Insights]
 ```
 
-> The two injection modes are **mutually exclusive**: do not attach `ContextFilter` when `use_record_factory=True`.
+> 2つの注入モードは**相互排他的**です。`use_record_factory=True` の場合は `ContextFilter` を付加しないでください。
 
 ## Before / After
 
