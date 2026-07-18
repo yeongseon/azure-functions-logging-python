@@ -270,6 +270,10 @@ metadata = get_logging_metadata(handler)
 
 ::: azure_functions_logging.install_context_factory
 
+## uninstall_context_factory
+
+::: azure_functions_logging.uninstall_context_factory
+
 ## reset_context
 
 ::: azure_functions_logging.reset_context

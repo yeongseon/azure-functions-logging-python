@@ -21,6 +21,7 @@ from azure_functions_logging._context import (
     reset_context,
     restore_context,
     trace_id_var,
+    uninstall_context_factory,
 )
 
 
@@ -362,6 +363,57 @@ def test_install_context_factory_injects_fields() -> None:
         logging.setLogRecordFactory(old_factory)
         invocation_id_var.set(None)
         function_name_var.set(None)
+
+
+def test_uninstall_context_factory_restores_previous() -> None:
+    """uninstall_context_factory restores the factory active before install."""
+    old_factory = logging.getLogRecordFactory()
+    try:
+        install_context_factory()
+        assert getattr(
+            logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
+        ) is True
+
+        assert uninstall_context_factory() is True
+        assert logging.getLogRecordFactory() is old_factory
+        assert getattr(
+            logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
+        ) is False
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+
+def test_uninstall_context_factory_preserves_chained_factory() -> None:
+    """Uninstall restores a custom factory that install had chained onto."""
+    old_factory = logging.getLogRecordFactory()
+
+    def custom_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = old_factory(*args, **kwargs)
+        record.custom_field = "kept"
+        return record
+
+    try:
+        logging.setLogRecordFactory(custom_factory)
+        install_context_factory()
+        assert uninstall_context_factory() is True
+        assert logging.getLogRecordFactory() is custom_factory
+
+        record = logging.getLogRecordFactory()(
+            "test", logging.INFO, __file__, 1, "msg", (), None
+        )
+        assert record.custom_field == "kept"  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+
+def test_uninstall_context_factory_noop_when_not_installed() -> None:
+    """uninstall_context_factory is a no-op when the factory is not active."""
+    old_factory = logging.getLogRecordFactory()
+    try:
+        assert uninstall_context_factory() is False
+        assert logging.getLogRecordFactory() is old_factory
+    finally:
+        logging.setLogRecordFactory(old_factory)
 
 
 def test_install_context_factory_chains_existing_factory() -> None:

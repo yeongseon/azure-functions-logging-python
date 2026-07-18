@@ -9,6 +9,7 @@ from ._context import (
     logging_context,
     reset_context,
     restore_context,
+    uninstall_context_factory,
 )
 from ._decorator import get_logging_metadata, with_context
 from ._filters import RedactionFilter, SamplingFilter
@@ -30,6 +31,7 @@ __all__ = [
     "logging_context",
     "reset_context",
     "restore_context",
+    "uninstall_context_factory",
     "setup_logging",
     "with_context",
 ]

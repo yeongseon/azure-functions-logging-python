@@ -223,6 +223,7 @@ def logging_context(context: Any) -> Iterator[None]:
 # --- LogRecordFactory-based context injection (opt-in) ---
 
 _CONTEXT_FACTORY_MARKER = "_azure_functions_logging_context_factory"
+_CONTEXT_FACTORY_PREVIOUS = "_azure_functions_logging_previous_factory"
 
 #: Field names injected by the factory. These become reserved LogRecord
 #: attributes when ``install_context_factory()`` is active.
@@ -275,4 +276,31 @@ def install_context_factory() -> None:
         return record
 
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)
+    setattr(context_record_factory, _CONTEXT_FACTORY_PREVIOUS, previous_factory)
     logging.setLogRecordFactory(context_record_factory)
+
+
+def uninstall_context_factory() -> bool:
+    """Restore the ``LogRecordFactory`` that preceded :func:`install_context_factory`.
+
+    This is the inverse of :func:`install_context_factory` and is primarily
+    intended for test teardown, where leaving a global factory installed would
+    leak context injection into unrelated tests.
+
+    Only the factory installed by this package is removed: the previously
+    active factory (captured at install time, including any chained
+    customizations) is restored as the global ``LogRecordFactory``.
+
+    Returns:
+        ``True`` if this package's context factory was active and has been
+        uninstalled; ``False`` if no such factory was active (no-op).
+    """
+    current_factory = logging.getLogRecordFactory()
+    if not getattr(current_factory, _CONTEXT_FACTORY_MARKER, False):
+        return False
+
+    previous_factory = getattr(current_factory, _CONTEXT_FACTORY_PREVIOUS, None)
+    if previous_factory is None:  # pragma: no cover - defensive; always set on install
+        previous_factory = logging.LogRecord
+    logging.setLogRecordFactory(previous_factory)
+    return True
