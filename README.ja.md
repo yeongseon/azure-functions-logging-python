@@ -45,6 +45,26 @@ Azure Functions Python のロギングには、汎用的なロギングライブ
 
 > **スコープ免責事項。** このパッケージは Python `logging` / stdout に構造化 JSON を書き込みます。これらのフィールドが Application Insights にどう現れるかは、Azure Functions host、worker、ロギング設定、および ingestion パイプラインに依存します。ライブラリは ingestion やスキーマ マッピングを所有しません — `customDimensions` にパースされる形式と、生の `message` 内に残る形式の両方が本番環境で有効です。
 
+## パイプライン概要
+
+```mermaid
+flowchart TD
+    A["setup_logging()"] -->|Azure / Core Tools| B[Azure host handler]
+    A -->|local dev| C[Console/Color handler]
+    D["inject_context() / with_context / logging_context"] --> E[contextvars]
+    E --> F{injection mode}
+    F -->|"default"| G[ContextFilter]
+    F -->|"use_record_factory=True"| H[LogRecordFactory]
+    G --> I[FunctionLogger]
+    H --> I
+    B --> I
+    C --> I
+    I --> J[JsonFormatter / ColorFormatter]
+    J --> K[Host / stdout → Application Insights]
+```
+
+> 2つの注入モードは**相互排他的**です。`use_record_factory=True` の場合は `ContextFilter` を付加しないでください。
+
 ## Before / After
 
 `azure-functions-logging` を **使わない場合** — 単純な `print()` 出力、コンテキストなし、構造なし:

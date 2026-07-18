@@ -45,6 +45,26 @@ Azure Functions Python logging has specific failure modes that generic logging l
 
 > **Scope disclaimer.** This package writes structured JSON to Python `logging` / stdout. How those fields appear in Application Insights depends on the Azure Functions host, worker, logging configuration, and ingestion pipeline. The library does not own ingestion or schema mapping — both `customDimensions`-parsed and raw-`message` shapes are valid in production.
 
+## Pipeline at a glance
+
+```mermaid
+flowchart TD
+    A["setup_logging()"] -->|Azure / Core Tools| B[Azure host handler]
+    A -->|local dev| C[Console/Color handler]
+    D["inject_context() / with_context / logging_context"] --> E[contextvars]
+    E --> F{injection mode}
+    F -->|"default"| G[ContextFilter]
+    F -->|"use_record_factory=True"| H[LogRecordFactory]
+    G --> I[FunctionLogger]
+    H --> I
+    B --> I
+    C --> I
+    I --> J[JsonFormatter / ColorFormatter]
+    J --> K[Host / stdout → Application Insights]
+```
+
+> The two injection modes are **mutually exclusive**: do not attach `ContextFilter` when `use_record_factory=True`.
+
 ## Before / After
 
 **Without** `azure-functions-logging` — plain `print()` output, no context, no structure:

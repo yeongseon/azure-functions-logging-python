@@ -45,6 +45,26 @@ Azure Functions Python의 logging에는 일반 logging 라이브러리가 다루
 
 > **범위 면책.** 이 패키지는 Python `logging` / stdout으로 구조화된 JSON을 씁니다. Application Insights에서 어떻게 표시되는지는 Azure Functions host, worker, logging 구성, ingestion 파이프라인에 따라 달라집니다. 라이브러리는 ingestion이나 schema mapping을 책임지지 않습니다 — `customDimensions`로 파싱되는 형태와 raw `message`에 들어가는 형태 모두 프로덕션에서 유효합니다.
 
+## 파이프라인 개요
+
+```mermaid
+flowchart TD
+    A["setup_logging()"] -->|Azure / Core Tools| B[Azure host handler]
+    A -->|local dev| C[Console/Color handler]
+    D["inject_context() / with_context / logging_context"] --> E[contextvars]
+    E --> F{injection mode}
+    F -->|"default"| G[ContextFilter]
+    F -->|"use_record_factory=True"| H[LogRecordFactory]
+    G --> I[FunctionLogger]
+    H --> I
+    B --> I
+    C --> I
+    I --> J[JsonFormatter / ColorFormatter]
+    J --> K[Host / stdout → Application Insights]
+```
+
+> 두 주입 모드는 **상호 배타적**입니다. `use_record_factory=True`일 때는 `ContextFilter`를 추가하지 마세요.
+
 ## Before / After
 
 `azure-functions-logging` **사용 전** — 단순 `print()` 출력, 컨텍스트 없음, 구조 없음:

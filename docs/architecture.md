@@ -164,16 +164,24 @@ sequenceDiagram
     participant CTX as inject_context()
     participant Vars as contextvars
     participant CF as ContextFilter
+    participant LRF as LogRecordFactory
     participant Fmt as Formatter
 
     Trigger->>Handler: invoke with func.Context
     Handler->>CTX: inject_context(context)
     CTX->>Vars: set invocation_id, function_name, trace_id, cold_start
     Handler->>Handler: logger.info("Processing request")
-    Handler->>CF: LogRecord passes through filter
-    CF->>Vars: read context variable values
-    CF->>CF: copy values onto LogRecord attributes
-    CF->>Fmt: enriched LogRecord
+    alt default mode (ContextFilter)
+        Handler->>CF: LogRecord passes through filter
+        CF->>Vars: read context variable values
+        CF->>CF: copy values onto LogRecord attributes
+        CF->>Fmt: enriched LogRecord
+    else use_record_factory=True (LogRecordFactory)
+        Handler->>LRF: LogRecord created by factory
+        LRF->>Vars: read context variable values
+        LRF->>LRF: set context attributes at record creation
+        LRF->>Fmt: enriched LogRecord
+    end
     Fmt-->>Handler: formatted output with context fields
 ```
 
