@@ -1,11 +1,67 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.7.7] - 2026-07-18
+
+### Bug Fixes
+
+- *(filters)* Normalize hyphenated keys in RedactionFilter and expand default set (#178) 
+- *(host_config)* Merge host.json and app setting levels to eliminate false positive warnings (#177) 
+- *(filters)* Expand RedactionFilter default sensitive key set (#170) 
+- *(filters)* Expand default sensitive key set (#162) 
+- *(setup)* Remove ContextFilter when enabling record factory (#160) 
+
+### Documentation
+
+- Document context helpers and add api-coverage guard (#212) 
+- Add pipeline diagram to READMEs and clarify injection modes (#213) 
+- Add discoverability metadata (pepy badge + llms.txt) (#219) 
+- Align AGENT.md lint/merge-gate commands with Makefile (#206) 
+- *(setup)* Clarify root logger interaction contract (#187) 
+- Sync README and llms.txt with v0.7.x operational behavior (#168) 
+- *(assets)* Add Application Insights portal screenshots for before/after comparison (#158) 
+
+### Features
+
+- *(filters)* Add stale bucket eviction for SamplingFilter per_logger mode (#179) 
+- Implement host override detection and per-logger sampling (#173) 
+- *(json)* Add optional native string truncation to JsonFormatter (#166) 
+- *(host_config)* Discover host.json from AzureWebJobsScriptRoot env var (#164) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump github/codeql-action/analyze from 4.36.2 to 4.37.0 (#203) 
+- *(deps)* Bump github/codeql-action/init from 4.36.2 to 4.37.0 (#202) 
+- *(deps)* Bump actions/setup-python from 6.2.0 to 6.3.0 (#197) 
+- *(deps)* Bump actions/stale from 10.3.0 to 10.4.0 (#200) 
+- *(deps)* Bump mypy from 2.1.0 to 2.2.0 (#201) 
+- *(deps)* Bump ruff from 0.15.20 to 0.15.21 (#204) 
+- *(ci)* Pin external actions to commit SHAs and document policy (#196) 
+- *(deps)* Bump actions/checkout from 6 to 7 (#191) 
+- *(deps)* Bump softprops/action-gh-release from 3.0.0 to 3.0.1 (#192) 
+- *(deps)* Bump ruff from 0.15.16 to 0.15.20 (#194) 
+- *(deps)* Bump codecov/codecov-action from 6.0.1 to 7.0.0 (#189) 
+
+### Other
+
+- Bump version to 0.7.7 
+
+### Refactor
+
+- *(context)* De-duplicate reserved keys and redaction logic (#217) 
+
+### Testing
+
+- Assert ContextFilter and LogRecordFactory enrich records at parity (#215) 
 ## [0.7.6] - 2026-06-07
 
 ### Bug Fixes
 
 - Post-v0.7.5 Oracle review — factory isolation, azure state key, handler WeakSet, redaction fail-closed (#156) 
+
+### Documentation
+
+- Update changelog 
 
 ### Miscellaneous Tasks
 
