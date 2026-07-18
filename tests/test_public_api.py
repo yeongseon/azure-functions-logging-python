@@ -54,3 +54,24 @@ class TestAPISurface:
 
     def test_setup_logging_is_callable(self) -> None:
         assert callable(azure_functions_logging.setup_logging)
+
+
+class TestDocsCoverage:
+    """Guard: every public symbol in ``__all__`` is documented in docs/api.md."""
+
+    def test_every_public_symbol_documented(self) -> None:
+        from pathlib import Path
+
+        api_doc = Path(__file__).resolve().parents[1] / "docs" / "api.md"
+        assert api_doc.exists(), f"API documentation file is missing: {api_doc}"
+        text = api_doc.read_text(encoding="utf-8")
+        missing = [
+            name
+            for name in azure_functions_logging.__all__
+            if name != "__version__"
+            and f"::: azure_functions_logging.{name}" not in text
+        ]
+        assert not missing, (
+            "Public symbols missing an mkdocstrings directive "
+            f"(`::: azure_functions_logging.<name>`) in docs/api.md: {missing}"
+        )

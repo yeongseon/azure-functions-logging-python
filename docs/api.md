@@ -234,6 +234,54 @@ inject_context(PartialContext())
 logger.info("partial context accepted")
 ```
 
+## with_context
+
+::: azure_functions_logging.with_context
+
+## get_logging_metadata
+
+::: azure_functions_logging.get_logging_metadata
+
+### Usage Notes
+
+- Returns the logging metadata dict attached by the `with_context` decorator, or `None` when the function was not decorated.
+- Signature: `get_logging_metadata(func: Any) -> dict[str, Any] | None`.
+
+### Example
+
+```python
+from azure_functions_logging import get_logging_metadata, with_context
+
+
+@with_context
+def handler(req, context=None):
+    ...
+
+
+metadata = get_logging_metadata(handler)
+# -> {"param": "context", ...} or None if not decorated
+```
+
+## logging_context
+
+::: azure_functions_logging.logging_context
+
+## install_context_factory
+
+::: azure_functions_logging.install_context_factory
+
+## reset_context
+
+::: azure_functions_logging.reset_context
+
+## restore_context
+
+::: azure_functions_logging.restore_context
+
+## ContextTokens
+
+::: azure_functions_logging.ContextTokens
+
 ## End-to-End API Example
 
 ```python
