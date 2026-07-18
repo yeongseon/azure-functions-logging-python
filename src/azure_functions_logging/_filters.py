@@ -12,53 +12,12 @@ import threading
 import time
 from typing import Any, Iterable
 
-from ._logger import _RESERVED_LOG_RECORD_KEYS
-
-# Default set of sensitive keys masked by RedactionFilter
-_DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
-    {
-        "password",
-        "passwd",
-        "pwd",
-        "token",
-        "access_token",
-        "refresh_token",
-        "id_token",
-        "authorization",
-        "auth",
-        "secret",
-        "client_secret",
-        "secret_key",
-        "api_key",
-        "apikey",
-        "subscription_key",
-        "connection_string",
-        "conn_str",
-        "sas_token",
-        "x_functions_key",
-        "function_key",
-        "master_key",
-        "private_key",
-        "credential",
-        "account_key",
-        "access_key",
-    }
-)
-
-_MASK = "***"
-
+from ._constants import _RESERVED_LOG_RECORD_KEYS
+from ._redaction import MASK as _MASK
+from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
+from ._redaction import normalize_key as _normalize_key
 
 _REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
-
-
-def _normalize_key(key: str) -> str:
-    """Normalize a key for sensitive-key lookup: lowercase and replace hyphens with underscores.
-
-    This ensures that HTTP header forms like ``X-Functions-Key`` match the
-    underscore-based entries in the sensitive keys set.
-    """
-    return key.lower().replace("-", "_")
-
 
 
 def _redact_value(
@@ -176,9 +135,7 @@ class SamplingFilter(logging.Filter):
         """
         stale_cutoff = now - self._window
         self._buckets = {
-            name: entry
-            for name, entry in self._buckets.items()
-            if entry[0] > stale_cutoff
+            name: entry for name, entry in self._buckets.items() if entry[0] > stale_cutoff
         }
         # Hard cap: if still over limit after stale removal, drop oldest buckets
         if len(self._buckets) > self._MAX_BUCKETS:
@@ -210,9 +167,7 @@ class SamplingFilter(logging.Filter):
                         elif len(self._buckets) > self._MAX_BUCKETS:
                             # Throttle blocked full sweep; enforce hard cap
                             # by dropping the single oldest bucket
-                            oldest_name = min(
-                                self._buckets, key=lambda k: self._buckets[k][0]
-                            )
+                            oldest_name = min(self._buckets, key=lambda k: self._buckets[k][0])
                             del self._buckets[oldest_name]
                     return True
                 count = bucket[1] + 1
@@ -224,6 +179,7 @@ class SamplingFilter(logging.Filter):
                 self._window_start = now
             self._count += 1
             return self._count <= self._rate
+
 
 class RedactionFilter(logging.Filter):
     """Mask PII / sensitive values on LogRecord extra attributes in-place.

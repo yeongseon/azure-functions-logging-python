@@ -6,7 +6,8 @@ import logging
 import sys
 from typing import Iterable
 
-from ._logger import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
+from ._constants import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
+from ._redaction import mask_value
 
 # ANSI color codes
 _COLORS: dict[int, str] = {
@@ -18,10 +19,6 @@ _COLORS: dict[int, str] = {
 }
 _RESET = "\033[0m"
 
-# Keys whose values are masked in extra output
-_SENSITIVE_KEYS: frozenset[str] = frozenset(
-    {"password", "token", "authorization", "secret", "api_key", "apikey", "passwd"}
-)
 
 _STANDARD_RECORD_FIELDS: frozenset[str] = _STDLIB_RECORD_KEYS
 _CONTEXT_FIELDS: frozenset[str] = _LIBRARY_RESERVED_KEYS
@@ -38,8 +35,13 @@ class ColorFormatter(logging.Formatter):
     Args:
         include_extra: When True, appends ``bind()`` context fields (extra
             attributes on the LogRecord) to the formatted output. Sensitive
-            keys (password, token, secret, authorization, api_key, passwd,
-            apikey) are replaced with ``"***"``. Default: False.
+            values are masked with ``"***"`` using the shared redaction rules
+            (see ``mask_value``), which cover the full default sensitive-key
+            set (e.g. ``password``, ``token``, ``access_token``,
+            ``refresh_token``, ``authorization``, ``secret``, ``api_key``,
+            ``connection_string``, ``x_functions_key``, ...) and normalize
+            hyphenated header forms, so keys like ``X-Functions-Key`` also
+            match. Default: False.
         extra_allowlist: Optional set of extra field names to include. When
             provided, only keys in this set are shown (sensitive keys are
             still masked). When None (default), all non-standard fields are
@@ -92,7 +94,7 @@ class ColorFormatter(logging.Formatter):
                     continue
                 if self._extra_allowlist is not None and key not in self._extra_allowlist:
                     continue
-                masked_value = "***" if key.lower() in _SENSITIVE_KEYS else value
+                masked_value = mask_value(key, value)
                 context_parts.append(f"{key}={masked_value}")
 
         # Build output

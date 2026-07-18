@@ -118,6 +118,23 @@ def test_include_extra_masks_sensitive_keys() -> None:
     assert "authorization=***" in output
 
 
+def test_include_extra_masks_shared_redaction_keys() -> None:
+    # Guards the coupling to the shared _redaction rules: keys beyond the
+    # legacy hardcoded set (access_token) and hyphenated header forms
+    # (X-Functions-Key) must be masked via mask_value().
+    formatter = ColorFormatter(include_extra=True)
+    record = _make_record(msg="sensitive")
+    setattr(record, "access_token", "at-secret")
+    setattr(record, "X-Functions-Key", "fk-secret")
+
+    output = formatter.format(record)
+
+    assert "at-secret" not in output
+    assert "fk-secret" not in output
+    assert "access_token=***" in output
+    assert "X-Functions-Key=***" in output
+
+
 def test_include_extra_false_by_default_hides_extra_fields() -> None:
     formatter = ColorFormatter()  # include_extra defaults to False
     record = _make_record(msg="no extra")

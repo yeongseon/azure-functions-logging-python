@@ -5,37 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-# Custom keys this library injects via the logger context (factory). They must be
-# treated as reserved alongside stdlib LogRecord attributes so that user-supplied
-# `extra` does not silently overwrite Azure Functions runtime metadata.
-_LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(
-    {
-        "cold_start",
-        "function_name",
-        "invocation_id",
-        "trace_id",
-    }
-)
-
-# Derive the stdlib LogRecord attribute set at import time from a pristine record
-# created directly via the base class, bypassing the global LogRecordFactory.
-# Using logging.makeLogRecord({}) would pick up any custom factory already
-# installed by third-party libraries, misclassifying their injected fields as
-# reserved stdlib attributes and breaking extra-key sanitization and redaction.
-# `message` and `asctime` are computed lazily by formatters and absent from
-# `__dict__`; we add them explicitly to preserve the original guarantee.
-#
-# `taskName` is also kept in the explicit forward-compat set so that user code
-# passing it as `extra` is sanitized identically across 3.10 / 3.11 / 3.12+.
-_FORWARD_COMPAT_RECORD_KEYS: frozenset[str] = frozenset({"message", "asctime", "taskName"})
-
-# stdlib LogRecord fields only (no library context keys).
-# Use this in formatters that need to distinguish stdlib from application-added fields.
-_STDLIB_RECORD_KEYS: frozenset[str] = (
-    frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | _FORWARD_COMPAT_RECORD_KEYS
-)
-
-_RESERVED_LOG_RECORD_KEYS: frozenset[str] = _STDLIB_RECORD_KEYS | _LIBRARY_RESERVED_KEYS
+from ._constants import _FORWARD_COMPAT_RECORD_KEYS as _FORWARD_COMPAT_RECORD_KEYS
+from ._constants import _LIBRARY_RESERVED_KEYS as _LIBRARY_RESERVED_KEYS
+from ._constants import _RESERVED_LOG_RECORD_KEYS as _RESERVED_LOG_RECORD_KEYS
+from ._constants import _STDLIB_RECORD_KEYS as _STDLIB_RECORD_KEYS
 
 
 def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
@@ -68,6 +41,7 @@ def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
                 key = f"{key}_{suffix}"
             sanitized[key] = value
     return sanitized
+
 
 class FunctionLogger:
     """Wrapper around a standard ``logging.Logger`` with context binding.
