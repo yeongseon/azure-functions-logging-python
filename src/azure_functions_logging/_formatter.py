@@ -35,8 +35,13 @@ class ColorFormatter(logging.Formatter):
     Args:
         include_extra: When True, appends ``bind()`` context fields (extra
             attributes on the LogRecord) to the formatted output. Sensitive
-            keys (password, token, secret, authorization, api_key, passwd,
-            apikey) are replaced with ``"***"``. Default: False.
+            values are masked with ``"***"`` using the shared redaction rules
+            (see ``mask_value``), which cover the full default sensitive-key
+            set (e.g. ``password``, ``token``, ``access_token``,
+            ``refresh_token``, ``authorization``, ``secret``, ``api_key``,
+            ``connection_string``, ``x_functions_key``, ...) and normalize
+            hyphenated header forms, so keys like ``X-Functions-Key`` also
+            match. Default: False.
         extra_allowlist: Optional set of extra field names to include. When
             provided, only keys in this set are shown (sensitive keys are
             still masked). When None (default), all non-standard fields are
