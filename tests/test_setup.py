@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 import logging
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -579,10 +580,17 @@ class TestInjectionModeParity:
 
     CONTEXT_FIELDS = ("invocation_id", "function_name", "trace_id", "cold_start")
 
+    _TRACE_PARENT = "00-" + "a" * 32 + "-" + "b" * 16 + "-01"
+
     class _Ctx:
         invocation_id = "inv-parity-1"
         function_name = "parity_fn"
-        trace_parent = "00-" + "a" * 32 + "-" + "b" * 16 + "-01"
+        trace_context = SimpleNamespace(
+            trace_parent="00-" + "a" * 32 + "-" + "b" * 16 + "-01"
+        )
+
+    # trace_id extracted from the W3C traceparent above.
+    EXPECTED_TRACE_ID = "a" * 32
 
     def _fields(self, record: logging.LogRecord) -> dict[str, object]:
         return {f: getattr(record, f, "<<missing>>") for f in self.CONTEXT_FIELDS}
@@ -627,5 +635,15 @@ class TestInjectionModeParity:
             "Injection modes diverged: "
             f"ContextFilter={filter_fields} LogRecordFactory={factory_fields}"
         )
+        # Assert the extracted values match the injected context in BOTH modes,
+        # so the parity check cannot pass by both modes failing identically
+        # (e.g. all context-derived fields being None).
+        expected = {
+            "invocation_id": self._Ctx.invocation_id,
+            "function_name": self._Ctx.function_name,
+            "trace_id": self.EXPECTED_TRACE_ID,
+        }
+        assert {k: filter_fields[k] for k in context_derived} == expected, filter_fields
+        assert {k: factory_fields[k] for k in context_derived} == expected, factory_fields
         assert isinstance(filter_fields["cold_start"], bool)
         assert isinstance(factory_fields["cold_start"], bool)
