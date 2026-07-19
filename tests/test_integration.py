@@ -93,6 +93,7 @@ def test_public_api_exports() -> None:
         "logging_context",
         "reset_context",
         "restore_context",
+        "uninstall_context_factory",
         "setup_logging",
         "with_context",
     }

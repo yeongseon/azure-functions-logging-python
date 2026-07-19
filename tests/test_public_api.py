@@ -21,6 +21,7 @@ class TestAPISurface:
             "logging_context",
             "reset_context",
             "restore_context",
+            "uninstall_context_factory",
             "setup_logging",
             "with_context",
         }
@@ -47,6 +48,7 @@ class TestAPISurface:
             logging_context,
             reset_context,
             restore_context,
+            uninstall_context_factory,
         )
 
     def test_get_logger_is_callable(self) -> None:
