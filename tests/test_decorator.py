@@ -258,3 +258,34 @@ class TestColdStart:
         )
         result = handler("req", ctx2)
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# 7. Shared worker-compat metadata helper
+# ---------------------------------------------------------------------------
+
+
+class TestCopyIdentityAttrs:
+    """The shared ``copy_identity_attrs`` primitive must not leak state."""
+
+    def test_copies_identity_without_wrapped_or_dict_alias(self) -> None:
+        from azure_functions_logging._metadata_helpers import (
+            SAFE_IDENTITY_ATTRS,
+            copy_identity_attrs,
+        )
+
+        def func(req: object, context: object) -> None:
+            """Original docstring."""
+
+        def wrapper(*args: object, **kwargs: object) -> None:
+            pass
+
+        copy_identity_attrs(wrapper, func)
+
+        for attr in SAFE_IDENTITY_ATTRS:
+            assert getattr(wrapper, attr) == getattr(func, attr)
+        # __wrapped__ must NOT be set (defeats worker indexing otherwise).
+        assert not hasattr(wrapper, "__wrapped__")
+        # __dict__ must not be aliased: mutating wrapper must not touch func.
+        wrapper.__dict__["_marker"] = 1
+        assert "_marker" not in func.__dict__
