@@ -567,3 +567,39 @@ def test_extract_trace_id_forward_compatible_future_version() -> None:
 
 def test_extract_trace_id_baseline_valid_still_works() -> None:
     assert _extract_trace_id(_VALID_TRACEPARENT) == _VALID_TRACE_ID
+
+
+def test_context_filter_injects_extra_context_vars() -> None:
+    import contextvars
+
+    tenant_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+        "tenant_id", default=None
+    )
+    token = tenant_var.set("acme")
+    try:
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
+        )
+        keep = ContextFilter({"tenant_id": tenant_var}).filter(record)
+        assert keep is True
+        assert record.tenant_id == "acme"  # type: ignore[attr-defined]
+        # Built-in fields still injected.
+        assert record.invocation_id is None  # type: ignore[attr-defined]
+    finally:
+        tenant_var.reset(token)
+
+
+def test_context_filter_extra_collision_raises() -> None:
+    import contextvars
+
+    bad_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+        "trace_id", default=None
+    )
+    with pytest.raises(ValueError, match="collide"):
+        ContextFilter({"trace_id": bad_var})

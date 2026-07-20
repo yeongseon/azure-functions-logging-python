@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 from pathlib import Path
 import threading
+from typing import Any
 import warnings
 import weakref
 
@@ -62,6 +64,7 @@ def setup_logging(
     functions_formatter: logging.Formatter | None = None,
     host_json_path: Path | str | None = None,
     use_record_factory: bool = False,
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
 ) -> None:
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
@@ -106,6 +109,11 @@ def setup_logging(
             handlers, because the global ``LogRecordFactory`` would be
             overwritten by the filter at handler dispatch time. Defaults to
             False to preserve the existing handler-filter-only behavior.
+        extra_context_vars: Optional mapping of ``field_name -> ContextVar``
+            whose current values ``ContextFilter`` also copies onto each
+            LogRecord, alongside the four built-in context fields. Field names
+            must not collide with the built-in fields. Only applies to the
+            ``ContextFilter`` strategy (ignored when ``use_record_factory=True``).
 
     .. warning::
 
@@ -159,7 +167,9 @@ def setup_logging(
             # Retrieve or create the per-call-signature state.
             _state_key: _AzureStateKey = (logger_name, use_record_factory)
             if _state_key not in _azure_state:
-                ctx_filter: ContextFilter | None = None if use_record_factory else ContextFilter()
+                ctx_filter: ContextFilter | None = (
+                    None if use_record_factory else ContextFilter(extra_context_vars)
+                )
                 _azure_state[_state_key] = (ctx_filter, weakref.WeakSet())
             context_filter, configured_handlers = _azure_state[_state_key]
             root = logging.getLogger()
@@ -185,7 +195,7 @@ def setup_logging(
 
             # When the LogRecordFactory is active, attaching ContextFilter would
             # overwrite factory-injected fields at handler dispatch time.
-            context_filter = None if use_record_factory else ContextFilter()
+            context_filter = None if use_record_factory else ContextFilter(extra_context_vars)
             target = logging.getLogger(logger_name)
             target.setLevel(level)
 
