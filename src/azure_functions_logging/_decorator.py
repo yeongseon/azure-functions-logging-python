@@ -13,12 +13,13 @@ import inspect
 from typing import Any, Callable, TypeVar, overload
 
 from ._context import inject_context, restore_context
+from ._metadata import LoggingMetadata, read_logging_metadata, set_logging_metadata
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 _DEFAULT_PARAM = "context"
 
-_TOOLKIT_META_ATTR = "_azure_functions_metadata"
+
 
 
 _SAFE_COPY_ATTRS = ("__name__", "__qualname__", "__doc__", "__module__")
@@ -51,23 +52,11 @@ def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -
     wrapper.__annotations__ = dict(getattr(func, "__annotations__", {}) or {})
 
 
-def _merge_toolkit_metadata_into_wrapper(
-    wrapper: Callable[..., Any],
-    func: Callable[..., Any],
-    namespace: str,
-    payload: dict[str, Any],
-) -> None:
-    """Merge toolkit metadata onto ``wrapper`` only, seeded from ``func``.
+def _build_logging_payload(param: str) -> LoggingMetadata:
+    """Construct the typed ``logging`` namespace payload."""
+    return {"version": 1, "context_param": param}
 
-    Reads any pre-existing convention attribute from ``func`` (set by other
-    decorators applied before this one), merges in our ``namespace`` payload,
-    and writes the result onto ``wrapper``. The original ``func`` is left
-    untouched so the metadata never leaks onto undecorated references.
-    """
-    existing: Any = getattr(func, _TOOLKIT_META_ATTR, None)
-    base: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
-    base[namespace] = payload
-    setattr(wrapper, _TOOLKIT_META_ATTR, base)
+
 
 def _find_context_arg(
     func: Callable[..., Any],
@@ -108,9 +97,7 @@ def _wrap_sync(func: _F, param: str) -> _F:
             restore_context(tokens)
 
     _copy_safe_metadata(wrapper, func)
-    _merge_toolkit_metadata_into_wrapper(
-        wrapper, func, "logging", {"version": 1, "context_param": param}
-    )
+    set_logging_metadata(wrapper, func, _build_logging_payload(param))
     return wrapper  # type: ignore[return-value]
 
 
@@ -129,9 +116,7 @@ def _wrap_async(func: _F, param: str) -> _F:
             restore_context(tokens)
 
     _copy_safe_metadata(wrapper, func)
-    _merge_toolkit_metadata_into_wrapper(
-        wrapper, func, "logging", {"version": 1, "context_param": param}
-    )
+    set_logging_metadata(wrapper, func, _build_logging_payload(param))
     return wrapper  # type: ignore[return-value]
 
 
@@ -192,9 +177,5 @@ def get_logging_metadata(func: Any) -> dict[str, Any] | None:
 
     Returns ``None`` if the function has no logging metadata attached.
     """
-    toolkit_meta = getattr(func, _TOOLKIT_META_ATTR, None)
-    if isinstance(toolkit_meta, dict):
-        meta = toolkit_meta.get("logging")
-        if isinstance(meta, dict):
-            return meta
-    return None
+    meta = read_logging_metadata(func)
+    return dict(meta) if meta is not None else None
