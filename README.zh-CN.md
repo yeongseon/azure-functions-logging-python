@@ -290,6 +290,8 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ### 全局 LogRecordFactory（可选启用）
 
+> **Deprecated:** 请使用 `setup_logging(use_record_factory=True)`。独立的 `install_context_factory()` 已弃用。
+
 `install_context_factory()` 在记录创建时注入上下文，因此**每一条** `LogRecord` 都会携带上下文，而不受 handler/filter 接线方式的影响 —— 当 handler 在 `setup_logging()` 之后才添加，或 logger 绕过 filter 链时尤其有用。它与默认的 `ContextFilter` 模式互斥。
 
 → [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)

@@ -290,6 +290,8 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ### 글로벌 LogRecordFactory (opt-in)
 
+> **Deprecated:** `setup_logging(use_record_factory=True)`를 사용하세요. 독립형 `install_context_factory()`는 더 이상 권장되지 않습니다.
+
 `install_context_factory()`는 레코드 생성 시점에 컨텍스트를 주입하여 핸들러/필터 구성과 무관하게 **모든** `LogRecord`가 컨텍스트를 갖도록 합니다. `setup_logging()` 이후 핸들러가 추가되거나 로거가 필터 체인을 우회할 때 유용합니다. 기본 `ContextFilter` 모드와는 상호 배타적입니다.
 
 → [구성: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)

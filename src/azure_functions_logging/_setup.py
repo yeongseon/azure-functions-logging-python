@@ -11,7 +11,7 @@ from typing import Any
 import warnings
 import weakref
 
-from ._context import ContextFilter, install_context_factory
+from ._context import ContextFilter, _install_context_factory
 from ._formatter import ColorFormatter
 from ._host_config import warn_host_json_level_conflict
 from ._json_formatter import JsonFormatter
@@ -102,7 +102,7 @@ def setup_logging(
             ``host.json`` is auto-discovered by walking up from the current
             working directory (bounded). Pass an explicit path to disable
             auto-discovery in environments where it might pick the wrong file.
-        use_record_factory: When True, install :func:`install_context_factory`
+        use_record_factory: When True, install the global ``LogRecordFactory``
             so context fields are injected at LogRecord creation time and are
             preserved through queued, delayed, or cross-thread handling. When
             this option is enabled, ``ContextFilter`` is **not** attached to
@@ -132,7 +132,7 @@ def setup_logging(
     # Install the global LogRecordFactory only after argument validation,
     # so an invalid call does not leave persistent global side effects.
     if use_record_factory:
-        install_context_factory()
+        _install_context_factory()
 
     with _configured_lock:
         # When switching to record-factory mode, strip any previously-installed

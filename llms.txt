@@ -36,7 +36,7 @@ Key features:
 - `restore_context(tokens)` — Restore previous contextvars from tokens (paired with `inject_context`)
 - `reset_context()` — Clear all context vars unconditionally (for test teardown)
 - `with_context` — Decorator to inject context per-request (sync/async)
-- `install_context_factory()` — Opt-in global LogRecordFactory so context flows to every record
+- `install_context_factory()` — **Deprecated**; prefer `setup_logging(use_record_factory=True)`. Opt-in global LogRecordFactory so context flows to every record
 - `get_logging_metadata(func)` — Inspect `@with_context` metadata on a function; returns `dict[str, Any] | None`
 - `ContextTokens` — Type alias for the token bundle returned by `inject_context()`
 
