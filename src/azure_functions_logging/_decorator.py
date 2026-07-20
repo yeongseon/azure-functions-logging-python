@@ -14,15 +14,11 @@ from typing import Any, Callable, TypeVar, overload
 
 from ._context import inject_context, restore_context
 from ._metadata import LoggingMetadata, read_logging_metadata, set_logging_metadata
+from ._metadata_helpers import copy_identity_attrs
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 _DEFAULT_PARAM = "context"
-
-
-
-
-_SAFE_COPY_ATTRS = ("__name__", "__qualname__", "__doc__", "__module__")
 
 
 def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -> None:
@@ -40,11 +36,7 @@ def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -
     It still mirrors ``__signature__`` and ``__annotations__`` so the worker
     can introspect parameter names/types for trigger binding.
     """
-    for attr in _SAFE_COPY_ATTRS:
-        try:
-            object.__setattr__(wrapper, attr, getattr(func, attr))
-        except (AttributeError, TypeError):  # pragma: no cover
-            pass
+    copy_identity_attrs(wrapper, func)
     try:
         wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
     except (TypeError, ValueError):  # pragma: no cover
