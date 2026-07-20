@@ -252,246 +252,53 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 > 已在 koreacentral 区域的临时 Azure Functions 部署上验证 (Python 3.12, Consumption plan)。已捕获响应，并对 URL 进行匿名化。
 
-## 调用上下文 (Invocation Context)
+## 核心功能
 
-使用 `logging_context()` 在处理程序运行期间绑定调用上下文。它会设置:
+下面每一项能力在[文档站点](https://yeongseon.github.io/azure-functions-logging-python/)上都有完整的操作指南 —— 本节只概述每项能力的作用并链接到唯一来源，从而让 README 保持为快速概览，而不是文档的第二份副本。
 
-- `invocation_id` — 每次执行唯一，关联一个请求的所有日志
-- `function_name` — Azure Functions 函数名
-- `trace_id` — 来自平台的 trace 上下文；仅从有效的 W3C `traceparent` 头中提取（严格校验，无效值会被忽略）
-- `cold_start` — 此 worker 进程的首次调用时为 `True`
+### 调用上下文
 
-> **`cold_start` 语义。** `cold_start=True` 表示 *模块加载后此 Python worker 进程观察到的首次调用*。它**不是**平台级别的冷启动指标，与 Azure Functions 指标报告的 App Service plan / instance 分配冷启动不对应。在同一 worker 上的后续调用，在 worker 被回收之前会发出 `cold_start=False`。
+`logging_context(context)`（参见 [Quick Start](#quick-start)）在处理函数执行期间绑定 `invocation_id`、`function_name`、`trace_id` 和 `cold_start`，并始终在退出时恢复先前的上下文。如需更底层的控制，可使用 `inject_context()` / `restore_context()`，或使用 `@with_context` 装饰器隐式注入（支持同步和异步处理函数）。
 
-```python
-def my_function(req, context):
-    with logging_context(context):
-        logger.info("handler started")
-        # 从此处开始的每条日志都带有 invocation_id 和 cold_start
-```
+> **`cold_start` 语义。** `cold_start=True` 表示本 Python worker 进程在模块加载后观察到的首次调用 —— **并非**平台级别的冷启动指标。
 
-如需较低级别的控制 (例如中间件)，请使用 `inject_context()` 配合 `restore_context()`:
+→ [Usage: context injection](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 
-```python
-tokens = inject_context(context)
-try:
-    logger.info("handler started")
-finally:
-    restore_context(tokens)
-```
+### 结构化 JSON 输出
 
-不进行上下文注入时，每条日志中这些字段都为 `None`。
+传入 `setup_logging(functions_formatter=JsonFormatter())`，即可在宿主托管的 handler 上输出可直接用于 Application Insights 的 NDJSON（或用 `format="json"` 用于独立/CI 场景）。额外字段会归入 `extra`；可选择开启 `truncate_native_strings=True` 以裁剪过长的字符串值。
 
-### `with_context` 装饰器
+→ [Usage: JSON output](https://yeongseon.github.io/azure-functions-logging-python/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.github.io/azure-functions-logging-python/api/#jsonformatter)
 
-为减少样板代码，可使用 `with_context` 装饰器代替手动调用 `inject_context()`:
+### host.json 冲突检测
 
-```python
-import azure.functions as func
-from azure_functions_logging import get_logger, setup_logging, with_context
+启动时，当你的 `host.json` —— 或 `AzureFunctionsJobHost__logging__logLevel__...` 应用设置覆盖 —— 抑制了应用实际发出的日志级别时，本库会发出警告。`host.json` 会从工作目录（或 `AzureWebJobsScriptRoot`）向上遍历自动发现；可传入 `host_json_path=` 覆盖。
 
-setup_logging()
-logger = get_logger(__name__)
+→ [Configuration: host.json conflict](https://yeongseon.github.io/azure-functions-logging-python/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/#hostjson-conflict-warning-appears)
 
-app = func.FunctionApp()
+### 噪声控制与 PII 脱敏
 
-@app.route(route="hello")
-@with_context
-def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    logger.info("Request received")
-    return func.HttpResponse("OK")
-```
+`SamplingFilter` 对话痨式的第三方 logger（如 `azure-core`、`urllib3`）进行限流；`RedactionFilter` 在日志到达聚合之前对敏感键（密码、令牌、密钥、连接字符串等 —— 不区分大小写、递归）进行掩码。将两者中的任意一个附加到根 handler，并可传入 `sensitive_keys=[...]` 自定义脱敏。
 
-装饰器按名称查找 `context` 参数，在处理程序运行前调用 `inject_context()`，并在返回后的 `finally` 中恢复先前上下文。
+→ [API: `SamplingFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#redactionfilter)
 
-自定义参数名:
+### 上下文绑定
 
-```python
-@with_context(param="ctx")
-def hello(req: func.HttpRequest, ctx: func.Context) -> func.HttpResponse:
-    ...
-```
+`logger.bind(key=value)` 返回一个 logger，它会把请求作用域的元数据附加到之后的每一条日志上，而无需逐次调用传递。请按调用创建绑定的 logger；不要在模块级别缓存它们。
 
-支持同步与异步处理程序。
+→ [Usage: context binding](https://yeongseon.github.io/azure-functions-logging-python/usage/#4-context-binding-with-functionloggerbind)
 
-### 全局 LogRecordFactory (opt-in)
+### 全局 LogRecordFactory（可选启用）
 
-对于在 `setup_logging()` 之后可能添加处理程序的应用，或希望无论处理程序/过滤器如何配置都让 **每个** `LogRecord` 都带有调用上下文的应用，请在启动时安装一次全局上下文工厂:
+`install_context_factory()` 在记录创建时注入上下文，因此**每一条** `LogRecord` 都会携带上下文，而不受 handler/filter 接线方式的影响 —— 当 handler 在 `setup_logging()` 之后才添加，或 logger 绕过 filter 链时尤其有用。它与默认的 `ContextFilter` 模式互斥。
 
-```python
-from azure_functions_logging import install_context_factory, setup_logging
+→ [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)
 
-install_context_factory()  # 在记录创建时注入上下文
-setup_logging()
-```
+### 本地 vs 云端
 
-启用后，`invocation_id`、`function_name`、`trace_id` 和 `cold_start` 将成为保留的 `LogRecord` 属性。通过 stdlib `extra=` 传递它们将引发 `KeyError`。请使用 `FunctionLogger` (它会自动清理键名) 或选择不同的键名。
+`setup_logging()` 会检测 `FUNCTIONS_WORKER_RUNTIME`：本地输出彩色可读格式，在 Azure / Core Tools 中输出宿主托管的 NDJSON（仅 context filter —— 不添加重复 handler），在 CI 中输出机器可解析的 JSON。
 
-> **与 `setup_logging()` 的关系:** 当 `use_record_factory=False` (默认値) 时，`setup_logging()` 会在处理程序上安装 `ContextFilter`。两者可以同时调用 — 它们设置相同的値，因此不会冲突。`install_context_factory()` 确保在稍后添加的处理程序或绕过过滤器链的 logger 上也能覆盖。
->
-> 当 `use_record_factory=True` 时，`setup_logging()` 切换到工厂模式: 先从现有 root 处理程序中删除所有 `ContextFilter` 实例，然后注册 `LogRecordFactory`。这样可以防止重复注入，同时确保所有记录都携带上下文。
-## 结构化 JSON 输出 (生产)
-
-当日志流向 Application Insights 或任何聚合系统时，请使用 JSON 格式:
-
-> **注意:** `format` 参数仅影响本库创建的处理程序 (本地开发)。
-> 在 Azure Functions 中，host 管理处理程序。要在 host 管理的处理程序上设置 JSON 输出，请使用
-> `functions_formatter=JsonFormatter()`。在 Azure 中传递 `format="json"` 会发出警告。
-
-对于独立的本地开发或 CI 输出:
-
-```python
-setup_logging(format="json")
-```
-
-对于 Azure Functions / Core Tools，host 拥有处理程序。要在现有的 host 管理处理程序上强制使用 JSON 格式:
-
-```python
-from azure_functions_logging import JsonFormatter, setup_logging
-
-setup_logging(functions_formatter=JsonFormatter())
-```
-
-每行日志输出 (NDJSON — 每行一个 JSON 对象):
-
-```json
-{"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
- "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
- "extra": {"order_id": "o-999"}}
-```
-
-额外字段出现在发出的 JSON 的 `extra` 中。在 Application Insights 中是否可直接索引取决于您的 ingestion 管道: 当 JSON 被解析为 `customDimensions` 时可直接查询；当 JSON 保留在 `message` 列中时，需要先使用 `parse_json(message)`。
-
-```python
-logger.info("order accepted", order_id="o-999", tenant_id="t-1")
-```
-
-### 裁剪长字符串値 (opt-in)
-
-默认情况下，`JsonFormatter` 对 `extra` 中的字符串値保持完整长度。
-传入 `truncate_native_strings=True` 可将它们裁剪到 `max_string_length` 个字符 (默认 2048)。
-被裁剪的字符串会以 `…` 后缀结尾，使调用者可以检测到裁剪:
-
-```python
-from azure_functions_logging import JsonFormatter, setup_logging
-
-setup_logging(functions_formatter=JsonFormatter(
-    truncate_native_strings=True,
-    max_string_length=512,
-))
-```
-
-> **范围:** 仅裁剪 `extra` 中的字符串値 (递归遍历 dict 和 list)。
-> `message` 字段、整数、浮点数和布尔子不受影响。
-
-```python
-logger.info("order accepted", order_id="o-999", tenant_id="t-1")
-```
-
-## host.json 冲突检测
-
-如果您的 `host.json` 抑制了应用发出的日志级别，启动时会出现以下警告:
-
-```
-host.json logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
-```
-
-推荐的 `host.json` 基线:
-
-```json
-{
-  "version": "2.0",
-  "logging": {
-    "logLevel": {
-      "default": "Information",
-      "Function": "Information"
-    }
-  }
-}
-```
-
-### 发现顺序
-
-`host.json` 通过从当前工作目录 (或 `AzureWebJobsScriptRoot` 环境变量指向的目录) 向上遍历来定位:
-
-| 优先级 | 来源 |
-|--------|------|
-| 1 | 传入 `setup_logging()` 的显式 `host_json_path` 参数 |
-| 2 | `AzureWebJobsScriptRoot` 环境变量 |
-| 3 | `cwd/host.json` 及各父目录，最多 5 层 |
-
-第一个存在的 `host.json` 被采用。`AzureWebJobsScriptRoot` 是 Azure Functions 主机设置的官方环境变量，仅探测该目录本身 (不进行祖先遍历)。
-
-第一个存在的文件被采用。要绕过自动发现 (例如在测试或非标准布局中)，请传递显式路径:
-
-```python
-from pathlib import Path
-from azure_functions_logging import setup_logging
-
-setup_logging(host_json_path=Path("/site/wwwroot/host.json"))
-```
-
-## 噪声控制
-
-在不删除嘈杂第三方 logger 的情况下抑制它们:
-
-```python
-from azure_functions_logging import SamplingFilter, setup_logging
-import logging
-
-setup_logging()
-
-# 对吵闹的 azure.* logger 进行采样: 每 1 秒窗口保留最多 10 条记录
-# 附加到 logger 的过滤器不会对从子 logger 传播的记录运行，
-# 所以附加到根处理程序并按 logger 名称限定范围。
-for handler in logging.getLogger().handlers:
-    handler.addFilter(SamplingFilter(rate=10, name="azure"))
-
-# 在生产环境完全静默 urllib3
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-```
-
-## PII Redaction
-
-在敏感字段到达 Application Insights 之前剥离它们:
-
-```python
-from azure_functions_logging import RedactionFilter, setup_logging
-import logging
-
-setup_logging()
-root = logging.getLogger()
-# 将过滤器附加到处理程序，以便命名子 logger 的记录也被脱敏。
-for handler in root.handlers:
-    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
-```
-
-extra 字段中键名匹配 sensitive 键的任何日志记录将其值替换为 `***`。
-
-## 本地 vs 云端
-
-| 环境 | 格式 | 行为 |
-|------|------|------|
-| 本地终端 | `color` (默认) | 彩色人类可读格式: `HH:MM:SS LEVEL logger  message [context...]` |
-| Azure / Core Tools | host-managed | 仅安装上下文过滤器；通过 `functions_formatter=JsonFormatter()` 在 host 处理程序上强制 NDJSON |
-| CI / 管道 | `json` | NDJSON, 机器可解析 |
-
-`setup_logging()` 检测 `FUNCTIONS_WORKER_RUNTIME` 以区分 Azure Functions / Core Tools 与本地独立运行。在 Azure 模式下，它不添加处理程序仅安装上下文过滤器（避免来自 host 管道的重复输出）。
-
-## 上下文绑定
-
-将请求范围的元数据附加到每条日志，而无需在每次调用中传递它:
-
-```python
-def process_order(order_id: str) -> None:
-    order_logger = logger.bind(order_id=order_id, region="eastus")
-    order_logger.info("processing started")   # 包含 order_id + region
-    order_logger.info("processing complete")  # 相同元数据，新消息
-```
-
-按调用创建绑定的 logger。不要在模块级别缓存它们。
-
+→ [Configuration: environment detection](https://yeongseon.github.io/azure-functions-logging-python/configuration/#environment-detection)
 ## 何时使用
 
 - 您需要在 Application Insights 中获得结构化、可查询的日志时

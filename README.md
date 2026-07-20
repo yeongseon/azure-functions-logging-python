@@ -276,278 +276,53 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 > Verified against a temporary Azure Functions deployment in koreacentral (Python 3.12, Consumption plan). Response captured and URL anonymized.
 
-## Invocation Context
+## Core capabilities
 
-Use `logging_context()` to bind invocation context for the duration of a handler. It sets:
+Every capability below has a full how-to on the [documentation site](https://yeongseon.github.io/azure-functions-logging-python/) — this section summarizes what each does and links to the single source, so the README stays a quick overview rather than a second copy of the docs.
 
-- `invocation_id` — unique per execution, correlates all logs for one request
-- `function_name` — the Azure Functions function name
-- `trace_id` — trace context from the platform; extracted only from valid W3C `traceparent` headers (strict validation, invalid values are ignored)
-- `cold_start` — `True` on first invocation of this worker process
+### Invocation context
 
-> **`cold_start` semantics.** `cold_start=True` means *the first invocation observed by this Python worker process after module load*. It is **not** a platform-level cold start metric and does not correspond to App Service plan / instance allocation cold starts reported by Azure Functions metrics. Subsequent invocations on the same worker emit `cold_start=False` until the worker is recycled.
+`logging_context(context)` (see [Quick Start](#quick-start)) binds `invocation_id`, `function_name`, `trace_id`, and `cold_start` for the duration of a handler and always restores the previous context on exit. For lower-level control use `inject_context()` / `restore_context()`, or the `@with_context` decorator to inject implicitly (sync and async handlers).
 
-```python
-def my_function(req, context):
-    with logging_context(context):
-        logger.info("handler started")
-        # every log from here carries invocation_id and cold_start
-```
+> **`cold_start` semantics.** `cold_start=True` means the first invocation observed by this Python worker process after module load — **not** a platform-level cold-start metric.
 
-For lower-level control (e.g. middleware), use `inject_context()` with `restore_context()`:
+→ [Usage: context injection](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 
-```python
-tokens = inject_context(context)
-try:
-    logger.info("handler started")
-finally:
-    restore_context(tokens)
-```
+### Structured JSON output
 
-Without context injection, these fields are `None` in every log line.
+Pass `setup_logging(functions_formatter=JsonFormatter())` to emit Application Insights-ready NDJSON on host-managed handlers (or `format="json"` for standalone/CI). Extra fields land under `extra`; opt into `truncate_native_strings=True` to clip long string values.
 
-### `with_context` Decorator
+→ [Usage: JSON output](https://yeongseon.github.io/azure-functions-logging-python/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.github.io/azure-functions-logging-python/api/#jsonformatter)
 
-For less boilerplate, use the `with_context` decorator instead of calling `inject_context()` manually:
+### host.json conflict detection
 
-```python
-import azure.functions as func
-from azure_functions_logging import get_logger, setup_logging, with_context
+At startup the library warns when your `host.json` — or `AzureFunctionsJobHost__logging__logLevel__...` app-setting overrides — suppresses levels your app emits. `host.json` is auto-discovered by walking up from the working directory (or `AzureWebJobsScriptRoot`); pass `host_json_path=` to override.
 
-setup_logging()
-logger = get_logger(__name__)
+→ [Configuration: host.json conflict](https://yeongseon.github.io/azure-functions-logging-python/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/#hostjson-conflict-warning-appears)
 
-app = func.FunctionApp()
+### Noise control & PII redaction
 
-@app.route(route="hello")
-@with_context
-def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    logger.info("Request received")
-    return func.HttpResponse("OK")
-```
+`SamplingFilter` rate-limits chatty third-party loggers (e.g. `azure-core`, `urllib3`); `RedactionFilter` masks sensitive keys (passwords, tokens, secrets, connection strings, and more — case-insensitive, recursive) before logs reach aggregation. Attach either to your root handlers, and pass `sensitive_keys=[...]` to customize redaction.
 
-The decorator finds the `context` parameter by name, calls `inject_context()` before your handler runs, and restores the previous context in `finally` after it returns.
+→ [API: `SamplingFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#redactionfilter)
 
-Custom parameter name:
+### Context binding
 
-```python
-@with_context(param="ctx")
-def hello(req: func.HttpRequest, ctx: func.Context) -> func.HttpResponse:
-    ...
-```
+`logger.bind(key=value)` returns a logger that attaches request-scoped metadata to every subsequent log without threading it through each call. Create bound loggers per-invocation; don't cache them at module level.
 
-Both sync and async handlers are supported.
+→ [Usage: context binding](https://yeongseon.github.io/azure-functions-logging-python/usage/#4-context-binding-with-functionloggerbind)
 
 ### Global LogRecordFactory (opt-in)
 
-For applications where handlers may be added after `setup_logging()`, or where you want
-invocation context on **every** `LogRecord` regardless of handler/filter configuration,
-install the global context factory once at startup:
+`install_context_factory()` injects context at record-creation time so **every** `LogRecord` carries it regardless of handler/filter wiring — useful when handlers are added after `setup_logging()` or loggers bypass the filter chain. It is mutually exclusive with the default `ContextFilter` mode.
 
-```python
-from azure_functions_logging import install_context_factory, setup_logging
+→ [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)
 
-install_context_factory()  # injects context at record creation time
-setup_logging()
-```
+### Local vs cloud
 
-When enabled, `invocation_id`, `function_name`, `trace_id`, and `cold_start` become
-reserved `LogRecord` attributes. Passing them via stdlib `extra=` will raise `KeyError`.
-Use `FunctionLogger` (which sanitizes keys automatically) or choose different key names.
+`setup_logging()` detects `FUNCTIONS_WORKER_RUNTIME`: colorized human-readable output locally, host-managed NDJSON in Azure / Core Tools (context filters only — no duplicate handlers), and machine-parseable JSON in CI.
 
-> **Relationship with `setup_logging()`:** When `use_record_factory=False` (default),
-> `setup_logging()` installs `ContextFilter` on handlers. You can call both — they set the
-> same values, so there is no conflict. `install_context_factory()` ensures coverage even on
-> handlers added later or loggers that bypass the filter chain.
->
-> When `use_record_factory=True`, `setup_logging()` switches to the factory mode: it actively
-> removes any `ContextFilter` instances from existing root handlers (cleanup), then registers
-> the `LogRecordFactory`. This avoids double-injection while ensuring all records carry context
-> regardless of handler/filter chain configuration.
-## Structured JSON Output (Production)
-
-Use JSON format when logs feed Application Insights or any aggregation system:
-
-> **Note:** The `format` parameter only affects handlers created by this library (local development).
-> In Azure Functions, the host manages handlers. Use `functions_formatter=JsonFormatter()` to set
-> JSON output on host-managed handlers. Passing `format="json"` in Azure emits a warning.
-
-For standalone local development or CI output:
-
-```python
-setup_logging(format="json")
-```
-
-For Azure Functions / Core Tools, the host owns the handlers. To force JSON
-formatting on existing host-managed handlers:
-
-```python
-from azure_functions_logging import JsonFormatter, setup_logging
-
-setup_logging(functions_formatter=JsonFormatter())
-```
-
-Output per log line (NDJSON — one JSON object per line):
-
-```json
-{"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
- "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
- "extra": {"order_id": "o-999"}}
-```
-
-Extra fields appear under `extra` in the emitted JSON. Whether they are directly indexable in Application Insights depends on your ingestion pipeline: when JSON is parsed into `customDimensions` they are queryable directly; when the JSON stays in the `message` column you need `parse_json(message)` first.
-
-```python
-logger.info("order accepted", order_id="o-999", tenant_id="t-1")
-```
-
-### Truncating long string values (opt-in)
-
-By default, `JsonFormatter` leaves string values in `extra` at full length.
-Pass `truncate_native_strings=True` to clip them at `max_string_length` characters (default 2048).
-Truncated strings are suffixed with `…` so the cut-off is detectable:
-
-```python
-from azure_functions_logging import JsonFormatter, setup_logging
-
-setup_logging(functions_formatter=JsonFormatter(
-    truncate_native_strings=True,
-    max_string_length=512,  # clip strings longer than 512 chars
-))
-```
-
-> **Scope:** Only string values in `extra` are truncated (recursively through dicts and lists).
-> The `message` field, integers, floats, and booleans are not affected.
-> Unserializable objects fall through to the existing `_json_default` path which truncates
-> their `str()` representation to 2048 characters regardless of this setting.
-## host.json Conflict Detection
-
-If your `host.json` suppresses log levels that your app emits, you get this warning at startup:
-
-```
-host.json logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
-```
-
-Recommended `host.json` baseline:
-
-```json
-{
-  "version": "2.0",
-  "logging": {
-    "logLevel": {
-      "default": "Information",
-      "Function": "Information"
-    }
-  }
-}
-```
-
-### Discovery order
-
-`host.json` is located by walking up from the current working directory (or from
-`AzureWebJobsScriptRoot` when that environment variable is set):
-
-| Priority | Source |
-|----------|--------|
-| 1 | Explicit `host_json_path` parameter passed to `setup_logging()` |
-| 2 | `AzureWebJobsScriptRoot` environment variable |
-| 3 | `cwd/host.json` and each parent directory, up to 5 levels |
-
-The first existing `host.json` wins. `AzureWebJobsScriptRoot` is the canonical env var
-set by the Azure Functions host; only the directory itself is probed (no ancestor walk).
-The first existing file wins. To bypass auto-discovery (e.g. in tests or
-non-standard layouts), pass an explicit path:
-
-The warning also considers Azure Functions app setting overrides that use the
-`AzureFunctionsJobHost__logging__logLevel__...` convention, for example
-`AzureFunctionsJobHost__logging__logLevel__Function__MyFunction=Warning`.
-
-```python
-from pathlib import Path
-from azure_functions_logging import setup_logging
-
-setup_logging(host_json_path=Path("/site/wwwroot/host.json"))
-```
-
-## Noise Control
-
-Suppress chatty third-party loggers without removing them:
-
-```python
-from azure_functions_logging import SamplingFilter, setup_logging
-import logging
-
-setup_logging()
-
-# Sample noisy azure.* loggers: keep up to 10 records per logger per 1-second window.
-# Filters attached to a logger don't run for records propagated from
-# descendants, so attach to the root handlers and scope by logger name.
-for handler in logging.getLogger().handlers:
-    handler.addFilter(SamplingFilter(rate=10, name="azure", per_logger=True))
-
-# Silence urllib3 completely in production
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-```
-
-## PII Redaction
-
-Strip sensitive fields before they reach Application Insights:
-
-```python
-from azure_functions_logging import RedactionFilter, setup_logging
-import logging
-
-setup_logging()
-root = logging.getLogger()
-# Attach the filter to handlers so records from named child loggers are also redacted.
-for handler in root.handlers:
-    handler.addFilter(RedactionFilter())
-```
-
-Any log record with extra fields whose keys match a sensitive key will have those values replaced with `***`.
-
-**Default sensitive keys** (case-insensitive, applied to nested dicts and lists too):
-
-| Key | Key | Key |
-|-----|-----|-----|
-| `password` | `passwd` | `pwd` |
-| `token` | `access_token` | `refresh_token` |
-| `id_token` | `authorization` | `auth` |
-| `secret` | `client_secret` | `secret_key` |
-| `api_key` | `apikey` | `subscription_key` |
-| `connection_string` | `conn_str` | `sas_token` |
-| `x_functions_key` | `function_key` | `master_key` |
-| `private_key` | `credential` | |
-
-Pass `sensitive_keys=[...]` to override with your own list:
-
-```python
-handler.addFilter(RedactionFilter(sensitive_keys=["account_number", "ssn"]))
-```
-
-## Local vs Cloud
-
-| Environment | Format | Behavior |
-|-------------|--------|---------|
-| Local terminal | `color` (default) | Colorized human-readable: `HH:MM:SS LEVEL logger  message [context...]` |
-| Azure / Core Tools | host-managed | Installs context filters only; pass `functions_formatter=JsonFormatter()` to force NDJSON on host handlers |
-| CI / pipeline | `json` | NDJSON, machine-parseable |
-
-`setup_logging()` detects `FUNCTIONS_WORKER_RUNTIME` to distinguish Azure Functions / Core Tools from standalone local execution. In Azure mode it installs context filters without adding handlers (avoids duplicate output from the host pipeline).
-
-## Context Binding
-
-Attach request-scoped metadata to every log without passing it through every call:
-
-```python
-def process_order(order_id: str) -> None:
-    order_logger = logger.bind(order_id=order_id, region="eastus")
-    order_logger.info("processing started")   # includes order_id + region
-    order_logger.info("processing complete")  # same metadata, new message
-```
-
-Create bound loggers per-invocation. Do not cache them at module level.
+→ [Configuration: environment detection](https://yeongseon.github.io/azure-functions-logging-python/configuration/#environment-detection)
 
 ## When to use
 

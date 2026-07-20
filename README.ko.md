@@ -252,242 +252,53 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 > koreacentral 리전의 임시 Azure Functions 배포로 검증되었습니다 (Python 3.12, Consumption plan). 응답은 캡처되었으며 URL은 익명화되었습니다.
 
-## 호출 컨텍스트 (Invocation Context)
+## 핵심 기능
 
-핸들러가 실행되는 동안 호출 컨텍스트를 바인딩하려면 `logging_context()`를 사용하세요. 다음을 설정합니다:
+아래 모든 기능은 [문서 사이트](https://yeongseon.github.io/azure-functions-logging-python/)에 전체 사용법이 있습니다. 이 섹션은 각 기능이 무엇을 하는지 요약하고 단일 출처로 링크하여, README가 문서의 사본이 아니라 빠른 개요로 유지되도록 합니다.
 
-- `invocation_id` — 실행마다 고유, 한 요청의 모든 로그를 상관시킴
-- `function_name` — Azure Functions 함수 이름
-- `trace_id` — 플랫폼의 trace 컨텍스트. 유효한 W3C `traceparent` 헤더에서만 추출되며, 유효성 검증이 엄격하여 잘못된 값은 무시됩니다
-- `cold_start` — 이 worker 프로세스의 첫 호출일 때 `True`
+### 호출 컨텍스트
 
-> **`cold_start` 의미.** `cold_start=True`는 *모듈 로드 후 이 Python worker 프로세스에서 관측된 첫 호출*을 의미합니다. **플랫폼 레벨**의 cold start 메트릭이 아니며, Azure Functions 메트릭이 보고하는 App Service plan / instance 할당 cold start와는 일치하지 않습니다. 같은 worker의 후속 호출은 worker가 재활용될 때까지 `cold_start=False`를 발행합니다.
+`logging_context(context)`([Quick Start](#quick-start) 참조)는 핸들러가 실행되는 동안 `invocation_id`, `function_name`, `trace_id`, `cold_start`를 바인딩하고, 종료 시 항상 이전 컨텍스트를 복원합니다. 더 낮은 수준의 제어가 필요하면 `inject_context()` / `restore_context()`를, 암묵적으로 주입하려면 `@with_context` 데코레이터(동기/비동기 핸들러 모두 지원)를 사용하세요.
 
-```python
-def my_function(req, context):
-    with logging_context(context):
-        logger.info("handler started")
-        # 이 시점부터의 모든 로그에 invocation_id와 cold_start 포함
-```
+> **`cold_start` 의미.** `cold_start=True`는 모듈 로드 이후 이 Python 워커 프로세스가 처음 관찰한 호출을 의미합니다. 플랫폼 수준의 콜드 스타트 지표가 **아닙니다**.
 
-저수준 제어 (예: 미들웨어)에는 `inject_context()`와 `restore_context()`를 사용하세요:
+→ [사용법: 컨텍스트 주입](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 
-```python
-tokens = inject_context(context)
-try:
-    logger.info("handler started")
-finally:
-    restore_context(tokens)
-```
+### 구조화된 JSON 출력
 
-컨텍스트 주입이 없으면 모든 로그 라인에서 이 필드들은 `None`입니다.
+`setup_logging(functions_formatter=JsonFormatter())`를 전달하면 호스트 관리 핸들러에서 Application Insights용 NDJSON을 출력합니다(독립 실행/CI에서는 `format="json"`). 추가 필드는 `extra` 아래에 들어가며, `truncate_native_strings=True`로 긴 문자열 값을 자를 수 있습니다.
 
-### `with_context` 데코레이터
+→ [사용법: JSON 출력](https://yeongseon.github.io/azure-functions-logging-python/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.github.io/azure-functions-logging-python/api/#jsonformatter)
 
-보일러플레이트를 줄이려면, `inject_context()`를 수동으로 호출하는 대신 `with_context` 데코레이터를 사용하세요:
+### host.json 충돌 감지
 
-```python
-import azure.functions as func
-from azure_functions_logging import get_logger, setup_logging, with_context
+시작 시 `host.json`(또는 `AzureFunctionsJobHost__logging__logLevel__...` 앱 설정 오버라이드)이 앱이 방출하는 레벨을 억제하면 경고합니다. `host.json`은 작업 디렉터리(또는 `AzureWebJobsScriptRoot`)에서 상위로 탐색하여 자동 발견되며, `host_json_path=`로 재정의할 수 있습니다.
 
-setup_logging()
-logger = get_logger(__name__)
+→ [구성: host.json 충돌](https://yeongseon.github.io/azure-functions-logging-python/configuration/#hostjson-level-conflict-warning) · [문제 해결](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/#hostjson-conflict-warning-appears)
 
-app = func.FunctionApp()
+### 노이즈 제어 및 PII Redaction
 
-@app.route(route="hello")
-@with_context
-def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    logger.info("Request received")
-    return func.HttpResponse("OK")
-```
+`SamplingFilter`는 시끄러운 서드파티 로거(`azure-core`, `urllib3` 등)의 속도를 제한하고, `RedactionFilter`는 민감한 키(비밀번호, 토큰, 시크릿, 연결 문자열 등 — 대소문자 무시, 재귀적)를 로그 집계 전에 마스킹합니다. 둘 다 루트 핸들러에 연결하며, `sensitive_keys=[...]`로 사용자 지정할 수 있습니다.
 
-데코레이터는 이름으로 `context` 매개변수를 찾고, 핸들러 실행 전 `inject_context()`를 호출하며, 반환 후 `finally`에서 이전 컨텍스트를 복원합니다.
+→ [API: `SamplingFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#redactionfilter)
 
-커스텀 매개변수 이름:
+### 컨텍스트 바인딩
 
-```python
-@with_context(param="ctx")
-def hello(req: func.HttpRequest, ctx: func.Context) -> func.HttpResponse:
-    ...
-```
+`logger.bind(key=value)`는 이후 모든 로그에 요청 범위 메타데이터를 첨부하는 로거를 반환합니다. 호출당 바운드 로거를 생성하고 모듈 레벨에서 캐싱하지 마세요.
 
-동기 및 비동기 핸들러가 모두 지원됩니다.
+→ [사용법: 컨텍스트 바인딩](https://yeongseon.github.io/azure-functions-logging-python/usage/#4-context-binding-with-functionloggerbind)
 
 ### 글로벌 LogRecordFactory (opt-in)
 
-`setup_logging()` 이후에 핸들러가 추가될 수 있거나, 핸들러/필터 구성과 무관하게 **모든** `LogRecord`에 호출 컨텍스트를 적용하고 싶은 애플리케이션에서는, 시작 시 글로벌 컨텍스트 팩토리를 한 번 설치하세요:
+`install_context_factory()`는 레코드 생성 시점에 컨텍스트를 주입하여 핸들러/필터 구성과 무관하게 **모든** `LogRecord`가 컨텍스트를 갖도록 합니다. `setup_logging()` 이후 핸들러가 추가되거나 로거가 필터 체인을 우회할 때 유용합니다. 기본 `ContextFilter` 모드와는 상호 배타적입니다.
 
-```python
-from azure_functions_logging import install_context_factory, setup_logging
+→ [구성: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)
 
-install_context_factory()  # record 생성 시점에 컨텍스트 주입
-setup_logging()
-```
+### 로컬 vs 클라우드
 
-활성화되면 `invocation_id`, `function_name`, `trace_id`, `cold_start`는 예약된 `LogRecord` 속성이 됩니다. stdlib `extra=`를 통해 이들을 전달하면 `KeyError`가 발생합니다. 키를 자동으로 정제하는 `FunctionLogger`를 사용하거나 다른 키 이름을 선택하세요.
+`setup_logging()`은 `FUNCTIONS_WORKER_RUNTIME`을 감지합니다: 로컬에서는 색상이 있는 사람이 읽기 쉬운 출력, Azure / Core Tools에서는 호스트 관리 NDJSON(컨텍스트 필터만 — 핸들러 중복 없음), CI에서는 기계가 파싱 가능한 JSON.
 
-> **`setup_logging()`과의 관계:** `use_record_factory=False` (기본값)일 때 `setup_logging()`은 핸들러에 `ContextFilter`를 설치합니다. 둘 다 호출해도 됩니다 — 동일한 값을 설정하므로 충돌이 없습니다. `install_context_factory()`는 나중에 추가되는 핸들러나 필터 체인을 우회하는 로거에서도 적용됨을 보장합니다.
->
-> `use_record_factory=True`일 때 `setup_logging()`은 팩토리 모드로 전환합니다: 기존 루트 핸들러에서 `ContextFilter` 인스턴스를 제거한 후 `LogRecordFactory`를 등록합니다. 이중 주입을 방지하면서 모든 레코드에 컨텍스트가 실리도록 보장합니다.
-## 구조화된 JSON 출력 (프로덕션)
-
-로그가 Application Insights나 어떤 집계 시스템으로 흘러갈 때는 JSON 포맷을 사용하세요:
-
-> **참고:** `format` 매개변수는 이 라이브러리가 생성한 핸들러 (로컬 개발)에만 영향을 줍니다.
-> Azure Functions에서는 host가 핸들러를 관리합니다. host가 관리하는 핸들러에 JSON 출력을 설정하려면
-> `functions_formatter=JsonFormatter()`를 사용하세요. Azure에서 `format="json"`을 전달하면 경고가 발생합니다.
-
-독립 실행형 로컬 개발 또는 CI 출력의 경우:
-
-```python
-setup_logging(format="json")
-```
-
-Azure Functions / Core Tools에서는 host가 핸들러를 소유합니다. 기존의 host 관리 핸들러에 JSON 포맷을 강제하려면:
-
-```python
-from azure_functions_logging import JsonFormatter, setup_logging
-
-setup_logging(functions_formatter=JsonFormatter())
-```
-
-로그 라인당 출력 (NDJSON — 한 줄에 한 JSON 객체):
-
-```json
-{"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "my_module",
- "message": "order accepted", "invocation_id": "abc-123", "function_name": "OrderHandler",
- "cold_start": false, "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "exception": null,
- "extra": {"order_id": "o-999"}}
-```
-
-추가 필드는 발행되는 JSON의 `extra`에 포함됩니다. Application Insights에서 직접 인덱싱 가능한지 여부는 ingestion 파이프라인에 따라 다릅니다: JSON이 `customDimensions`로 파싱되는 경우 직접 쿼리 가능하며, JSON이 `message` 컬럼에 남아 있는 경우 먼저 `parse_json(message)`를 거쳐야 합니다.
-
-```python
-logger.info("order accepted", order_id="o-999", tenant_id="t-1")
-```
-
-### 긴 문자열 값 자르기 (opt-in)
-
-기본적으로 `JsonFormatter`는 `extra`의 문자열 값을 전체 길이 그대로 유지합니다.
-`truncate_native_strings=True`를 전달하면 `max_string_length` 문자 (기본값 2048)로 잘립니다.
-잘린 문자열은 `…` 접미사가 붙어 잘림 여부를 감지할 수 있습니다:
-
-```python
-from azure_functions_logging import JsonFormatter, setup_logging
-
-setup_logging(functions_formatter=JsonFormatter(
-    truncate_native_strings=True,
-    max_string_length=512,
-))
-```
-
-> **범위:** `extra`의 문자열 값만 잘립니다 (dict와 list를 재귀적으로 탐색).
-> `message` 필드, 정수, 실수, 불리언은 영향을 받지 않습니다.
-```
-
-## host.json 충돌 감지
-
-`host.json`이 앱이 발행하는 로그 레벨을 억제하면 시작 시 다음과 같은 경고가 표시됩니다:
-
-```
-host.json logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
-```
-
-권장 `host.json` 기본값:
-
-```json
-{
-  "version": "2.0",
-  "logging": {
-    "logLevel": {
-      "default": "Information",
-      "Function": "Information"
-    }
-  }
-}
-```
-
-### 발견 순서
-
-`host.json`은 현재 작업 디렉토리 (또는 `AzureWebJobsScriptRoot` 환경 변수가 설정된 경우 해당 디렉토리)에서 위로 올라가며 탐색됩니다:
-
-| 우선순위 | 소스 |
-|----------|------|
-| 1 | `setup_logging()`에 전달된 명시적 `host_json_path` 파라미터 |
-| 2 | `AzureWebJobsScriptRoot` 환경 변수 |
-| 3 | `cwd/host.json` 및 각 상위 디렉토리, 최대 5단계 |
-
-먼저 발견된 `host.json`이 사용됩니다. `AzureWebJobsScriptRoot`는 Azure Functions 호스트가 설정하는 공식 환경 변수이며, 해당 디렉토리 자체만 검사합니다 (상위 디렉토리 탐색 없음).
-
-먼저 발견된 파일이 사용됩니다. 자동 발견을 우회하려면 (예: 테스트 또는 비표준 레이아웃에서) 명시적 경로를 전달하세요:
-
-```python
-from pathlib import Path
-from azure_functions_logging import setup_logging
-
-setup_logging(host_json_path=Path("/site/wwwroot/host.json"))
-```
-
-## 노이즈 제어
-
-시끄러운 서드파티 로거를 제거하지 않고 억제하세요:
-
-```python
-from azure_functions_logging import SamplingFilter, setup_logging
-import logging
-
-setup_logging()
-
-# 시끄러운 azure.* 로거 샘플링: 1초 윈도우당 최대 10개 레코드 유지
-# 로거에 붙은 필터는 하위 로거에서 전파되는 레코드에는 실행되지 않으므로,
-# 루트 핸들러에 붙이고 로거 이름으로 범위를 제한하세요.
-for handler in logging.getLogger().handlers:
-    handler.addFilter(SamplingFilter(rate=10, name="azure"))
-
-# 프로덕션에서 urllib3를 완전히 침묵
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-```
-
-## PII Redaction
-
-민감 필드가 Application Insights에 도달하기 전에 제거하세요:
-
-```python
-from azure_functions_logging import RedactionFilter, setup_logging
-import logging
-
-setup_logging()
-root = logging.getLogger()
-# 명명된 자식 로거의 레코드도 함께 정제되도록 필터를 핸들러에 부착합니다.
-for handler in root.handlers:
-    handler.addFilter(RedactionFilter(sensitive_keys=["password", "token", "secret"]))
-```
-
-extra 필드의 키가 sensitive 키와 일치하는 모든 로그 레코드는 해당 값이 `***`로 대체됩니다.
-
-## 로컬 vs 클라우드
-
-| 환경 | 포맷 | 동작 |
-|------|------|------|
-| 로컬 터미널 | `color` (기본) | 색상 적용된 읽기 쉬운 형식: `HH:MM:SS LEVEL logger  message [context...]` |
-| Azure / Core Tools | host-managed | 컨텍스트 필터만 설치; host 핸들러에 NDJSON을 강제하려면 `functions_formatter=JsonFormatter()`를 전달 |
-| CI / 파이프라인 | `json` | NDJSON, 머신 파싱 가능 |
-
-`setup_logging()`은 `FUNCTIONS_WORKER_RUNTIME`를 감지하여 Azure Functions / Core Tools와 로컬 독립 실행을 구분합니다. Azure 모드에서는 핸들러를 추가하지 않고 컨텍스트 필터만 설치합니다 (host 파이프라인의 중복 출력을 회피).
-
-## 컨텍스트 바인딩
-
-요청 범위 메타데이터를 모든 로그에 첨부하되, 모든 호출에 전달하지 않아도 됩니다:
-
-```python
-def process_order(order_id: str) -> None:
-    order_logger = logger.bind(order_id=order_id, region="eastus")
-    order_logger.info("processing started")   # order_id + region 포함
-    order_logger.info("processing complete")  # 동일한 메타데이터, 새 메시지
-```
-
-호출당 바운드 로거를 생성하세요. 모듈 레벨에서 캐싱하지 마세요.
+→ [구성: 환경 감지](https://yeongseon.github.io/azure-functions-logging-python/configuration/#environment-detection)
 
 ## 언제 사용하는가
 

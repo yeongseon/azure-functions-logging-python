@@ -136,6 +136,7 @@ except RuntimeError:
 - Use indirectly via `setup_logging(format="json")` for most cases.
 - Produces one JSON object per line (NDJSON style).
 - Includes context fields when available on log records.
+- Pass `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` characters (default 2048); truncated values are suffixed with `…`. Only strings in `extra` are affected (recursively through dicts/lists) — `message`, ints, floats, and booleans are left intact.
 
 ### Example: Automatic Selection
 
