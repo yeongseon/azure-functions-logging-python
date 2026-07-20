@@ -271,6 +271,11 @@ metadata = get_logging_metadata(handler)
 
 ::: azure_functions_logging.install_context_factory
 
+!!! warning "Deprecated"
+    Direct use of `install_context_factory()` is deprecated. Prefer
+    `setup_logging(use_record_factory=True)`, which selects the
+    `LogRecordFactory` injection strategy and manages teardown consistently.
+
 ## uninstall_context_factory
 
 ::: azure_functions_logging.uninstall_context_factory

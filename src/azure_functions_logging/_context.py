@@ -8,6 +8,7 @@ import contextvars
 import logging
 import threading
 from typing import Any
+import warnings
 
 # Type alias for the token mapping returned by inject_context()
 ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
@@ -260,7 +261,7 @@ CONTEXT_RECORD_FIELDS: tuple[str, ...] = (
 )
 
 
-def install_context_factory() -> None:
+def _install_context_factory() -> None:
     """Install a global LogRecordFactory that injects context into every LogRecord.
 
     This is an alternative to ``ContextFilter`` that guarantees context fields
@@ -303,6 +304,25 @@ def install_context_factory() -> None:
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)
     setattr(context_record_factory, _CONTEXT_FACTORY_PREVIOUS, previous_factory)
     logging.setLogRecordFactory(context_record_factory)
+
+
+def install_context_factory() -> None:
+    """Deprecated shim for the LogRecordFactory injection strategy.
+
+    .. deprecated::
+        Direct use of ``install_context_factory`` is deprecated in favour of
+        the single ``setup_logging(use_record_factory=True)`` entry point,
+        which selects the ``LogRecordFactory`` injection strategy and manages
+        ``ContextFilter`` teardown consistently. This shim will be removed in
+        a future release.
+    """
+    warnings.warn(
+        "install_context_factory() is deprecated; use "
+        "setup_logging(use_record_factory=True) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    _install_context_factory()
 
 
 def uninstall_context_factory() -> bool:

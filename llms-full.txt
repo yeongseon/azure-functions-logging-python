@@ -293,7 +293,7 @@ def logging_context(context: Any) -> Iterator[None]:
     """
     ...
 
-def install_context_factory() -> None:
+def install_context_factory() -> None:  # DEPRECATED: prefer setup_logging(use_record_factory=True)
     """Opt-in: install a global logging.setLogRecordFactory() that copies
     contextvars onto every LogRecord at creation time. Ensures coverage even
     on handlers added after setup_logging() and on loggers that bypass the

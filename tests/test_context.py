@@ -12,6 +12,7 @@ from azure_functions_logging._context import (
     ContextFilter,
     _check_cold_start,
     _extract_trace_id,
+    _install_context_factory,
     cold_start_var,
     function_name_var,
     inject_context,
@@ -339,7 +340,7 @@ def test_install_context_factory_injects_fields() -> None:
         invocation_id_var.set("factory-inv")
         function_name_var.set("factory-fn")
 
-        install_context_factory()
+        _install_context_factory()
 
         factory = logging.getLogRecordFactory()
         assert getattr(factory, _CONTEXT_FACTORY_MARKER, False) is True
@@ -357,7 +358,7 @@ def test_install_context_factory_injects_fields() -> None:
         assert record.function_name == "factory-fn"  # type: ignore[attr-defined]
 
         # Idempotent — calling again does not double-wrap
-        install_context_factory()
+        _install_context_factory()
         assert logging.getLogRecordFactory() is factory
     finally:
         logging.setLogRecordFactory(old_factory)
@@ -369,7 +370,7 @@ def test_uninstall_context_factory_restores_previous() -> None:
     """uninstall_context_factory restores the factory active before install."""
     old_factory = logging.getLogRecordFactory()
     try:
-        install_context_factory()
+        _install_context_factory()
         assert getattr(
             logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
         ) is True
@@ -394,7 +395,7 @@ def test_uninstall_context_factory_preserves_chained_factory() -> None:
 
     try:
         logging.setLogRecordFactory(custom_factory)
-        install_context_factory()
+        _install_context_factory()
         assert uninstall_context_factory() is True
         assert logging.getLogRecordFactory() is custom_factory
 
@@ -429,7 +430,7 @@ def test_install_context_factory_chains_existing_factory() -> None:
         logging.setLogRecordFactory(custom_factory)
         invocation_id_var.set("chain-inv")
 
-        install_context_factory()
+        _install_context_factory()
 
         record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "msg", (), None)
 
@@ -446,7 +447,7 @@ def test_install_context_factory_extra_collision_raises() -> None:
     old_factory = logging.getLogRecordFactory()
 
     try:
-        install_context_factory()
+        _install_context_factory()
         logger = logging.getLogger("test.factory.collision")
         logger.handlers.clear()
         logger.propagate = False
@@ -478,7 +479,7 @@ def test_install_context_factory_with_logger_emit() -> None:
         trace_id_var.set("emit-trace")
         cold_start_var.set(True)
 
-        install_context_factory()
+        _install_context_factory()
 
         logger = logging.getLogger("test.factory.emit")
         logger.handlers.clear()
@@ -603,3 +604,15 @@ def test_context_filter_extra_collision_raises() -> None:
     )
     with pytest.raises(ValueError, match="collide"):
         ContextFilter({"trace_id": bad_var})
+
+
+def test_install_context_factory_is_deprecated() -> None:
+    try:
+        with pytest.warns(DeprecationWarning, match="setup_logging"):
+            install_context_factory()
+        # The deprecated shim still installs the package factory.
+        assert getattr(
+            logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
+        )
+    finally:
+        uninstall_context_factory()

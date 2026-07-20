@@ -116,7 +116,7 @@ setup_logging(format="json", use_record_factory=True)
 Behavior details:
 
 - Default is `False` to preserve the existing handler-filter-only behavior.
-- When `True`, `install_context_factory()` is called once; repeated calls are no-ops.
+- When `True`, the global `LogRecordFactory` injection strategy is installed once; repeated calls are no-ops. (Internally this used the now-deprecated `install_context_factory()`; prefer this `use_record_factory=True` entry point.)
 - When `True`, `ContextFilter` is **not** attached to handlers. The global
   `LogRecordFactory` is the sole source of context fields, so values captured at
   record-creation time survive thread hops, queued handlers, and delayed flushes
