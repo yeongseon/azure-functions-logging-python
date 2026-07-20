@@ -63,12 +63,37 @@ class ContextFilter(logging.Filter):
         "cold_start",
     )
 
+    def __init__(
+        self,
+        extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+    ) -> None:
+        """Create the filter, optionally injecting *extra_context_vars*.
+
+        Args:
+            extra_context_vars: Optional mapping of ``field_name -> ContextVar``.
+                Each variable's current value is copied onto the LogRecord under
+                ``field_name`` in addition to the four built-in context fields.
+                Field names must not collide with the built-in context fields.
+        """
+        super().__init__()
+        extra = extra_context_vars or {}
+        collisions = set(extra) & set(self.CONTEXT_FIELDS)
+        if collisions:
+            msg = (
+                "extra_context_vars field names collide with built-in "
+                f"context fields: {', '.join(sorted(collisions))}"
+            )
+            raise ValueError(msg)
+        self._extra_context_vars = dict(extra)
+
     def filter(self, record: logging.LogRecord) -> bool:
         """Add context fields to the log record. Always returns True."""
         record.invocation_id = invocation_id_var.get()
         record.function_name = function_name_var.get()
         record.trace_id = trace_id_var.get()
         record.cold_start = cold_start_var.get()
+        for field_name, var in self._extra_context_vars.items():
+            setattr(record, field_name, var.get())
         return True
 
 
