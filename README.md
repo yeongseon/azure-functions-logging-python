@@ -405,6 +405,7 @@ def my_function(req: func.HttpRequest, context: func.Context) -> func.HttpRespon
         return func.HttpResponse("OK")
 ```
 
+## Disclaimer
 
 This project is an independent community project and is not affiliated with,
 endorsed by, or maintained by Microsoft.
