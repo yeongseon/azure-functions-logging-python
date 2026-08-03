@@ -7,7 +7,11 @@ import time
 
 import pytest
 
-from azure_functions_logging._filters import RedactionFilter, SamplingFilter
+from azure_functions_logging._filters import (
+    AttributeFlattenFilter,
+    RedactionFilter,
+    SamplingFilter,
+)
 
 
 def _make_record(level: int = logging.INFO, msg: str = "hello") -> logging.LogRecord:
@@ -162,6 +166,7 @@ def test_sampling_filter_per_logger_enforces_hard_cap_on_burst() -> None:
 
     # Hard cap must be enforced: at most _MAX_BUCKETS entries remain
     assert len(flt._buckets) <= 5
+
 
 # ---------------------------------------------------------------------------
 # RedactionFilter tests
@@ -861,3 +866,183 @@ def test_redaction_filter_constructor_normalizes_hyphenated_sensitive_keys() -> 
     assert getattr(record, "x_functions_key") == "***"
     assert getattr(record, "ocp_apim_subscription_key") == "***"
     assert getattr(record, "safe_attr") == "visible"
+
+
+# ---------------------------------------------------------------------------
+# AttributeFlattenFilter tests
+# ---------------------------------------------------------------------------
+
+
+def test_flatten_filter_flattens_nested_dict_to_dotted_keys() -> None:
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "order", {"id": 1, "total": 99})
+
+    assert flt.filter(record) is True
+    assert getattr(record, "order.id") == 1
+    assert getattr(record, "order.total") == 99
+    # Original nested dict attribute is removed to avoid SDK drop.
+    assert "order" not in record.__dict__
+
+
+def test_flatten_filter_flattens_deeply_nested_dicts() -> None:
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "order", {"customer": {"name": "alice", "tier": "gold"}})
+
+    flt.filter(record)
+
+    assert getattr(record, "order.customer.name") == "alice"
+    assert getattr(record, "order.customer.tier") == "gold"
+    assert "order" not in record.__dict__
+
+
+def test_flatten_filter_leaves_lists_as_is() -> None:
+    """Lists / heterogeneous arrays are left untouched (documented behavior)."""
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "tags", ["a", "b", "c"])
+    setattr(record, "order", {"items": [{"id": 1}, {"id": 2}]})
+
+    flt.filter(record)
+
+    assert getattr(record, "tags") == ["a", "b", "c"]
+    # A list value nested inside a dict is emitted as-is under its dotted key.
+    assert getattr(record, "order.items") == [{"id": 1}, {"id": 2}]
+
+
+def test_flatten_filter_leaves_scalar_attributes_untouched() -> None:
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "count", 5)
+    setattr(record, "label", "hello")
+
+    flt.filter(record)
+
+    assert getattr(record, "count") == 5
+    assert getattr(record, "label") == "hello"
+
+
+def test_flatten_filter_does_not_touch_reserved_keys() -> None:
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    original_name = record.name
+
+    flt.filter(record)
+
+    assert record.name == original_name
+    assert record.msg == "hello"
+    # The reserved 'name' key is not split into dotted attributes.
+    assert "name.test" not in record.__dict__
+
+
+def test_flatten_filter_supports_custom_separator() -> None:
+    flt = AttributeFlattenFilter(separator="__")
+    record = _make_record()
+    setattr(record, "order", {"id": 1})
+
+    flt.filter(record)
+
+    assert getattr(record, "order__id") == 1
+    assert "order" not in record.__dict__
+
+
+def test_flatten_filter_empty_dict_is_dropped() -> None:
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "meta", {})
+
+    flt.filter(record)
+
+    assert "meta" not in record.__dict__
+
+
+def test_flatten_filter_respects_max_depth() -> None:
+    """Beyond max_depth the remaining nested dict is emitted as-is."""
+    flt = AttributeFlattenFilter(max_depth=1)
+    record = _make_record()
+    setattr(record, "a", {"b": {"c": 1}})
+
+    flt.filter(record)
+
+    # Depth 1 flattens the first level; the inner dict is kept as-is.
+    assert getattr(record, "a.b") == {"c": 1}
+
+
+def test_flatten_filter_handles_cyclic_dict_without_raising() -> None:
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    cyclic: dict[str, object] = {"self": None}
+    cyclic["self"] = cyclic
+    setattr(record, "loop", cyclic)
+
+    # Must not raise despite the cycle.
+    assert flt.filter(record) is True
+
+
+def test_flatten_filter_always_returns_true() -> None:
+    flt = AttributeFlattenFilter()
+    assert flt.filter(_make_record()) is True
+
+
+def test_flatten_filter_never_raises_on_broken_attribute() -> None:
+    class ExplodingRecord(logging.LogRecord):
+        def __getattribute__(self, name: str) -> object:
+            if name == "explode":
+                msg = "attribute access failure"
+                raise RuntimeError(msg)
+            return super().__getattribute__(name)
+
+    flt = AttributeFlattenFilter()
+    record = ExplodingRecord(
+        name="test.logger",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="exploding",
+        args=(),
+        exc_info=None,
+    )
+    setattr(record, "explode", {"id": 1})
+    setattr(record, "order", {"id": 2})
+
+    assert flt.filter(record) is True
+    # Well-formed attribute is still flattened.
+    assert getattr(record, "order.id") == 2
+
+
+def test_flatten_filter_survives_dict_that_raises_on_iteration() -> None:
+    """A field whose flattening raises must not stop other fields or the filter."""
+
+    class ExplodingDict(dict):  # type: ignore[type-arg]
+        def items(self) -> object:  # type: ignore[override]
+            msg = "items access failure"
+            raise RuntimeError(msg)
+
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "broken", ExplodingDict())
+    setattr(record, "order", {"id": 7})
+
+    assert flt.filter(record) is True
+    # The healthy field is still flattened despite the broken sibling.
+    assert getattr(record, "order.id") == 7
+
+
+def test_flatten_filter_honors_name_scoping() -> None:
+    flt = AttributeFlattenFilter(name="myapp")
+    record = logging.LogRecord(
+        name="other.module",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="hello",
+        args=(),
+        exc_info=None,
+    )
+    setattr(record, "order", {"id": 1})
+
+    # Non-matching logger bypasses flattening.
+    assert flt.filter(record) is True
+    assert getattr(record, "order") == {"id": 1}
+    assert "order.id" not in record.__dict__
