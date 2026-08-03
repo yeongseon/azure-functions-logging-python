@@ -13,7 +13,7 @@ import weakref
 
 from ._context import ContextFilter, _install_context_factory, set_default_trace_context_activation
 from ._formatter import ColorFormatter
-from ._host_config import warn_host_json_level_conflict
+from ._host_config import warn_host_json_level_conflict, warn_otel_logging_misconfig
 from ._json_formatter import JsonFormatter
 
 # Track configured logger names to ensure per-logger idempotency (local mode).
@@ -204,6 +204,10 @@ def setup_logging(
                 root.addFilter(context_filter)
 
             warn_host_json_level_conflict(level, host_json_path=host_json_path)
+            warn_otel_logging_misconfig(
+                functions_formatter=functions_formatter,
+                host_json_path=host_json_path,
+            )
 
         else:
             # Standalone local development: full idempotency via logger name.
