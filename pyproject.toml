@@ -37,6 +37,7 @@ dev = [
     "git-cliff",
     "hatch",
     "mypy==2.3.0",
+    "opentelemetry-sdk>=1.24",
     "pre-commit",
     "pytest",
     "pytest-cov",
@@ -48,6 +49,9 @@ docs = [
     "mkdocs<2.0",
     "mkdocs-material<10.0",
     "mkdocstrings[python]<2.0",
+]
+otel = [
+    "opentelemetry-api>=1.24",
 ]
 
 [build-system]
@@ -90,6 +94,16 @@ addopts = "--cov=src/azure_functions_logging --cov-report=xml --cov-report=term-
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 markers = ["e2e: real Azure end-to-end tests (require E2E_BASE_URL)"]
+filterwarnings = [
+    # The OTel spike and compose regression tests intentionally attach the
+    # opentelemetry-sdk ``LoggingHandler`` as a functional stand-in for the
+    # handler ``configure_azure_monitor()`` installs. That SDK handler is
+    # deprecated upstream (out of our control); the library detects any handler
+    # under the ``opentelemetry.*`` namespace, so it also covers the
+    # non-deprecated ``opentelemetry.instrumentation.logging`` handler. Silence
+    # the known warning with a documented reason instead of letting it leak.
+    "ignore:`LoggingHandler` in `opentelemetry-sdk` is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100

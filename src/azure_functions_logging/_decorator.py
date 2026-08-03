@@ -12,7 +12,7 @@ import asyncio
 import inspect
 from typing import Any, Callable, TypeVar, overload
 
-from ._context import inject_context, restore_context
+from ._context import logging_context
 from ._metadata import LoggingMetadata, read_logging_metadata, set_logging_metadata
 from ._metadata_helpers import copy_identity_attrs
 
@@ -49,7 +49,6 @@ def _build_logging_payload(param: str) -> LoggingMetadata:
     return {"version": 1, "context_param": param}
 
 
-
 def _find_context_arg(
     func: Callable[..., Any],
     param: str,
@@ -74,38 +73,30 @@ def _find_context_arg(
     return None
 
 
-def _wrap_sync(func: _F, param: str) -> _F:
+def _wrap_sync(func: _F, param: str, activate_trace_context: bool | None) -> _F:
     """Wrap a synchronous handler."""
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
-            tokens = inject_context(ctx)
-        else:
-            tokens = {}
-        try:
-            return func(*args, **kwargs)
-        finally:
-            restore_context(tokens)
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                return func(*args, **kwargs)
+        return func(*args, **kwargs)
 
     _copy_safe_metadata(wrapper, func)
     set_logging_metadata(wrapper, func, _build_logging_payload(param))
     return wrapper  # type: ignore[return-value]
 
 
-def _wrap_async(func: _F, param: str) -> _F:
+def _wrap_async(func: _F, param: str, activate_trace_context: bool | None) -> _F:
     """Wrap an asynchronous handler."""
 
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         ctx = _find_context_arg(func, param, args, kwargs)
         if ctx is not None:
-            tokens = inject_context(ctx)
-        else:
-            tokens = {}
-        try:
-            return await func(*args, **kwargs)
-        finally:
-            restore_context(tokens)
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                return await func(*args, **kwargs)
+        return await func(*args, **kwargs)
 
     _copy_safe_metadata(wrapper, func)
     set_logging_metadata(wrapper, func, _build_logging_payload(param))
@@ -117,13 +108,16 @@ def with_context(func: _F) -> _F: ...
 
 
 @overload
-def with_context(*, param: str = ...) -> Callable[[_F], _F]: ...
+def with_context(
+    *, param: str = ..., activate_trace_context: bool | None = ...
+) -> Callable[[_F], _F]: ...
 
 
 def with_context(
     func: _F | None = None,
     *,
     param: str = _DEFAULT_PARAM,
+    activate_trace_context: bool | None = None,
 ) -> _F | Callable[[_F], _F]:
     """Decorator that automatically injects invocation context.
 
@@ -149,12 +143,17 @@ def with_context(
         func: The handler function (when used without parentheses).
         param: Name of the parameter that receives the Azure Functions
             context object. Defaults to ``"context"``.
+        activate_trace_context: When ``True``, also attach the host's W3C trace
+            context so OTel log records inherit the host span's
+            ``trace_id``/``span_id`` (requires the ``[otel]`` extra; silent
+            no-op otherwise). When ``None`` (default), the process-wide default
+            configured via ``setup_logging(activate_trace_context=...)`` applies.
     """
 
     def decorator(fn: _F) -> _F:
         if asyncio.iscoroutinefunction(fn):
-            return _wrap_async(fn, param)
-        return _wrap_sync(fn, param)
+            return _wrap_async(fn, param, activate_trace_context)
+        return _wrap_sync(fn, param, activate_trace_context)
 
     if func is not None:
         # Called as @with_context (no parentheses)

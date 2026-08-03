@@ -81,6 +81,7 @@ def test_get_logger_returns_function_logger() -> None:
 def test_public_api_exports() -> None:
     expected = {
         "__version__",
+        "AttributeFlattenFilter",
         "ContextTokens",
         "FunctionLogger",
         "JsonFormatter",
