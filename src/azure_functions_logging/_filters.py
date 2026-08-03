@@ -3,6 +3,8 @@
 Provides:
 - ``SamplingFilter``: Rate-limit noisy loggers to reduce gRPC/stdout pressure.
 - ``RedactionFilter``: Mask PII / sensitive keys on LogRecord extra fields.
+- ``AttributeFlattenFilter``: Flatten nested dict extras to dotted scalar keys
+  so OpenTelemetry does not silently drop them.
 """
 
 from __future__ import annotations
@@ -18,6 +20,48 @@ from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
 from ._redaction import normalize_key as _normalize_key
 
 _REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
+_FLATTEN_MAX_DEPTH = 10  # default depth limit for recursive flattening
+
+
+def _flatten_dict(
+    prefix: str,
+    value: dict[Any, Any],
+    separator: str,
+    max_depth: int,
+    *,
+    _seen: set[int] | None = None,
+    _depth: int = 0,
+) -> dict[str, Any]:
+    """Flatten a nested dict into ``{dotted_key: scalar}`` pairs.
+
+    Guarded against:
+    - Cyclic references (via id-based seen set); cyclic sub-dicts are dropped.
+    - Pathologically deep structures (via ``_depth`` / ``max_depth``); the
+      remaining nested dict at the depth limit is emitted as-is under its
+      dotted key.
+
+    Lists (and any non-dict leaf) are emitted unchanged under their dotted key.
+    Empty dicts contribute no keys.
+    """
+    if _depth >= max_depth:
+        return {prefix: value}
+    seen = _seen if _seen is not None else set()
+    obj_id = id(value)
+    if obj_id in seen:
+        return {}  # cyclic reference detected
+    seen = seen | {obj_id}
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        new_key = f"{prefix}{separator}{key}"
+        if isinstance(item, dict):
+            result.update(
+                _flatten_dict(
+                    new_key, item, separator, max_depth, _seen=seen, _depth=_depth + 1
+                )
+            )
+        else:
+            result[new_key] = item
+    return result
 
 
 def _redact_value(
@@ -247,6 +291,80 @@ class RedactionFilter(logging.Filter):
                         value = record.__dict__[key]
                         if isinstance(value, (dict, list)):
                             setattr(record, key, _redact_value(value, self._sensitive_keys))
+                except Exception:  # nosec B110 — one broken field must not stop others
+                    pass
+        except Exception:  # nosec B110 — filter must never raise
+            pass
+        return True
+
+
+
+class AttributeFlattenFilter(logging.Filter):
+    """Flatten nested ``dict`` extras into dotted scalar attributes in-place.
+
+    OpenTelemetry attributes only permit scalars and homogeneous arrays. A
+    nested ``dict`` passed via ``extra`` (e.g. ``order={"id": 1}``) is silently
+    dropped by the OTel SDK. This filter rewrites such attributes into dotted
+    scalar keys (``order.id``) so the data survives export.
+
+    The filter mutates the record in-place, removing the original nested-dict
+    attribute and adding one attribute per leaf. It is **opt-in**: it has no
+    effect unless explicitly attached to a handler/logger.
+
+    Behavior:
+    - Nested dicts are flattened recursively to dotted keys.
+    - Lists / heterogeneous arrays are left unchanged (emitted as-is under
+      their dotted key). OTel accepts homogeneous scalar arrays; heterogeneous
+      or nested-object arrays remain the caller's responsibility.
+    - Scalar attributes and reserved ``LogRecord`` keys are never touched.
+    - Empty dicts contribute no keys (the attribute is removed).
+    - Cyclic references are dropped; over-deep structures (beyond
+      ``max_depth``) are emitted as-is at the depth boundary.
+
+    Args:
+        name: Optional logger-name scope. When set, only matching loggers are
+            flattened; non-matching records pass through unchanged.
+        separator: Delimiter joining nested keys. Default ``"."``.
+        max_depth: Maximum recursion depth before a nested dict is emitted
+            as-is. Default ``10``.
+
+    Example::
+
+        filter = AttributeFlattenFilter()
+        handler.addFilter(filter)
+    """
+
+    def __init__(
+        self,
+        name: str = "",
+        *,
+        separator: str = ".",
+        max_depth: int = _FLATTEN_MAX_DEPTH,
+    ) -> None:
+        super().__init__(name)
+        self._separator: str = separator
+        self._max_depth: int = max_depth
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Flatten nested-dict fields on the record. Always returns True."""
+        # Honor name-based scoping from logging.Filter
+        if not super().filter(record):
+            return True  # bypass flattening for non-matching loggers
+
+        try:
+            for key in list(record.__dict__.keys()):
+                try:
+                    if key in _RESERVED_LOG_RECORD_KEYS:
+                        continue
+                    value = record.__dict__[key]
+                    if not isinstance(value, dict):
+                        continue
+                    flattened = _flatten_dict(
+                        key, value, self._separator, self._max_depth
+                    )
+                    del record.__dict__[key]
+                    for flat_key, flat_value in flattened.items():
+                        setattr(record, flat_key, flat_value)
                 except Exception:  # nosec B110 — one broken field must not stop others
                     pass
         except Exception:  # nosec B110 — filter must never raise
