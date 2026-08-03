@@ -242,6 +242,48 @@ Azure/Core Tools setup installs filter-only behavior to avoid duplicate host out
 
 This difference is intentional and expected.
 
+## PII Appears in Application Insights Attributes (OpenTelemetry mode)
+
+### Symptoms
+
+You attached `RedactionFilter` (or `SamplingFilter`), yet sensitive values still
+appear as log **attributes** in Application Insights when using
+`azure-monitor-opentelemetry` / `configure_azure_monitor()`.
+
+### Root Cause
+
+In OpenTelemetry mode the OTel `LoggingHandler` is added to the root logger by
+`configure_azure_monitor()`. `setup_logging()` only decorates handlers that
+already exist when it runs, so if you call `setup_logging()` **before**
+`configure_azure_monitor()`, the OTel handler never receives your filters and
+the entire `extra` mapping is exported unfiltered.
+
+### Resolution
+
+1. Call `configure_azure_monitor()` **before** `setup_logging()` so the OTel
+   handler is present when filters are attached.
+2. Attach `RedactionFilter` to the OTel handler explicitly:
+
+   ```python
+   import logging
+
+   from azure.monitor.opentelemetry import configure_azure_monitor
+   from azure_functions_logging import RedactionFilter, setup_logging
+
+   configure_azure_monitor()          # attaches the OTel LoggingHandler to root
+   setup_logging()                    # decorates the now-present handler
+
+   redaction = RedactionFilter()
+   for handler in logging.getLogger().handlers:
+       handler.addFilter(redaction)   # ensure PII masking on the OTel handler
+   ```
+
+3. For handlers attached *after* `setup_logging()`, pass
+   `use_record_factory=True` so context is injected at record-creation time,
+   and re-attach filters to the late handler.
+
+See [OpenTelemetry correlation](opentelemetry.md) for the full ordering guide.
+
 ## Fast Diagnostic Checklist
 
 Run through this list during incidents:
