@@ -10,7 +10,9 @@ import azure_functions_logging._context as ctx_mod
 from azure_functions_logging._context import (
     _CONTEXT_FACTORY_MARKER,
     ContextFilter,
+    TraceContextParts,
     _check_cold_start,
+    _extract_trace_context,
     _extract_trace_id,
     _install_context_factory,
     cold_start_var,
@@ -21,6 +23,7 @@ from azure_functions_logging._context import (
     logging_context,
     reset_context,
     restore_context,
+    span_id_var,
     trace_id_var,
     uninstall_context_factory,
 )
@@ -32,6 +35,7 @@ def reset_context_state() -> None:
     invocation_id_var.set(None)
     function_name_var.set(None)
     trace_id_var.set(None)
+    span_id_var.set(None)
     cold_start_var.set(None)
 
 
@@ -371,15 +375,11 @@ def test_uninstall_context_factory_restores_previous() -> None:
     old_factory = logging.getLogRecordFactory()
     try:
         _install_context_factory()
-        assert getattr(
-            logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
-        ) is True
+        assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
 
         assert uninstall_context_factory() is True
         assert logging.getLogRecordFactory() is old_factory
-        assert getattr(
-            logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
-        ) is False
+        assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is False
     finally:
         logging.setLogRecordFactory(old_factory)
 
@@ -399,9 +399,7 @@ def test_uninstall_context_factory_preserves_chained_factory() -> None:
         assert uninstall_context_factory() is True
         assert logging.getLogRecordFactory() is custom_factory
 
-        record = logging.getLogRecordFactory()(
-            "test", logging.INFO, __file__, 1, "msg", (), None
-        )
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "msg", (), None)
         assert record.custom_field == "kept"  # type: ignore[attr-defined]
     finally:
         logging.setLogRecordFactory(old_factory)
@@ -505,7 +503,6 @@ def test_install_context_factory_with_logger_emit() -> None:
         logger.propagate = True
 
 
-
 # ---------------------------------------------------------------------------
 # W3C traceparent strict validation (issue #104)
 # ---------------------------------------------------------------------------
@@ -570,6 +567,54 @@ def test_extract_trace_id_baseline_valid_still_works() -> None:
     assert _extract_trace_id(_VALID_TRACEPARENT) == _VALID_TRACE_ID
 
 
+def test_extract_trace_context_returns_all_parts() -> None:
+    parts = _extract_trace_context(_VALID_TRACEPARENT)
+    assert parts == TraceContextParts(
+        trace_id="1234567890abcdef1234567890abcdef",
+        span_id="fedcba0987654321",
+        trace_flags=1,
+    )
+
+
+def test_extract_trace_context_is_a_named_tuple() -> None:
+    parts = _extract_trace_context(_VALID_TRACEPARENT)
+    assert parts is not None
+    assert parts.trace_id == _VALID_TRACE_ID
+    assert parts.span_id == "fedcba0987654321"
+    assert parts.trace_flags == 1
+
+
+def test_extract_trace_context_preserves_uppercase_hex() -> None:
+    upper = "00-1234567890ABCDEF1234567890ABCDEF-FEDCBA0987654321-0A"
+    parts = _extract_trace_context(upper)
+    assert parts == TraceContextParts(
+        trace_id="1234567890ABCDEF1234567890ABCDEF",
+        span_id="FEDCBA0987654321",
+        trace_flags=0x0A,
+    )
+
+
+@pytest.mark.parametrize("trace_parent", [None, "", "bad", "00-only"])
+def test_extract_trace_context_invalid_returns_none(trace_parent: str | None) -> None:
+    assert _extract_trace_context(trace_parent) is None
+
+
+def test_extract_trace_context_forward_compatible_future_version() -> None:
+    future = "01-1234567890abcdef1234567890abcdef-fedcba0987654321-01-future"
+    parts = _extract_trace_context(future)
+    assert parts is not None
+    assert parts.trace_id == _VALID_TRACE_ID
+    assert parts.span_id == "fedcba0987654321"
+    assert parts.trace_flags == 1
+
+
+def test_extract_trace_id_delegates_to_extract_trace_context() -> None:
+    # The thin wrapper must return exactly the trace_id component.
+    parts = _extract_trace_context(_VALID_TRACEPARENT)
+    assert parts is not None
+    assert _extract_trace_id(_VALID_TRACEPARENT) == parts.trace_id
+
+
 def test_context_filter_injects_extra_context_vars() -> None:
     import contextvars
 
@@ -599,9 +644,7 @@ def test_context_filter_injects_extra_context_vars() -> None:
 def test_context_filter_extra_collision_raises() -> None:
     import contextvars
 
-    bad_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-        "trace_id", default=None
-    )
+    bad_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("trace_id", default=None)
     with pytest.raises(ValueError, match="collide"):
         ContextFilter({"trace_id": bad_var})
 
@@ -611,8 +654,65 @@ def test_install_context_factory_is_deprecated() -> None:
         with pytest.warns(DeprecationWarning, match="setup_logging"):
             install_context_factory()
         # The deprecated shim still installs the package factory.
-        assert getattr(
-            logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False
-        )
+        assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False)
     finally:
         uninstall_context_factory()
+
+
+def test_span_id_is_a_context_field() -> None:
+    assert "span_id" in ContextFilter.CONTEXT_FIELDS
+
+
+def test_inject_context_sets_span_id_from_traceparent() -> None:
+    context = SimpleNamespace(
+        invocation_id="inv-1",
+        function_name="fn-a",
+        trace_context=SimpleNamespace(
+            trace_parent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        ),
+    )
+    inject_context(context)
+    assert span_id_var.get() == "00f067aa0ba902b7"
+
+
+def test_inject_context_span_id_none_when_no_traceparent() -> None:
+    inject_context(SimpleNamespace())
+    assert span_id_var.get() is None
+
+
+def test_context_filter_adds_span_id_to_record() -> None:
+    token = span_id_var.set("00f067aa0ba902b7")
+    try:
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
+        )
+        ContextFilter().filter(record)
+        assert record.span_id == "00f067aa0ba902b7"  # type: ignore[attr-defined]
+    finally:
+        span_id_var.reset(token)
+
+
+def test_context_factory_injects_span_id() -> None:
+    from azure_functions_logging._context import CONTEXT_RECORD_FIELDS
+
+    assert "span_id" in CONTEXT_RECORD_FIELDS
+    token = span_id_var.set("00f067aa0ba902b7")
+    try:
+        _install_context_factory()
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "hello", (), None)
+        assert record.span_id == "00f067aa0ba902b7"  # type: ignore[attr-defined]
+    finally:
+        span_id_var.reset(token)
+        uninstall_context_factory()
+
+
+def test_reset_context_clears_span_id() -> None:
+    span_id_var.set("00f067aa0ba902b7")
+    reset_context()
+    assert span_id_var.get() is None
