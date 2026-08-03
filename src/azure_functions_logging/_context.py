@@ -7,7 +7,7 @@ from contextlib import contextmanager
 import contextvars
 import logging
 import threading
-from typing import Any
+from typing import Any, NamedTuple
 import warnings
 
 # Type alias for the token mapping returned by inject_context()
@@ -21,6 +21,7 @@ function_name_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "function_name", default=None
 )
 trace_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("trace_id", default=None)
+span_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("span_id", default=None)
 cold_start_var: contextvars.ContextVar[bool | None] = contextvars.ContextVar(
     "cold_start", default=None
 )
@@ -61,6 +62,7 @@ class ContextFilter(logging.Filter):
         "invocation_id",
         "function_name",
         "trace_id",
+        "span_id",
         "cold_start",
     )
 
@@ -92,6 +94,7 @@ class ContextFilter(logging.Filter):
         record.invocation_id = invocation_id_var.get()
         record.function_name = function_name_var.get()
         record.trace_id = trace_id_var.get()
+        record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
         for field_name, var in self._extra_context_vars.items():
             setattr(record, field_name, var.get())
@@ -105,23 +108,25 @@ def _is_hex(value: str, length: int) -> bool:
     return len(value) == length and all(ch in _HEX_CHARS for ch in value)
 
 
-def _extract_trace_id(trace_parent: str | None) -> str | None:
-    """Extract a W3C trace-id from a ``traceparent`` header.
+class TraceContextParts(NamedTuple):
+    """Parsed components of a W3C ``traceparent`` header.
 
-    Format (W3C Trace Context Level 1):
-        ``<version>-<trace-id>-<parent-id>-<flags>``
+    All fields preserve the original header casing (hex may be upper or
+    lower case per the W3C spec).
+    """
 
-    Returns the trace-id only when the header is structurally valid:
-      * exactly 4 ``-``-separated parts,
-      * version: 2 hex chars (``ff`` is reserved — rejected),
-      * trace-id: 32 hex chars and not all-zero,
-      * parent/span-id: 16 hex chars and not all-zero,
-      * flags: 2 hex chars,
-      * version ``00`` enforces the strict 4-part shape; future versions are
-        accepted as long as the first 4 fields parse — trailing fields are
-        ignored to stay forward-compatible with later spec revisions.
+    trace_id: str
+    span_id: str
+    trace_flags: str
 
-    Otherwise returns ``None`` so callers never log garbage trace IDs.
+
+def _extract_trace_context(trace_parent: str | None) -> TraceContextParts | None:
+    """Parse a ``traceparent`` header into its trace-id, span-id, and flags.
+
+    Applies the same structural validation as :func:`_extract_trace_id`
+    (see that function for the full ruleset). Returns a
+    :class:`TraceContextParts` when the header is well-formed, otherwise
+    ``None`` so callers never propagate garbage identifiers.
     """
     if not trace_parent:
         return None
@@ -141,9 +146,23 @@ def _extract_trace_id(trace_parent: str | None) -> str | None:
             return None
         if not _is_hex(flags, 2):
             return None
-        return trace_id
+        return TraceContextParts(trace_id=trace_id, span_id=parent_id, trace_flags=flags)
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         return None
+
+def _extract_trace_id(trace_parent: str | None) -> str | None:
+    """Extract a W3C trace-id from a ``traceparent`` header.
+
+    Format (W3C Trace Context Level 1):
+        ``<version>-<trace-id>-<parent-id>-<flags>``
+
+    Returns the trace-id only when the header is structurally valid;
+    see :func:`_extract_trace_context` for the full validation ruleset.
+
+    Otherwise returns ``None`` so callers never log garbage trace IDs.
+    """
+    parts = _extract_trace_context(trace_parent)
+    return parts.trace_id if parts is not None else None
 
 
 def inject_context(context: Any) -> ContextTokens:
@@ -177,9 +196,12 @@ def inject_context(context: Any) -> ContextTokens:
     try:
         trace_context = getattr(context, "trace_context", None)
         trace_parent = getattr(trace_context, "trace_parent", None) if trace_context else None
-        tokens[trace_id_var] = trace_id_var.set(_extract_trace_id(trace_parent))
+        parts = _extract_trace_context(trace_parent)
+        tokens[trace_id_var] = trace_id_var.set(parts.trace_id if parts is not None else None)
+        tokens[span_id_var] = span_id_var.set(parts.span_id if parts is not None else None)
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         tokens[trace_id_var] = trace_id_var.set(None)
+        tokens[span_id_var] = span_id_var.set(None)
 
     try:
         tokens[cold_start_var] = cold_start_var.set(_check_cold_start())
@@ -208,6 +230,7 @@ def reset_context() -> None:
     invocation_id_var.set(None)
     function_name_var.set(None)
     trace_id_var.set(None)
+    span_id_var.set(None)
     cold_start_var.set(None)
 
 
@@ -225,8 +248,45 @@ def restore_context(tokens: ContextTokens) -> None:
         var.reset(token)
 
 
+# Process-wide default for OpenTelemetry trace-context activation. Toggled by
+# ``setup_logging(activate_trace_context=...)`` and consulted by
+# ``logging_context`` / ``with_context`` when their per-call flag is ``None``.
+_default_trace_context_activation: bool = False
+
+
+def set_default_trace_context_activation(enabled: bool) -> None:
+    """Set the process-wide default for OTel trace-context activation.
+
+    Called by :func:`setup_logging`. When enabled, ``logging_context`` and
+    ``with_context`` activate the host trace context unless a per-call
+    ``activate_trace_context`` argument overrides it.
+    """
+    global _default_trace_context_activation
+    _default_trace_context_activation = bool(enabled)
+
+
+def get_default_trace_context_activation() -> bool:
+    """Return the current process-wide OTel trace-context activation default."""
+    return _default_trace_context_activation
+
+
+def _read_trace_headers(context: Any) -> tuple[str | None, str | None]:
+    """Extract ``(traceparent, tracestate)`` from a context object, never raising."""
+    try:
+        trace_context = getattr(context, "trace_context", None)
+        if trace_context is None:
+            return None, None
+        trace_parent = getattr(trace_context, "trace_parent", None)
+        trace_state = getattr(trace_context, "trace_state", None)
+        return trace_parent, trace_state
+    except Exception:  # nosec B110 — Principle 3: context failures are silent
+        return None, None
+
+
 @contextmanager
-def logging_context(context: Any) -> Iterator[None]:
+def logging_context(
+    context: Any, *, activate_trace_context: bool | None = None
+) -> Iterator[None]:
     """Context manager wrapping ``inject_context`` + ``restore_context``.
 
     Recommended pattern when handlers don't use the ``with_context`` decorator::
@@ -238,10 +298,32 @@ def logging_context(context: Any) -> Iterator[None]:
 
     Guarantees context is restored to its previous state even if the body raises,
     supporting safe nesting of contexts.
+
+    Args:
+        context: An Azure Functions context object (func.Context).
+        activate_trace_context: When ``True``, also attach the host's W3C trace
+            context (from ``context.trace_context``) via OpenTelemetry so log
+            records emitted through an OTel ``LoggingHandler`` inherit the host
+            span's ``trace_id``/``span_id``. Requires the ``[otel]`` extra;
+            degrades to a silent no-op when OpenTelemetry is unavailable. When
+            ``None`` (default), the process-wide default configured via
+            ``setup_logging(activate_trace_context=...)`` is used.
     """
+    should_activate = (
+        _default_trace_context_activation
+        if activate_trace_context is None
+        else activate_trace_context
+    )
     tokens = inject_context(context)
     try:
-        yield
+        if should_activate:
+            trace_parent, trace_state = _read_trace_headers(context)
+            from ._otel import activated_trace_context
+
+            with activated_trace_context(trace_parent, trace_state):
+                yield
+        else:
+            yield
     finally:
         restore_context(tokens)
 
@@ -257,6 +339,7 @@ CONTEXT_RECORD_FIELDS: tuple[str, ...] = (
     "invocation_id",
     "function_name",
     "trace_id",
+    "span_id",
     "cold_start",
 )
 
@@ -298,6 +381,7 @@ def _install_context_factory() -> None:
         record.invocation_id = invocation_id_var.get()
         record.function_name = function_name_var.get()
         record.trace_id = trace_id_var.get()
+        record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
         return record
 
