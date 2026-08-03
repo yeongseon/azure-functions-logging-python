@@ -190,6 +190,25 @@ for handler in logging.getLogger().handlers:
 
 ::: azure_functions_logging.RedactionFilter
 
+## AttributeFlattenFilter
+
+::: azure_functions_logging.AttributeFlattenFilter
+
+### Usage Notes
+
+- Opt-in only. Attach it to a handler/logger to flatten nested `dict` extras
+  into dotted scalar keys (e.g. `order={"id": 1}` becomes `order.id=1`).
+- Intended for OpenTelemetry pipelines, where nested `dict` attributes are
+  silently dropped by the OTel SDK.
+- Lists / heterogeneous arrays are left unchanged (emitted as-is under their
+  dotted key).
+
+```python
+from azure_functions_logging import AttributeFlattenFilter
+
+handler.addFilter(AttributeFlattenFilter())
+```
+
 ## inject_context
 
 ::: azure_functions_logging.inject_context
@@ -266,6 +285,18 @@ metadata = get_logging_metadata(handler)
 ## logging_context
 
 ::: azure_functions_logging.logging_context
+
+## activated_trace_context
+
+::: azure_functions_logging.activated_trace_context
+
+Attaches the host's W3C trace context so log records emitted through an
+OpenTelemetry `LoggingHandler` inherit the host span's `trace_id`/`span_id`.
+Requires the `[otel]` extra (`pip install azure-functions-logging[otel]`); it
+degrades to a silent no-op when OpenTelemetry is not installed. Prefer the
+`activate_trace_context=True` argument on `logging_context` / `with_context` /
+`setup_logging` for most applications; use this context manager directly for
+manual control. See [OpenTelemetry correlation](opentelemetry.md).
 
 ## install_context_factory
 

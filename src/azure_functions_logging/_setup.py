@@ -11,7 +11,7 @@ from typing import Any
 import warnings
 import weakref
 
-from ._context import ContextFilter, _install_context_factory
+from ._context import ContextFilter, _install_context_factory, set_default_trace_context_activation
 from ._formatter import ColorFormatter
 from ._host_config import warn_host_json_level_conflict
 from ._json_formatter import JsonFormatter
@@ -65,6 +65,7 @@ def setup_logging(
     host_json_path: Path | str | None = None,
     use_record_factory: bool = False,
     extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+    activate_trace_context: bool | None = None,
 ) -> None:
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
@@ -114,6 +115,15 @@ def setup_logging(
             LogRecord, alongside the four built-in context fields. Field names
             must not collide with the built-in fields. Only applies to the
             ``ContextFilter`` strategy (ignored when ``use_record_factory=True``).
+        activate_trace_context: Sets the process-wide default that
+            ``logging_context`` and ``with_context`` consult to attach the
+            host's W3C trace context (via OpenTelemetry) — making OTel log
+            records inherit the host span's ``trace_id``/``span_id``. Requires
+            the ``[otel]`` extra; degrades to a silent no-op when OpenTelemetry
+            is not installed. ``True``/``False`` force the default on/off; the
+            default ``None`` selects the ``auto`` tier (enabled iff
+            ``opentelemetry-api`` is importable). A per-call
+            ``activate_trace_context`` argument overrides this default.
 
     .. warning::
 
@@ -135,6 +145,13 @@ def setup_logging(
         _install_context_factory()
 
     with _configured_lock:
+        # Only override the process-wide activation default when the caller
+        # explicitly opts in or out. A bare ``setup_logging()`` (where
+        # ``activate_trace_context`` is ``None``) must not silently revert a
+        # previously-configured default — that would break idempotency.
+        if activate_trace_context is not None:
+            set_default_trace_context_activation(activate_trace_context)
+
         # When switching to record-factory mode, strip any previously-installed
         # ContextFilter from the target logger and root logger.  Must run BEFORE
         # the idempotency guards (so re-entry for the same logger_name still
