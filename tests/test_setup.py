@@ -201,6 +201,40 @@ def test_format_color_no_warning_in_azure_environment() -> None:
     root.filters.clear()
 
 
+def test_setup_logging_warns_on_otel_formatter_conflict() -> None:
+    """setup_logging() wires warn_otel_logging_misconfig (issue #256).
+
+    With an OpenTelemetry handler attached and a functions_formatter passed,
+    the '6a' ignored-formatter warning must surface through setup_logging().
+    """
+    import warnings
+
+    class _FakeOtelHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover
+            pass
+
+    _FakeOtelHandler.__module__ = "opentelemetry.sdk._logs._internal"
+
+    root = logging.getLogger()
+    root.handlers = [_FakeOtelHandler()]
+
+    env = {
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "PYTHON_ENABLE_OPENTELEMETRY": "1",
+    }
+    try:
+        with patch.dict(os.environ, env, clear=True):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                setup_logging(functions_formatter=logging.Formatter())
+
+            messages = [str(rec.message) for rec in w]
+            assert any("functions_formatter" in m for m in messages)
+    finally:
+        root.handlers = []
+        root.filters.clear()
+
+
 def test_setup_logging_use_record_factory_installs_factory() -> None:
     """use_record_factory=True installs the global LogRecordFactory."""
     from azure_functions_logging._context import (
@@ -317,7 +351,13 @@ def test_setup_logging_factory_record_survives_contextvar_reset() -> None:
     token = invocation_id_var.set("test-invocation-123")
     try:
         record = logger.makeRecord(
-            logger_name, logging.INFO, "f.py", 1, "msg", (), None,
+            logger_name,
+            logging.INFO,
+            "f.py",
+            1,
+            "msg",
+            (),
+            None,
         )
     finally:
         invocation_id_var.reset(token)
@@ -345,7 +385,6 @@ def test_setup_logging_invalid_format_leaves_no_global_side_effects() -> None:
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(ValueError, match="format must be"):
             setup_logging(format="bogus", use_record_factory=True)
-
 
     # Factory must not have been swapped despite use_record_factory=True
     assert logging.getLogRecordFactory() is baseline_factory
@@ -400,7 +439,7 @@ def test_azure_setup_does_not_duplicate_filter_on_repeated_calls() -> None:
         context_filter_count = sum(
             1 for f in handler.filters if type(f).__name__ == "ContextFilter"
         )
-        assert context_filter_count == 1, (", ".join(type(f).__name__ for f in handler.filters))
+        assert context_filter_count == 1, ", ".join(type(f).__name__ for f in handler.filters)
     finally:
         root.handlers[:] = original_handlers
         root.filters[:] = original_filters
@@ -435,10 +474,12 @@ def test_azure_setup_different_use_record_factory_flags_have_isolated_filter_sta
             (f for f in handler_with_factory.filters if type(f).__name__ == "ContextFilter"), None
         )
 
-        assert filter_no_factory is not None, \
+        assert filter_no_factory is not None, (
             "use_record_factory=False should install a ContextFilter on the handler"
-        assert filter_with_factory is None, \
+        )
+        assert filter_with_factory is None, (
             "use_record_factory=True must not install a ContextFilter (factory provides context)"
+        )
         # The filter installed by the first call must not bleed onto the second handler
         assert filter_no_factory not in handler_with_factory.filters
     finally:
@@ -470,8 +511,9 @@ def test_upgrade_to_record_factory_removes_existing_context_filter_local() -> No
     with patch.dict(os.environ, {}, clear=True):
         # Step 1: install ContextFilter mode
         setup_logging(logger_name=logger_name)
-        assert any(isinstance(f, ContextFilter) for h in logger.handlers for f in h.filters), \
+        assert any(isinstance(f, ContextFilter) for h in logger.handlers for f in h.filters), (
             "precondition: ContextFilter should be on handler"
+        )
 
         # Step 2: upgrade to factory mode — must remove the filter
         setup_mod._configured_loggers.discard(logger_name)  # allow re-entry
@@ -479,8 +521,9 @@ def test_upgrade_to_record_factory_removes_existing_context_filter_local() -> No
 
     # Assert filter is gone
     for handler in logger.handlers:
-        assert not any(isinstance(f, ContextFilter) for f in handler.filters), \
+        assert not any(isinstance(f, ContextFilter) for f in handler.filters), (
             "ContextFilter must be removed after switching to use_record_factory=True"
+        )
 
     # Step 3: create record under context A
     token = invocation_id_var.set("context-A")
@@ -499,8 +542,9 @@ def test_upgrade_to_record_factory_removes_existing_context_filter_local() -> No
                 f.filter(record)
 
     # Factory snapshot must survive
-    assert getattr(record, "invocation_id", None) == "context-A", \
+    assert getattr(record, "invocation_id", None) == "context-A", (
         f"Factory snapshot overwritten — got {getattr(record, 'invocation_id', None)!r}"
+    )
 
     logger.handlers.clear()
     logger.filters.clear()
@@ -529,8 +573,9 @@ def test_upgrade_to_record_factory_removes_context_filter_before_idempotency_gua
         # Even though logger_name is in _configured_loggers, cleanup must run
         setup_logging(logger_name=logger_name, use_record_factory=True)
 
-    assert not any(isinstance(f, ContextFilter) for f in handler.filters), \
+    assert not any(isinstance(f, ContextFilter) for f in handler.filters), (
         "ContextFilter must be removed even when re-entering via idempotency guard"
+    )
 
     logger.handlers.clear()
     logger.filters.clear()
@@ -556,17 +601,20 @@ def test_upgrade_to_record_factory_removes_context_filter_azure_mode() -> None:
         with patch.dict(os.environ, env, clear=True):
             # First call — installs ContextFilter
             setup_logging(use_record_factory=False)
-            assert any(isinstance(f, ContextFilter) for f in test_handler.filters), \
+            assert any(isinstance(f, ContextFilter) for f in test_handler.filters), (
                 "precondition: ContextFilter must be on handler after filter-mode call"
+            )
 
             # Second call — must remove ContextFilter
             setup_logging(use_record_factory=True)
 
         # After factory upgrade: no ContextFilter on handler or root logger
-        assert not any(isinstance(f, ContextFilter) for f in test_handler.filters), \
+        assert not any(isinstance(f, ContextFilter) for f in test_handler.filters), (
             "ContextFilter must be removed from root handler after use_record_factory=True"
-        assert not any(isinstance(f, ContextFilter) for f in root.filters), \
+        )
+        assert not any(isinstance(f, ContextFilter) for f in root.filters), (
             "ContextFilter must be removed from root.filters after use_record_factory=True"
+        )
     finally:
         root.handlers[:] = original_handlers
         root.filters[:] = original_filters
@@ -585,9 +633,7 @@ class TestInjectionModeParity:
     class _Ctx:
         invocation_id = "inv-parity-1"
         function_name = "parity_fn"
-        trace_context = SimpleNamespace(
-            trace_parent="00-" + "a" * 32 + "-" + "b" * 16 + "-01"
-        )
+        trace_context = SimpleNamespace(trace_parent="00-" + "a" * 32 + "-" + "b" * 16 + "-01")
 
     # trace_id extracted from the W3C traceparent above.
     EXPECTED_TRACE_ID = "a" * 32
@@ -616,7 +662,13 @@ class TestInjectionModeParity:
         reset_context()
         inject_context(self._Ctx())
         factory_record = logger.makeRecord(
-            logger_name, logging.INFO, "f.py", 1, "m", (), None,
+            logger_name,
+            logging.INFO,
+            "f.py",
+            1,
+            "m",
+            (),
+            None,
         )
         factory_fields = self._fields(factory_record)
         reset_context()
