@@ -9,6 +9,8 @@ class TestAPISurface:
     def test_all_exports(self) -> None:
         assert set(azure_functions_logging.__all__) == {
             "__version__",
+            "activated_trace_context",
+            "AttributeFlattenFilter",
             "ContextTokens",
             "FunctionLogger",
             "JsonFormatter",
@@ -36,11 +38,13 @@ class TestAPISurface:
 
     def test_public_names_are_importable(self) -> None:
         from azure_functions_logging import (  # noqa: F401  # pyright: ignore[reportMissingImports]
+            AttributeFlattenFilter,
             ContextTokens,
             FunctionLogger,
             JsonFormatter,
             RedactionFilter,
             SamplingFilter,
+            activated_trace_context,
             get_logger,
             get_logging_metadata,
             inject_context,
@@ -70,8 +74,7 @@ class TestDocsCoverage:
         missing = [
             name
             for name in azure_functions_logging.__all__
-            if name != "__version__"
-            and f"::: azure_functions_logging.{name}" not in text
+            if name != "__version__" and f"::: azure_functions_logging.{name}" not in text
         ]
         assert not missing, (
             "Public symbols missing an mkdocstrings directive "

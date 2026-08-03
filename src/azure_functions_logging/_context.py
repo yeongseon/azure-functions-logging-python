@@ -250,8 +250,61 @@ def restore_context(tokens: ContextTokens) -> None:
         var.reset(token)
 
 
+# Process-wide default for OpenTelemetry trace-context activation. Toggled by
+# ``setup_logging(activate_trace_context=...)`` and consulted by
+# ``logging_context`` / ``with_context`` when their per-call flag is ``None``.
+# ``None`` selects the ``auto`` tier: enabled iff ``opentelemetry-api`` is
+# importable.
+_default_trace_context_activation: bool | None = None
+
+
+def set_default_trace_context_activation(enabled: bool | None) -> None:
+    """Set the process-wide default for OTel trace-context activation.
+
+    Called by :func:`setup_logging`. When enabled, ``logging_context`` and
+    ``with_context`` activate the host trace context unless a per-call
+    ``activate_trace_context`` argument overrides it. Passing ``None`` selects
+    the ``auto`` tier (enabled iff ``opentelemetry-api`` is importable).
+    """
+    global _default_trace_context_activation
+    _default_trace_context_activation = enabled if enabled is None else bool(enabled)
+
+
+def _resolve_auto_trace_context_activation() -> bool:
+    """Resolve the ``auto`` tier: enabled iff ``opentelemetry-api`` is importable."""
+    try:
+        from ._otel import is_available
+    except ImportError:  # pragma: no cover - defensive; _otel always ships
+        return False
+    return is_available()
+
+
+def get_default_trace_context_activation() -> bool:
+    """Return the resolved process-wide OTel trace-context activation default.
+
+    A stored default of ``None`` selects the ``auto`` tier: enabled iff
+    ``opentelemetry-api`` is importable.
+    """
+    if _default_trace_context_activation is None:
+        return _resolve_auto_trace_context_activation()
+    return _default_trace_context_activation
+
+
+def _read_trace_headers(context: Any) -> tuple[str | None, str | None]:
+    """Extract ``(traceparent, tracestate)`` from a context object, never raising."""
+    try:
+        trace_context = getattr(context, "trace_context", None)
+        if trace_context is None:
+            return None, None
+        trace_parent = getattr(trace_context, "trace_parent", None)
+        trace_state = getattr(trace_context, "trace_state", None)
+        return trace_parent, trace_state
+    except Exception:  # nosec B110 — Principle 3: context failures are silent
+        return None, None
+
+
 @contextmanager
-def logging_context(context: Any) -> Iterator[None]:
+def logging_context(context: Any, *, activate_trace_context: bool | None = None) -> Iterator[None]:
     """Context manager wrapping ``inject_context`` + ``restore_context``.
 
     Recommended pattern when handlers don't use the ``with_context`` decorator::
@@ -263,10 +316,34 @@ def logging_context(context: Any) -> Iterator[None]:
 
     Guarantees context is restored to its previous state even if the body raises,
     supporting safe nesting of contexts.
+
+    Args:
+        context: An Azure Functions context object (func.Context).
+        activate_trace_context: When ``True``, also attach the host's W3C trace
+            context (from ``context.trace_context``) via OpenTelemetry so log
+            records emitted through an OTel ``LoggingHandler`` inherit the host
+            span's ``trace_id``/``span_id``. Requires the ``[otel]`` extra;
+            degrades to a silent no-op when OpenTelemetry is unavailable. When
+            ``None`` (default), the process-wide default configured via
+            ``setup_logging(activate_trace_context=...)`` is used, which itself
+            defaults to the ``auto`` tier (enabled iff ``opentelemetry-api`` is
+            importable).
     """
+    should_activate = (
+        get_default_trace_context_activation()
+        if activate_trace_context is None
+        else activate_trace_context
+    )
     tokens = inject_context(context)
     try:
-        yield
+        if should_activate:
+            trace_parent, trace_state = _read_trace_headers(context)
+            from ._otel import activated_trace_context
+
+            with activated_trace_context(trace_parent, trace_state):
+                yield
+        else:
+            yield
     finally:
         restore_context(tokens)
 

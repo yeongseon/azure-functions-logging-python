@@ -37,6 +37,7 @@ dev = [
     "git-cliff",
     "hatch",
     "mypy==2.3.0",
+    "opentelemetry-sdk>=1.24",
     "pre-commit",
     "pytest",
     "pytest-cov",
@@ -48,6 +49,9 @@ docs = [
     "mkdocs<2.0",
     "mkdocs-material<10.0",
     "mkdocstrings[python]<2.0",
+]
+otel = [
+    "opentelemetry-api>=1.24",
 ]
 
 [build-system]

@@ -12,13 +12,16 @@ from ._context import (
     uninstall_context_factory,
 )
 from ._decorator import get_logging_metadata, with_context
-from ._filters import RedactionFilter, SamplingFilter
+from ._filters import AttributeFlattenFilter, RedactionFilter, SamplingFilter
 from ._json_formatter import JsonFormatter
 from ._logger import FunctionLogger
+from ._otel import activated_trace_context
 from ._setup import setup_logging
 
 __all__ = [
     "__version__",
+    "activated_trace_context",
+    "AttributeFlattenFilter",
     "ContextTokens",
     "FunctionLogger",
     "JsonFormatter",
