@@ -40,6 +40,7 @@ def test_basic_json_output_is_valid_and_has_expected_fields() -> None:
     assert payload["invocation_id"] is None
     assert payload["function_name"] is None
     assert payload["trace_id"] is None
+    assert payload["span_id"] is None
     assert payload["cold_start"] is None
     assert payload["exception"] is None
     assert payload["extra"] == {}
@@ -51,12 +52,14 @@ def test_context_fields_included_when_present() -> None:
     record.invocation_id = "inv-1"
     record.function_name = "fn-1"
     record.trace_id = "trace-1"
+    record.span_id = "span-1"
 
     payload = json.loads(formatter.format(record))
 
     assert payload["invocation_id"] == "inv-1"
     assert payload["function_name"] == "fn-1"
     assert payload["trace_id"] == "trace-1"
+    assert payload["span_id"] == "span-1"
 
 
 def test_cold_start_field_for_true_false_and_none() -> None:
@@ -296,8 +299,6 @@ def test_format_emergency_fallback_when_payload_dict_unserializable(
     formatter = JsonFormatter()
     record = _make_record(logging.WARNING, "force emergency")
 
-
-
     call_count = {"n": 0}
     real_dumps = json.dumps
 
@@ -314,6 +315,7 @@ def test_format_emergency_fallback_when_payload_dict_unserializable(
     assert payload["message"] == "<emergency fallback: formatter failed>"
     assert payload["extra"] == {"__serialization_error__": True}
     assert payload["level"] == "WARNING"
+    assert payload["span_id"] is None
 
 
 def test_format_handles_invalid_timestamp() -> None:

@@ -75,6 +75,7 @@ _JSON_SCHEMA_KEYS: set[str] = {
     "invocation_id",
     "function_name",
     "trace_id",
+    "span_id",
     "cold_start",
     "exception",
     "extra",

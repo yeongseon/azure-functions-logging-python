@@ -83,12 +83,10 @@ def _to_json_safe(
             return "<cyclic>"
         seen = seen | {id(value)}
         if isinstance(value, dict):
-            return {
-                _safe_key(k): _to_json_safe(v, seen, _depth + 1)
-                for k, v in value.items()
-            }
+            return {_safe_key(k): _to_json_safe(v, seen, _depth + 1) for k, v in value.items()}
         return [_to_json_safe(item, seen, _depth + 1) for item in value]
     return value
+
 
 def _truncate_native_strings(value: Any, max_length: int) -> Any:
     """Recursively truncate string values in a JSON-safe structure.
@@ -109,6 +107,7 @@ def _truncate_native_strings(value: Any, max_length: int) -> Any:
     if isinstance(value, list):
         return [_truncate_native_strings(item, max_length) for item in value]
     return value
+
 
 class JsonFormatter(logging.Formatter):
     """Structured JSON log formatter.
@@ -137,9 +136,7 @@ class JsonFormatter(logging.Formatter):
         truncate_native_strings: bool = False,
     ) -> None:
         if max_string_length < 0:
-            raise ValueError(
-                f"max_string_length must be ≥ 0, got {max_string_length}"
-            )
+            raise ValueError(f"max_string_length must be ≥ 0, got {max_string_length}")
         super().__init__()
         self._max_string_length = max_string_length
         self._truncate_native_strings = truncate_native_strings
@@ -174,6 +171,7 @@ class JsonFormatter(logging.Formatter):
             "invocation_id": getattr(record, "invocation_id", None),
             "function_name": getattr(record, "function_name", None),
             "trace_id": getattr(record, "trace_id", None),
+            "span_id": getattr(record, "span_id", None),
             "cold_start": getattr(record, "cold_start", None),
             "exception": exception,
             "extra": extra,
@@ -230,6 +228,7 @@ def _emergency_payload(record: logging.LogRecord) -> str:
             "invocation_id": None,
             "function_name": None,
             "trace_id": None,
+            "span_id": None,
             "cold_start": None,
             "exception": None,
             "extra": {"__serialization_error__": True},
