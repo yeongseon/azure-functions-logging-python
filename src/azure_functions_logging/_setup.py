@@ -11,9 +11,9 @@ from typing import Any
 import warnings
 import weakref
 
-from ._context import ContextFilter, _install_context_factory
+from ._context import ContextFilter, _install_context_factory, set_default_trace_context_activation
 from ._formatter import ColorFormatter
-from ._host_config import warn_host_json_level_conflict
+from ._host_config import warn_host_json_level_conflict, warn_otel_logging_misconfig
 from ._json_formatter import JsonFormatter
 
 # Track configured logger names to ensure per-logger idempotency (local mode).
@@ -65,6 +65,7 @@ def setup_logging(
     host_json_path: Path | str | None = None,
     use_record_factory: bool = False,
     extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+    activate_trace_context: bool | None = None,
 ) -> None:
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
@@ -114,6 +115,15 @@ def setup_logging(
             LogRecord, alongside the four built-in context fields. Field names
             must not collide with the built-in fields. Only applies to the
             ``ContextFilter`` strategy (ignored when ``use_record_factory=True``).
+        activate_trace_context: Sets the process-wide default that
+            ``logging_context`` and ``with_context`` consult to attach the
+            host's W3C trace context (via OpenTelemetry) — making OTel log
+            records inherit the host span's ``trace_id``/``span_id``. Requires
+            the ``[otel]`` extra; degrades to a silent no-op when OpenTelemetry
+            is not installed. ``True``/``False`` force the default on/off; the
+            default ``None`` selects the ``auto`` tier (enabled iff
+            ``opentelemetry-api`` is importable). A per-call
+            ``activate_trace_context`` argument overrides this default.
 
     .. warning::
 
@@ -128,6 +138,8 @@ def setup_logging(
     if format not in {"color", "json"}:
         msg = "format must be 'color' or 'json'"
         raise ValueError(msg)
+
+    set_default_trace_context_activation(activate_trace_context)
 
     # Install the global LogRecordFactory only after argument validation,
     # so an invalid call does not leave persistent global side effects.
@@ -187,6 +199,10 @@ def setup_logging(
                 root.addFilter(context_filter)
 
             warn_host_json_level_conflict(level, host_json_path=host_json_path)
+            warn_otel_logging_misconfig(
+                functions_formatter=functions_formatter,
+                host_json_path=host_json_path,
+            )
 
         else:
             # Standalone local development: full idempotency via logger name.
