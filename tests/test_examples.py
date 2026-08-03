@@ -111,3 +111,54 @@ class TestColdStartDetection:
         module.main()
         # After two inject_context calls, cold_start should be False
         assert ctx_mod._cold_start is False
+
+
+
+class TestOtelApp:
+    """Structural guard for examples/otel_app (a deployable Function App).
+
+    The app imports ``azure.functions`` and ``azure.monitor.opentelemetry``,
+    which are not test dependencies, so it cannot be imported here. Instead we
+    guard the wiring that the OpenTelemetry docs promise: the required call
+    order and the PII/redaction attachment.
+    """
+
+    def _source(self) -> str:
+        path = EXAMPLES_DIR / "otel_app" / "function_app.py"
+        return path.read_text(encoding="utf-8")
+
+    def test_app_files_exist(self) -> None:
+        app_dir = EXAMPLES_DIR / "otel_app"
+        assert (app_dir / "function_app.py").is_file()
+        assert (app_dir / "host.json").is_file()
+        assert (app_dir / "requirements.txt").is_file()
+
+    def test_configure_azure_monitor_called_before_setup_logging(self) -> None:
+        source = self._source()
+        configure_at = source.index("configure_azure_monitor()")
+        setup_at = source.index("setup_logging(")
+        assert configure_at < setup_at, (
+            "configure_azure_monitor() must run before setup_logging() so the "
+            "OTel handler exists when filters are attached"
+        )
+
+    def test_app_enables_trace_activation_and_redaction(self) -> None:
+        source = self._source()
+        assert "activate_trace_context=True" in source
+        assert "RedactionFilter()" in source
+        assert ".addFilter(" in source
+
+    def test_host_json_enables_opentelemetry_mode(self) -> None:
+        import json as _json
+
+        host = _json.loads(
+            (EXAMPLES_DIR / "otel_app" / "host.json").read_text(encoding="utf-8")
+        )
+        assert host["telemetryMode"] == "OpenTelemetry"
+
+    def test_requirements_pin_otel_extra(self) -> None:
+        reqs = (EXAMPLES_DIR / "otel_app" / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+        assert "azure-functions-logging[otel]" in reqs
+        assert "azure-monitor-opentelemetry" in reqs
