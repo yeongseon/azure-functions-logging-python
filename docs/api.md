@@ -286,18 +286,6 @@ metadata = get_logging_metadata(handler)
 
 ::: azure_functions_logging.logging_context
 
-## activated_trace_context
-
-::: azure_functions_logging.activated_trace_context
-
-Attaches the host's W3C trace context so log records emitted through an
-OpenTelemetry `LoggingHandler` inherit the host span's `trace_id`/`span_id`.
-Requires the `[otel]` extra (`pip install azure-functions-logging[otel]`); it
-degrades to a silent no-op when OpenTelemetry is not installed. Prefer the
-`activate_trace_context=True` argument on `logging_context` / `with_context` /
-`setup_logging` for most applications; use this context manager directly for
-manual control. See [OpenTelemetry correlation](opentelemetry.md).
-
 ## install_context_factory
 
 ::: azure_functions_logging.install_context_factory
