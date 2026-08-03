@@ -229,3 +229,124 @@ def warn_host_json_level_conflict(
         source="host configuration",
         stacklevel=3,
     )
+
+
+def _has_otel_logging_handler(logger: logging.Logger) -> bool:
+    """Return True if *logger* has an OpenTelemetry logging handler attached.
+
+    Detection is **import-free**: it inspects each handler's defining module
+    name rather than importing OpenTelemetry. This covers both
+    ``opentelemetry.sdk._logs`` and ``opentelemetry.instrumentation.logging``
+    handlers, and stays a no-op when OpenTelemetry is not installed.
+    """
+    for handler in logger.handlers:
+        module = type(handler).__module__ or ""
+        if module.startswith("opentelemetry."):
+            return True
+    return False
+
+
+def _read_host_telemetry_mode(host_json_path: Path | str | None) -> str | None:
+    """Return the ``telemetryMode`` string from ``host.json``, or ``None``.
+
+    Uses the same discovery rules as :func:`warn_host_json_level_conflict`.
+    Never raises: any read/parse failure yields ``None``.
+    """
+    host_path: Path | None
+    if host_json_path is not None:
+        host_path = Path(host_json_path)
+        try:
+            if not host_path.is_file():
+                return None
+        except OSError:
+            return None
+    else:
+        host_path = discover_host_json()
+    if host_path is None:
+        return None
+    try:
+        host_config: object = json.loads(host_path.read_text(encoding="utf-8"))
+        host_mapping = _string_key_mapping(host_config)
+        if host_mapping is None:
+            return None
+        mode = host_mapping.get("telemetryMode")
+        return mode if isinstance(mode, str) else None
+    except Exception:  # nosec B110 — host.json read failure is non-fatal
+        return None
+
+
+# App settings that signal the host will export OpenTelemetry logs. Microsoft
+# docs reference both names (likely a mid-rename), so either being set counts.
+_OTEL_TELEMETRY_ENV_VARS: tuple[str, ...] = (
+    "PYTHON_ENABLE_OPENTELEMETRY",
+    "PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY",
+)
+
+
+def warn_otel_logging_misconfig(
+    *,
+    functions_formatter: logging.Formatter | None = None,
+    host_json_path: Path | str | None = None,
+    stacklevel: int = 3,
+) -> None:
+    """Warn on common OpenTelemetry logging misconfigurations (issue #256).
+
+    These checks run at ``setup_logging()`` call time and assume the documented
+    call order: ``configure_azure_monitor()`` **before** ``setup_logging()`` so
+    the OpenTelemetry ``LoggingHandler`` is already attached to the root logger.
+
+    Emits up to three independent warnings:
+
+    - **6a** — an OTel handler is present **and** ``functions_formatter`` was
+      passed: the formatter is never invoked (the OTel handler formats records
+      itself), so the argument is silently ignored.
+    - **6b** — an OTel handler is present but neither telemetry env var is set:
+      the host may not export these logs. Worded tentatively because the
+      environment is not fully observable from inside the worker.
+    - **6c** — ``host.json`` requests ``telemetryMode: OpenTelemetry`` but no
+      OTel handler is attached: most often a call-order mistake. Worded as an
+      ordering hint rather than a definitive "worker unconfigured" claim, so it
+      does not cry wolf when the handler is simply attached later.
+    """
+    root = logging.getLogger()
+    has_otel_handler = _has_otel_logging_handler(root)
+
+    # 6a: OTel handler present AND a functions_formatter was supplied.
+    if has_otel_handler and functions_formatter is not None:
+        warnings.warn(
+            (
+                "An OpenTelemetry logging handler is attached, so the "
+                "'functions_formatter' passed to setup_logging() is ignored "
+                "— the OpenTelemetry handler formats and exports records itself."
+            ),
+            stacklevel=stacklevel,
+        )
+
+    # 6b: OTel handler present but neither telemetry env var is set (tentative).
+    if has_otel_handler and not any(
+        os.environ.get(name) for name in _OTEL_TELEMETRY_ENV_VARS
+    ):
+        joined = " or ".join(_OTEL_TELEMETRY_ENV_VARS)
+        warnings.warn(
+            (
+                "An OpenTelemetry logging handler is attached but neither "
+                f"{joined} appears to be set. Depending on your host "
+                "configuration, these logs may not be exported — verify your "
+                "telemetry settings."
+            ),
+            stacklevel=stacklevel,
+        )
+
+    # 6c: host.json requests OpenTelemetry mode but no OTel handler detected.
+    if not has_otel_handler:
+        mode = _read_host_telemetry_mode(host_json_path)
+        if mode is not None and mode.lower() == "opentelemetry":
+            warnings.warn(
+                (
+                    "host.json sets telemetryMode 'OpenTelemetry' but no "
+                    "OpenTelemetry logging handler is attached yet. If you use "
+                    "configure_azure_monitor(), call it before setup_logging() "
+                    "so filters and context land on the OpenTelemetry handler."
+                ),
+                stacklevel=stacklevel,
+            )

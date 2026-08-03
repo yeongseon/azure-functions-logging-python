@@ -201,6 +201,40 @@ def test_format_color_no_warning_in_azure_environment() -> None:
     root.filters.clear()
 
 
+def test_setup_logging_warns_on_otel_formatter_conflict() -> None:
+    """setup_logging() wires warn_otel_logging_misconfig (issue #256).
+
+    With an OpenTelemetry handler attached and a functions_formatter passed,
+    the '6a' ignored-formatter warning must surface through setup_logging().
+    """
+    import warnings
+
+    class _FakeOtelHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover
+            pass
+
+    _FakeOtelHandler.__module__ = "opentelemetry.sdk._logs._internal"
+
+    root = logging.getLogger()
+    root.handlers = [_FakeOtelHandler()]
+
+    env = {
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "PYTHON_ENABLE_OPENTELEMETRY": "1",
+    }
+    try:
+        with patch.dict(os.environ, env, clear=True):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                setup_logging(functions_formatter=logging.Formatter())
+
+            messages = [str(rec.message) for rec in w]
+            assert any("functions_formatter" in m for m in messages)
+    finally:
+        root.handlers = []
+        root.filters.clear()
+
+
 def test_setup_logging_use_record_factory_installs_factory() -> None:
     """use_record_factory=True installs the global LogRecordFactory."""
     from azure_functions_logging._context import (
