@@ -341,3 +341,74 @@ def test_activated_trace_context_swallows_detach_error(
     # A failing detach on cleanup must never propagate.
     with _otel.activated_trace_context(_TRACEPARENT):
         pass
+
+
+# ---------------------------------------------------------------------------
+# End-to-end correlation: a real OTel LoggingHandler must stamp records emitted
+# inside ``activated_trace_context`` with the host span's trace_id/span_id.
+# ---------------------------------------------------------------------------
+
+
+def test_otel_logging_handler_stamps_host_trace_ids() -> None:
+    pytest.importorskip("opentelemetry.sdk._logs")
+    import logging
+
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import (
+        InMemoryLogExporter,
+        SimpleLogRecordProcessor,
+    )
+
+    exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+
+    logger = logging.getLogger("afl.otel.correlation")
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    logger.propagate = False
+    try:
+        with _otel.activated_trace_context(_TRACEPARENT):
+            logger.info("correlated")
+    finally:
+        logger.removeHandler(handler)
+        provider.shutdown()
+
+    emitted = exporter.get_finished_logs()
+    assert len(emitted) == 1
+    record = emitted[0].log_record
+    # The handler inherits the host's remote span context (issue #282).
+    assert format(record.trace_id, "032x") == _TRACE_ID_HEX
+    assert format(record.span_id, "016x") == _PARENT_ID_HEX
+
+
+def test_otel_logging_handler_has_no_trace_ids_outside_activation() -> None:
+    pytest.importorskip("opentelemetry.sdk._logs")
+    import logging
+
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import (
+        InMemoryLogExporter,
+        SimpleLogRecordProcessor,
+    )
+
+    exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+
+    logger = logging.getLogger("afl.otel.correlation.none")
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    logger.propagate = False
+    try:
+        logger.info("uncorrelated")
+    finally:
+        logger.removeHandler(handler)
+        provider.shutdown()
+
+    emitted = exporter.get_finished_logs()
+    assert len(emitted) == 1
+    # No active host span -> invalid (zero) ids, proving activation is the source.
+    assert emitted[0].log_record.trace_id in (0, None)

@@ -201,7 +201,21 @@ for handler in logging.getLogger().handlers:
 - Intended for OpenTelemetry pipelines, where nested `dict` attributes are
   silently dropped by the OTel SDK.
 - Lists / heterogeneous arrays are left unchanged (emitted as-is under their
-  dotted key).
+  dotted key). Flattening does **not** recurse into lists, so a
+  list-of-dicts such as `items=[{"id": 1}]` is passed through verbatim rather
+  than expanded into `items.0.id`.
+- Non-string dict keys are skipped (they cannot form a queryable dotted path).
+- On key collision — e.g. a nested `{"a": {"b": 1}}` and a literal
+  `{"a.b": 2}` both mapping to `a.b` — the first value in iteration order wins
+  and later collisions are dropped silently.
+
+!!! warning "Attach to specific handlers, not the root logger blindly"
+    This filter mutates the `LogRecord` in place, rewriting nested-`dict`
+    attributes into new dotted-key attributes. Attach it only to the handlers
+    that need flattened output (e.g. your OpenTelemetry handler). Installing it
+    on the root logger changes the record schema for **every** downstream
+    handler, which can surprise formatters that expect the original nested
+    attribute.
 
 ```python
 from azure_functions_logging import AttributeFlattenFilter

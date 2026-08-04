@@ -41,7 +41,11 @@ def _flatten_dict(
       dotted key.
 
     Lists (and any non-dict leaf) are emitted unchanged under their dotted key.
-    Empty dicts contribute no keys.
+    Empty dicts contribute no keys. Non-string keys are skipped (they cannot
+    form a queryable dotted path). On key collision — e.g. a nested ``{"a":
+    {"b": 1}}`` and a literal ``{"a.b": 2}`` both mapping to ``a.b`` — the
+    first value encountered in iteration order wins and later collisions are
+    dropped silently (never overwritten).
     """
     if _depth >= max_depth:
         return {prefix: value}
@@ -52,12 +56,16 @@ def _flatten_dict(
     seen = seen | {obj_id}
     result: dict[str, Any] = {}
     for key, item in value.items():
+        if not isinstance(key, str):
+            continue  # non-string keys cannot form a queryable dotted path
         new_key = f"{prefix}{separator}{key}"
         if isinstance(item, dict):
-            result.update(
-                _flatten_dict(new_key, item, separator, max_depth, _seen=seen, _depth=_depth + 1)
-            )
-        else:
+            for sub_key, sub_item in _flatten_dict(
+                new_key, item, separator, max_depth, _seen=seen, _depth=_depth + 1
+            ).items():
+                if sub_key not in result:  # keep-first-wins on collision
+                    result[sub_key] = sub_item
+        elif new_key not in result:  # keep-first-wins on collision
             result[new_key] = item
     return result
 

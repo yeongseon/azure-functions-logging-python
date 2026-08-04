@@ -323,8 +323,10 @@ def warn_otel_logging_misconfig(
     Emits up to three independent warnings:
 
     - **6a** — an OTel handler is present **and** ``functions_formatter`` was
-      passed: the formatter is never invoked (the OTel handler formats records
-      itself), so the argument is silently ignored.
+      passed: the OTel handler formats and exports its own records, so the
+      formatter does not affect what OpenTelemetry emits. It still applies to
+      any non-OTel handler that coexists on the root logger, so this is a
+      heads-up rather than an absolute "formatter has no effect" claim.
     - **6b** — an OTel handler is present but neither telemetry env var is set:
       the host may not export these logs. Worded tentatively because the
       environment is not fully observable from inside the worker.
@@ -339,9 +341,11 @@ def warn_otel_logging_misconfig(
     if has_otel_handler and functions_formatter is not None:
         warnings.warn(
             (
-                "An OpenTelemetry logging handler is attached, so the "
-                "'functions_formatter' passed to setup_logging() is ignored "
-                "— the OpenTelemetry handler formats and exports records itself."
+                "An OpenTelemetry logging handler is attached; the "
+                "'functions_formatter' passed to setup_logging() does not "
+                "affect what OpenTelemetry exports — the OpenTelemetry handler "
+                "formats and exports its records itself. It still applies to "
+                "any non-OpenTelemetry handler on the root logger."
             ),
             stacklevel=stacklevel,
         )
