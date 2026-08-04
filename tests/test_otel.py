@@ -11,6 +11,7 @@ the base install stays zero-dependency.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +21,15 @@ from azure_functions_logging import _otel
 _TRACE_ID_HEX = "4bf92f3577b34da6a3ce929d0e0e4736"
 _PARENT_ID_HEX = "00f067aa0ba902b7"
 _TRACEPARENT = f"00-{_TRACE_ID_HEX}-{_PARENT_ID_HEX}-01"
+
+
+@pytest.fixture(autouse=True)
+def _reset_otel_availability_cache() -> Iterator[None]:
+    # ``is_available`` caches its result process-wide; reset around every test
+    # so import-monkeypatching stays isolated and order-independent.
+    _otel._reset_availability()
+    yield
+    _otel._reset_availability()
 
 
 def test_is_available_reflects_otel_import() -> None:
@@ -267,6 +277,21 @@ def test_is_available_false_when_import_raises(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setitem(sys.modules, "opentelemetry.context", None)
     assert _otel.is_available() is False
+
+
+def test_is_available_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    # First call with the import broken caches ``False``.
+    monkeypatch.setitem(sys.modules, "opentelemetry.context", None)
+    assert _otel.is_available() is False
+    # Restoring the import must NOT change the cached result until reset.
+    monkeypatch.undo()
+    assert _otel.is_available() is False
+    # Explicit reset re-evaluates importability.
+    _otel._reset_availability()
+    pytest.importorskip("opentelemetry.context")
+    assert _otel.is_available() is True
 
 
 def test_activated_trace_context_noop_when_extract_import_fails(

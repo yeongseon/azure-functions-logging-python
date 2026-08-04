@@ -111,9 +111,9 @@ def _is_hex(value: str, length: int) -> bool:
 class TraceContextParts(NamedTuple):
     """Parsed components of a W3C ``traceparent`` header.
 
-    ``trace_id`` and ``span_id`` preserve the original header casing (hex may
-    be upper or lower case per the W3C spec). ``trace_flags`` is the parsed
-    integer value of the 2-hex-digit trace-flags field.
+    ``trace_id`` and ``span_id`` are normalized to lowercase hex so they match
+    OpenTelemetry's W3C-canonical (lowercase-only) identifiers. ``trace_flags``
+    is the parsed integer value of the 2-hex-digit trace-flags field.
     """
 
     trace_id: str
@@ -149,7 +149,9 @@ def _extract_trace_context(trace_parent: str | None) -> TraceContextParts | None
             return None
         if not _is_hex(flags, 2):
             return None
-        return TraceContextParts(trace_id=trace_id, span_id=parent_id, trace_flags=int(flags, 16))
+        return TraceContextParts(
+            trace_id=trace_id.lower(), span_id=parent_id.lower(), trace_flags=int(flags, 16)
+        )
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         return None
 

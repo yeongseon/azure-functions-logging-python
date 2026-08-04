@@ -552,9 +552,10 @@ def test_extract_trace_id_rejects_malformed_headers(header: str) -> None:
     assert _extract_trace_id(header) is None
 
 
-def test_extract_trace_id_accepts_valid_uppercase_hex() -> None:
+def test_extract_trace_id_normalizes_valid_uppercase_hex() -> None:
+    # Uppercase input is accepted but normalized to lowercase (issue #278).
     upper = "00-1234567890ABCDEF1234567890ABCDEF-FEDCBA0987654321-01"
-    assert _extract_trace_id(upper) == "1234567890ABCDEF1234567890ABCDEF"
+    assert _extract_trace_id(upper) == "1234567890abcdef1234567890abcdef"
 
 
 def test_extract_trace_id_forward_compatible_future_version() -> None:
@@ -584,12 +585,15 @@ def test_extract_trace_context_is_a_named_tuple() -> None:
     assert parts.trace_flags == 1
 
 
-def test_extract_trace_context_preserves_uppercase_hex() -> None:
+def test_extract_trace_context_normalizes_uppercase_hex_to_lowercase() -> None:
+    # W3C mandates lowercase hex; OpenTelemetry's propagator rejects uppercase.
+    # A lenient parser must still normalize to lowercase so JSON logs and OTel
+    # emit identical trace/span ids (issue #278).
     upper = "00-1234567890ABCDEF1234567890ABCDEF-FEDCBA0987654321-0A"
     parts = _extract_trace_context(upper)
     assert parts == TraceContextParts(
-        trace_id="1234567890ABCDEF1234567890ABCDEF",
-        span_id="FEDCBA0987654321",
+        trace_id="1234567890abcdef1234567890abcdef",
+        span_id="fedcba0987654321",
         trace_flags=0x0A,
     )
 
