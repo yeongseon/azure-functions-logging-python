@@ -137,6 +137,17 @@ correlation unless you propagate the context yourself (e.g. by capturing
 `contextvars.copy_context()` and running the work inside it). Async code on the
 same event loop is unaffected.
 
+## Behavior change: spans you create become children of the host span
+
+While activation is on, the host invocation span is the **current** span for
+the duration of your handler. Any span you start *inside* the handler — e.g.
+`tracer.start_as_current_span("work")` — is therefore parented to the host span
+instead of becoming a new top-level (root) span. This is usually what you want
+(your work nests under the invocation in the Application Insights end-to-end
+transaction), but it **is** a trace-structure change for code that previously
+created top-level spans. If you need a detached root span, capture a fresh
+root context yourself before starting it.
+
 ## Runnable example
 
 A minimal Function App wiring `azure-monitor-opentelemetry` together with this
