@@ -980,6 +980,33 @@ def test_flatten_filter_handles_cyclic_dict_without_raising() -> None:
     assert flt.filter(record) is True
 
 
+def test_flatten_filter_keeps_first_on_key_collision() -> None:
+    """A nested key and a literal dotted key mapping to the same dotted path:
+    the first in iteration order wins; the later one is dropped (issue #280)."""
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    # "a" (nested) is inserted before the literal "a.b"; nested wins.
+    setattr(record, "meta", {"a": {"b": 1}, "a.b": 999})
+
+    flt.filter(record)
+
+    assert getattr(record, "meta.a.b") == 1
+
+
+def test_flatten_filter_skips_non_string_keys() -> None:
+    """Non-string dict keys cannot form a queryable dotted path and are
+    skipped rather than coerced into unqueryable keys (issue #281)."""
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "meta", {2: "int-key", None: "none-key", "ok": "kept"})
+
+    flt.filter(record)
+
+    assert getattr(record, "meta.ok") == "kept"
+    assert not hasattr(record, "meta.2")
+    assert not hasattr(record, "meta.None")
+
+
 def test_flatten_filter_always_returns_true() -> None:
     flt = AttributeFlattenFilter()
     assert flt.filter(_make_record()) is True
