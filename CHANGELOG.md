@@ -1,6 +1,58 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.0] - 2026-08-04
+
+### Bug Fixes
+
+- *(ci)* Replace fragile Core Tools apt install with pinned npm (#220) 
+
+### Documentation
+
+- *(otel)* Add opentelemetry guide and examples/otel_app (#258) 
+- Require translation sync in the same PR as English changes (Closes #238) (#239) 
+- Correct azure-functions-db description in ecosystem table (#237) 
+- Add ## Disclaimer heading (#234) (#235) 
+- De-duplicate README against docs/ and sync i18n variants (#227) 
+
+### Features
+
+- *(diagnostics)* Warn on OpenTelemetry logging misconfiguration (#256) 
+- *(otel)* Activate host W3C trace context for OTel log correlation (#255) 
+- *(otel)* Add AttributeFlattenFilter to prevent nested-dict attribute drop (#260) 
+- *(json)* Emit span_id in JsonFormatter output (#257) 
+- *(context)* Expand _extract_trace_id into _extract_trace_context (#254) 
+- *(context)* Add extra_context_vars extension point (#229) 
+- *(context)* Add uninstall_context_factory restore API (#221) 
+
+### Miscellaneous Tasks
+
+- *(lint)* Gate ruff format --check in style script 
+- *(deps)* Bump github/codeql-action/init from 4.37.1 to 4.37.3 (#246) 
+- *(deps)* Bump actions/setup-node from 6.4.0 to 7.0.0 (#245) 
+- *(deps)* Bump actions/setup-python from 6.3.0 to 7.0.0 (#244) 
+- *(deps)* Bump actions/checkout from 7.0.0 to 7.0.1 (#243) 
+- *(deps)* Bump ruff from 0.15.22 to 0.16.0 (#242) 
+- *(docs)* Add mermaid render lint to catch diagram syntax regressions (#233) 
+- *(deps)* Bump github/codeql-action/analyze from 4.37.0 to 4.37.1 (#224) 
+- *(deps)* Bump github/codeql-action/init from 4.37.0 to 4.37.1 (#226) 
+- *(deps)* Bump softprops/action-gh-release from 3.0.1 to 3.0.2 (#222) 
+- *(deps)* Bump mypy from 2.2.0 to 2.3.0 (#223) 
+- *(deps)* Bump ruff from 0.15.21 to 0.15.22 (#225) 
+
+### Other
+
+- Bump version to 0.8.0 
+
+### Refactor
+
+- *(context)* Extract shared worker-compat metadata helper (#232) 
+- Deprecate install_context_factory() in favor of setup_logging(use_record_factory=True) (#230) 
+- *(metadata)* Type the logging cross-package metadata contract (#228) 
+
+### Testing
+
+- *(otel)* Verify Redaction/Sampling/Flatten compose through OTel handler (#259) 
 ## [0.7.7] - 2026-07-18
 
 ### Bug Fixes
@@ -13,6 +65,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Document context helpers and add api-coverage guard (#212) 
 - Add pipeline diagram to READMEs and clarify injection modes (#213) 
 - Add discoverability metadata (pepy badge + llms.txt) (#219) 
