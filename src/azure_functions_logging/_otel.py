@@ -28,19 +28,35 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+_available: bool | None = None
+
 
 def is_available() -> bool:
     """Return ``True`` when the OpenTelemetry API is importable.
 
     Only the API package (``opentelemetry-api``) is required — the SDK,
     exporters, and a ``TracerProvider`` are owned by the host or the user.
+
+    The result is cached after the first call: importability does not change
+    over a process lifetime, and this runs on the per-log hot path.
     """
+    global _available
+    if _available is not None:
+        return _available
     try:
         import opentelemetry.context  # noqa: F401
         import opentelemetry.propagate  # noqa: F401
     except Exception:  # nosec B110 — optional dependency; absence is expected
-        return False
-    return True
+        _available = False
+    else:
+        _available = True
+    return _available
+
+
+def _reset_availability() -> None:
+    """Clear the cached :func:`is_available` result (test-only helper)."""
+    global _available
+    _available = None
 
 
 @contextmanager
