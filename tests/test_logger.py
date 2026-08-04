@@ -218,6 +218,8 @@ def test_taskname_is_reserved_on_all_supported_versions_for_backward_compat() ->
     from azure_functions_logging._logger import _RESERVED_LOG_RECORD_KEYS
 
     assert "taskName" in _RESERVED_LOG_RECORD_KEYS
+
+
 def test_merge_precedence_kwargs_override_extra_override_bind() -> None:
     """Issue #95: per-call kwargs > explicit extra > bind context."""
     underlying = _mock_underlying_logger()
@@ -284,7 +286,6 @@ def test_sanitize_extra_double_prefix_conflict() -> None:
     assert extra["extra_name"] == "collides"
     assert extra["extra_name_2"] == "user-supplied"
     assert "name" not in extra
-
 
 
 # ---------------------------------------------------------------------------
@@ -379,8 +380,9 @@ def test_stdlib_record_keys_are_immune_to_custom_logrecord_factory() -> None:
     try:
         # Confirm the factory is polluting makeLogRecord
         factory_fields = set(logging.makeLogRecord({}).__dict__)
-        assert "_third_party_injected_field" in factory_fields, \
+        assert "_third_party_injected_field" in factory_fields, (
             "Precondition failed: factory should inject field into makeLogRecord output"
+        )
 
         # _STDLIB_RECORD_KEYS must match what the base class produces, not the factory
         expected = (
@@ -388,7 +390,8 @@ def test_stdlib_record_keys_are_immune_to_custom_logrecord_factory() -> None:
             | _FORWARD_COMPAT_RECORD_KEYS
         )
         assert _STDLIB_RECORD_KEYS == expected
-        assert "_third_party_injected_field" not in _STDLIB_RECORD_KEYS, \
+        assert "_third_party_injected_field" not in _STDLIB_RECORD_KEYS, (
             "Factory-injected fields must not appear in _STDLIB_RECORD_KEYS"
+        )
     finally:
         logging.setLogRecordFactory(original_factory)
