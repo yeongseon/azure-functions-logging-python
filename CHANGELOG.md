@@ -1,6 +1,27 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.1] - 2026-08-04
+
+### Bug Fixes
+
+- *(filters)* Harden dict flattening; add OTel correlation test and docs 
+- *(otel)* Normalize traceparent hex to lowercase and cache is_available 
+
+### Documentation
+
+- *(otel)* Document that in-handler spans become children of the host span 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump actions/setup-python from 6.3.0 to 7.0.0 
+- *(deps)* Bump actions/setup-node from 6.4.0 to 7.0.0 
+- *(deps)* Bump actions/stale from 10.4.0 to 11.0.0 
+- *(deps)* Bump actions/checkout from 7.0.0 to 7.0.1 
+
+### Other
+
+- Bump version to 0.8.1 
 ## [0.8.0] - 2026-08-04
 
 ### Bug Fixes
@@ -9,6 +30,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - *(otel)* Add opentelemetry guide and examples/otel_app (#258) 
 - Require translation sync in the same PR as English changes (Closes #238) (#239) 
 - Correct azure-functions-db description in ecosystem table (#237) 
