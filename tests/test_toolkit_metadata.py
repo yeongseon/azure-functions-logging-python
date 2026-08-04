@@ -142,7 +142,6 @@ class TestMetadataNamespacePreservation:
         assert metadata["validation"] == {"version": 1, "rules": []}
 
 
-
 class TestNoWrappedAttribute:
     """Regression: wrapper must not expose ``__wrapped__`` (Azure worker would follow it)."""
 
