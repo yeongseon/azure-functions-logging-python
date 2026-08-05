@@ -29,7 +29,7 @@ specifically designed to work safely within the Azure Functions worker architect
 
 ### Design Principles
 
-- **Principle 1**: The root logger is never modified. All configuration targets named child loggers or installs safe filters.
+- **Principle 1**: The root logger's handlers and level are never modified in Azure mode. The library may add package-owned filters (e.g. `ContextFilter`) to existing handlers and to the root logger itself; all other configuration targets named child loggers.
 - **Principle 2**: In Azure environments, behavior is safe by default — no forced colors, no handler additions, no interference with the worker's `AsyncLoggingHandler`.
 - **Principle 3**: Context injection failures never cause application failures. Logging helpers are auxiliary tools.
 - **Principle 4**: The API surface stays as close to standard `logging` as possible.
