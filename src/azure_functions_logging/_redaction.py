@@ -53,8 +53,26 @@ def normalize_key(key: str) -> str:
 
 
 def is_sensitive(key: str, sensitive_keys: frozenset[str] = SENSITIVE_KEYS) -> bool:
-    """Return True if ``key`` (after normalization) is a sensitive key."""
-    return normalize_key(key) in sensitive_keys
+    """Return True if ``key`` (after normalization) is a sensitive key.
+
+    Matches when either:
+
+    - the full normalized key is in ``sensitive_keys``, or
+    - the **final dotted segment** of the normalized key is in ``sensitive_keys``.
+
+    The dotted-segment check is a safety net for keys produced by
+    :class:`~azure_functions_logging._filters.AttributeFlattenFilter`, which
+    rewrites ``{"order": {"password": "x"}}`` into the scalar key
+    ``order.password``. Without it, a flatten-before-redact filter ordering
+    would ship nested secrets unmasked. Only the final segment is considered,
+    so non-sensitive leaves like ``password.hint`` are left untouched.
+    """
+    normalized = normalize_key(key)
+    if normalized in sensitive_keys:
+        return True
+    if "." in normalized:
+        return normalized.rsplit(".", 1)[-1] in sensitive_keys
+    return False
 
 
 def mask_value(
