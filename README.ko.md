@@ -174,7 +174,7 @@ traces
 이 패키지는 다음을 책임지지 않습니다:
 
 - **stdlib logging 대체** — Python 표준 `logging`을 감싸고 보강할 뿐, 절대 대체하지 않습니다
-- **분산 트레이싱** — end-to-end trace 상관에는 OpenTelemetry나 Application Insights SDK를 사용하세요
+- **분산 트레이싱** — Azure Functions 호스트의 W3C trace context를 **바인딩**하여 기존 OpenTelemetry 로그 레코드가 호출 span의 `trace_id` / `span_id`를 상속하도록 하지만, 이 라이브러리가 직접 span을 생성·기록·내보내지는 않습니다 — 트레이싱이 아니라 상관(correlation)입니다. span 생성에는 OpenTelemetry나 Application Insights SDK를 사용하세요. [OpenTelemetry trace 상관](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/) 참고
 - **API 문서** — API 문서 및 spec 생성에는 [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python)를 사용하세요
 
 ## 설치

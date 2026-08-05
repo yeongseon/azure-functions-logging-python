@@ -198,7 +198,7 @@ traces
 This package does not own:
 
 - **Replacing stdlib logging** — it wraps and enriches Python's standard `logging`, never replaces it
-- **Distributed tracing** — it does not create, record, or export spans; use OpenTelemetry or the Application Insights SDK for that. It *can* correlate your logs with the host invocation span — see [OpenTelemetry trace correlation](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)
+- **Distributed tracing** — it **binds** the Azure Functions host's W3C trace context so your existing OpenTelemetry log records inherit the invocation span's `trace_id` / `span_id`, but it never creates, records, or exports spans itself — correlation, not tracing. Use OpenTelemetry or the Application Insights SDK to produce spans. See [OpenTelemetry trace correlation](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)
 - **API documentation** — use [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python) for API documentation and spec generation
 
 ## Installation
