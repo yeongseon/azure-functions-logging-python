@@ -174,7 +174,7 @@ traces
 このパッケージは以下を所有しません:
 
 - **stdlib logging の置き換え** — Python 標準の `logging` をラップして強化するだけで、決して置き換えません
-- **分散トレーシング** — エンドツーエンドのトレース相関には OpenTelemetry または Application Insights SDK を使用してください
+- **分散トレーシング** — Azure Functions ホストの W3C トレースコンテキストを**バインド**して、既存の OpenTelemetry ログレコードが呼び出し span の `trace_id` / `span_id` を継承するようにしますが、このライブラリ自身が span を作成・記録・エクスポートすることはありません — トレーシングではなく相関（correlation）です。span の生成には OpenTelemetry または Application Insights SDK を使用してください。[OpenTelemetry トレース相関](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/) を参照
 - **API ドキュメント** — API ドキュメントと spec 生成には [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python) を使用してください
 
 ## インストール

@@ -174,7 +174,7 @@ traces
 本包不拥有:
 
 - **替换 stdlib logging** — 它包装并丰富 Python 标准 `logging`，从不替换它
-- **分布式追踪** — 端到端追踪关联请使用 OpenTelemetry 或 Application Insights SDK
+- **分布式追踪** — 它会**绑定** Azure Functions 主机的 W3C 追踪上下文，使你已有的 OpenTelemetry 日志记录继承调用 span 的 `trace_id` / `span_id`，但它自身绝不创建、记录或导出 span —— 是关联（correlation）而非追踪。请使用 OpenTelemetry 或 Application Insights SDK 来生成 span。参见 [OpenTelemetry 追踪关联](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)
 - **API 文档** — API 文档和 spec 生成请使用 [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python)
 
 ## 安装
