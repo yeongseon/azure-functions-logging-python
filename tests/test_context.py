@@ -15,17 +15,16 @@ from azure_functions_logging._context import (
     _extract_trace_context,
     _extract_trace_id,
     _install_context_factory,
+    _uninstall_context_factory,
     cold_start_var,
     function_name_var,
     inject_context,
-    install_context_factory,
     invocation_id_var,
     logging_context,
     reset_context,
     restore_context,
     span_id_var,
     trace_id_var,
-    uninstall_context_factory,
 )
 
 
@@ -377,7 +376,7 @@ def test_uninstall_context_factory_restores_previous() -> None:
         _install_context_factory()
         assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
 
-        assert uninstall_context_factory() is True
+        assert _uninstall_context_factory() is True
         assert logging.getLogRecordFactory() is old_factory
         assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is False
     finally:
@@ -396,7 +395,7 @@ def test_uninstall_context_factory_preserves_chained_factory() -> None:
     try:
         logging.setLogRecordFactory(custom_factory)
         _install_context_factory()
-        assert uninstall_context_factory() is True
+        assert _uninstall_context_factory() is True
         assert logging.getLogRecordFactory() is custom_factory
 
         record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "msg", (), None)
@@ -409,7 +408,7 @@ def test_uninstall_context_factory_noop_when_not_installed() -> None:
     """uninstall_context_factory is a no-op when the factory is not active."""
     old_factory = logging.getLogRecordFactory()
     try:
-        assert uninstall_context_factory() is False
+        assert _uninstall_context_factory() is False
         assert logging.getLogRecordFactory() is old_factory
     finally:
         logging.setLogRecordFactory(old_factory)
@@ -653,16 +652,6 @@ def test_context_filter_extra_collision_raises() -> None:
         ContextFilter({"trace_id": bad_var})
 
 
-def test_install_context_factory_is_deprecated() -> None:
-    try:
-        with pytest.warns(DeprecationWarning, match="setup_logging"):
-            install_context_factory()
-        # The deprecated shim still installs the package factory.
-        assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False)
-    finally:
-        uninstall_context_factory()
-
-
 def test_span_id_is_a_context_field() -> None:
     assert "span_id" in ContextFilter.CONTEXT_FIELDS
 
@@ -713,7 +702,7 @@ def test_context_factory_injects_span_id() -> None:
         assert record.span_id == "00f067aa0ba902b7"  # type: ignore[attr-defined]
     finally:
         span_id_var.reset(token)
-        uninstall_context_factory()
+        _uninstall_context_factory()
 
 
 def test_reset_context_clears_span_id() -> None:

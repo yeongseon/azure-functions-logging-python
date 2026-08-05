@@ -290,11 +290,10 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ### 글로벌 LogRecordFactory (opt-in)
 
-> **Deprecated:** `setup_logging(use_record_factory=True)`를 사용하세요. 독립형 `install_context_factory()`는 더 이상 권장되지 않습니다.
 
-`install_context_factory()`는 레코드 생성 시점에 컨텍스트를 주입하여 핸들러/필터 구성과 무관하게 **모든** `LogRecord`가 컨텍스트를 갖도록 합니다. `setup_logging()` 이후 핸들러가 추가되거나 로거가 필터 체인을 우회할 때 유용합니다. 기본 `ContextFilter` 모드와는 상호 배타적입니다.
+`setup_logging(use_record_factory=True)`는 전역 `LogRecordFactory`를 설치하여 레코드 생성 시점에 컨텍스트를 주입하므로, 핸들러/필터 구성과 무관하게 **모든** `LogRecord`가 컨텍스트를 갖도록 합니다. `setup_logging()` 이후 핸들러가 추가되거나 로거가 필터 체인을 우회할 때 유용합니다. 기본 `ContextFilter` 모드와는 상호 배타적입니다.
 
-→ [구성: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)
+→ [구성: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory)
 
 ### 로컬 vs 클라우드
 
@@ -347,7 +346,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 **코드 생성을 위한 핵심 구현 세부사항:**
 
-1. **호스트 구성 보존** — Azure / Core Tools에서는 핸들러를 추가하지 않고 루트 로거 레벨을 `host.json`에 위임하며, 기존 루트 핸들러와 루트 로거 자체에 `ContextFilter`를 설치합니다 (루트 로거에 직접 기록되는 레코드에도 컨텍스트가 실립니다). 이름 있는 자식 로거에서 이후 추가되는 핸들러로 전파되는 레코드까지 보장하려면 `install_context_factory()`를 호출하세요. 로컬 단독 모드에서는 `setup_logging(logger_name=None)`이 루트 로거를 구성합니다 (레벨 설정, 핸들러 없으면 `StreamHandler` 추가).
+1. **호스트 구성 보존** — Azure / Core Tools에서는 핸들러를 추가하지 않고 루트 로거 레벨을 `host.json`에 위임하며, 기존 루트 핸들러와 루트 로거 자체에 `ContextFilter`를 설치합니다 (루트 로거에 직접 기록되는 레코드에도 컨텍스트가 실립니다). 이름 있는 자식 로거에서 이후 추가되는 핸들러로 전파되는 레코드까지 보장하려면 `setup_logging()`에 `use_record_factory=True`를 전달하세요. 로컬 단독 모드에서는 `setup_logging(logger_name=None)`이 루트 로거를 구성합니다 (레벨 설정, 핸들러 없으면 `StreamHandler` 추가).
 2. **컨텍스트 주입은 contextvar 기반** — thread-local이 아니므로 asyncio와 호환
 3. **멱등성 보장 setup** — `setup_logging()`을 여러 번 호출해도 안전
 4. **두 환경, 두 동작**:

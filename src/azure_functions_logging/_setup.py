@@ -120,9 +120,9 @@ def setup_logging(
             host's W3C trace context (via OpenTelemetry) — making OTel log
             records inherit the host span's ``trace_id``/``span_id``. Requires
             the ``[otel]`` extra; degrades to a silent no-op when OpenTelemetry
-            is not installed. ``True``/``False`` force the default on/off; the
-            default ``None`` selects the ``auto`` tier (enabled iff
-            ``opentelemetry-api`` is importable). A per-call
+            is not installed. ``True``/``False`` force the default on/off. The
+            default ``None`` leaves the stored default unchanged (which itself
+            defaults to ``False`` — activation is strictly opt-in). A per-call
             ``activate_trace_context`` argument overrides this default.
 
     .. warning::

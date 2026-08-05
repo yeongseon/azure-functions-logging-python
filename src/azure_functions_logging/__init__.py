@@ -5,11 +5,9 @@ from __future__ import annotations
 from ._context import (
     ContextTokens,
     inject_context,
-    install_context_factory,
     logging_context,
     reset_context,
     restore_context,
-    uninstall_context_factory,
 )
 from ._decorator import get_logging_metadata, with_context
 from ._filters import AttributeFlattenFilter, RedactionFilter, SamplingFilter
@@ -25,7 +23,6 @@ __all__ = [
     "get_logger",
     "get_logging_metadata",
     "inject_context",
-    "install_context_factory",
     "JsonFormatter",
     "logging_context",
     "RedactionFilter",
@@ -33,7 +30,6 @@ __all__ = [
     "restore_context",
     "SamplingFilter",
     "setup_logging",
-    "uninstall_context_factory",
     "with_context",
 ]
 

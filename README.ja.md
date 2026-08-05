@@ -290,11 +290,10 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ### グローバル LogRecordFactory (オプトイン)
 
-> **Deprecated:** `setup_logging(use_record_factory=True)` を使用してください。単体の `install_context_factory()` は非推奨です。
 
-`install_context_factory()` はレコード生成時にコンテキストを注入し、ハンドラ/フィルタの構成に関係なく **すべての** `LogRecord` がコンテキストを持つようにします。`setup_logging()` 後にハンドラが追加されたり、ロガーがフィルタチェーンをバイパスする場合に便利です。デフォルトの `ContextFilter` モードとは相互排他的です。
+`setup_logging(use_record_factory=True)` はグローバルな `LogRecordFactory` をインストールし、レコード生成時にコンテキストを注入することで、ハンドラ/フィルタの構成に関係なく **すべての** `LogRecord` がコンテキストを持つようにします。`setup_logging()` 後にハンドラが追加されたり、ロガーがフィルタチェーンをバイパスする場合に便利です。デフォルトの `ContextFilter` モードとは相互排他的です。
 
-→ [設定: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)
+→ [設定: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory)
 
 ### ローカル vs クラウド
 
@@ -347,7 +346,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 **コード生成のための主要な実装詳細:**
 
-1. **ホスト構成を尊重** — Azure / Core Tools ではハンドラを追加せず、ルートロガーのレベルは `host.json` に委ねます。既存のルートハンドラとルートロガー自身に `ContextFilter` をインストールします（ルートロガーでの直接呼び出しはコンテキストを仲介する）。名前付きの子ロガーから伝搬されて後から追加されたハンドラへ到達するレコードにもコンテキストを保証したい場合は `install_context_factory()` を呼び出してください。ローカル単独モードでは `setup_logging(logger_name=None)` がルートロガーを構成します（レベル設定、ハンドラがなければ `StreamHandler` 追加）。
+1. **ホスト構成を尊重** — Azure / Core Tools ではハンドラを追加せず、ルートロガーのレベルは `host.json` に委ねます。既存のルートハンドラとルートロガー自身に `ContextFilter` をインストールします（ルートロガーでの直接呼び出しはコンテキストを仲介する）。名前付きの子ロガーから伝搬されて後から追加されたハンドラへ到達するレコードにもコンテキストを保証したい場合は `setup_logging()` に `use_record_factory=True` を渡してください。ローカル単独モードでは `setup_logging(logger_name=None)` がルートロガーを構成します（レベル設定、ハンドラがなければ `StreamHandler` 追加）。
 2. **コンテキスト注入は contextvar ベース** — thread-local ではなく、asyncio で動作
 3. **冪等な setup** — `setup_logging()` を複数回呼び出しても安全
 4. **2 つの環境、2 つの動作**:

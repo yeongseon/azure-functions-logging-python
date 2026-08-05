@@ -20,7 +20,7 @@ Key features:
 - **Structured JSON output** — Application Insights-ready NDJSON format for production
 - **Noise control** — `SamplingFilter` rate-limits chatty third-party loggers
 - **PII protection** — `RedactionFilter` masks sensitive fields before they reach log aggregation
-- **Root logger contract** — in Azure/Core Tools mode, no handlers are added; `ContextFilter` is installed on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). To guarantee coverage for records that propagate from named child loggers to handlers attached later, call `install_context_factory()`. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added if none exist.
+- **Root logger contract** — in Azure/Core Tools mode, no handlers are added; `ContextFilter` is installed on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). To guarantee coverage for records that propagate from named child loggers to handlers attached later, pass `use_record_factory=True` to `setup_logging()`. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added if none exist.
 - **Zero runtime dependency** — on azure-functions (works with any context-like object)
 
 ## Core API
@@ -36,7 +36,7 @@ Key features:
 - `restore_context(tokens)` — Restore previous contextvars from tokens (paired with `inject_context`)
 - `reset_context()` — Clear all context vars unconditionally (for test teardown)
 - `with_context` — Decorator to inject context per-request (sync/async)
-- `install_context_factory()` — **Deprecated**; prefer `setup_logging(use_record_factory=True)`. Opt-in global LogRecordFactory so context flows to every record
+- `setup_logging(use_record_factory=True)` — opt-in global LogRecordFactory so context flows to every record (mutually exclusive with the default `ContextFilter` mode)
 - `get_logging_metadata(func)` — Inspect `@with_context` metadata on a function; returns `dict[str, Any] | None`
 - `ContextTokens` — Type alias for the token bundle returned by `inject_context()`
 

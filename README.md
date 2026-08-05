@@ -314,9 +314,9 @@ At startup the library warns when your `host.json` — or `AzureFunctionsJobHost
 
 ### Global LogRecordFactory (opt-in)
 
-`install_context_factory()` injects context at record-creation time so **every** `LogRecord` carries it regardless of handler/filter wiring — useful when handlers are added after `setup_logging()` or loggers bypass the filter chain. It is mutually exclusive with the default `ContextFilter` mode.
+`setup_logging(use_record_factory=True)` installs a global `LogRecordFactory` that injects context at record-creation time so **every** `LogRecord` carries it regardless of handler/filter wiring — useful when handlers are added after `setup_logging()` or loggers bypass the filter chain. It is mutually exclusive with the default `ContextFilter` mode.
 
-→ [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory) · [API: `install_context_factory`](https://yeongseon.github.io/azure-functions-logging-python/api/#install_context_factory)
+→ [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory)
 
 ### Local vs cloud
 
@@ -369,7 +369,7 @@ This package provides structured logging for Azure Functions with zero modificat
 
 **Key Implementation Details for Code Generation:**
 
-1. **Preserves host configuration** — In Azure / Core Tools, no handlers are added and the root logger level is left to `host.json`; `ContextFilter` is installed on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). For records that propagate from named child loggers to handlers attached later (e.g. by the host or third-party libraries), pass `use_record_factory=True` to `setup_logging()` to guarantee context coverage (the standalone `install_context_factory()` is deprecated). In standalone local mode, `setup_logging(logger_name=None)` configures the root logger (sets level, adds a `StreamHandler` if none exist).
+1. **Preserves host configuration** — In Azure / Core Tools, no handlers are added and the root logger level is left to `host.json`; `ContextFilter` is installed on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). For records that propagate from named child loggers to handlers attached later (e.g. by the host or third-party libraries), pass `use_record_factory=True` to `setup_logging()` to guarantee context coverage. In standalone local mode, `setup_logging(logger_name=None)` configures the root logger (sets level, adds a `StreamHandler` if none exist).
 2. **Context injection is contextvar-based** — Not thread-local, works with asyncio
 3. **Idempotent setup** — Calling setup_logging() multiple times is safe
 4. **Two environments, two behaviors**:

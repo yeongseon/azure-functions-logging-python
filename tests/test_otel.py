@@ -136,32 +136,31 @@ def test_logging_context_does_not_activate_when_explicitly_disabled() -> None:
     from azure_functions_logging import logging_context
     from azure_functions_logging._context import set_default_trace_context_activation
 
-    # An explicit per-call ``False`` must override the auto default and stay off,
-    # even when OpenTelemetry is importable.
+    # An explicit per-call ``False`` must keep activation off, even when
+    # OpenTelemetry is importable.
     try:
-        set_default_trace_context_activation(None)
+        set_default_trace_context_activation(False)
         with logging_context(_make_context(), activate_trace_context=False):
             assert not trace.get_current_span().get_span_context().is_valid
     finally:
-        set_default_trace_context_activation(None)
+        set_default_trace_context_activation(False)
 
 
-def test_logging_context_auto_activates_when_otel_available() -> None:
+def test_logging_context_does_not_activate_by_default() -> None:
     pytest.importorskip("opentelemetry.context")
     from opentelemetry import trace
 
     from azure_functions_logging import logging_context
     from azure_functions_logging._context import set_default_trace_context_activation
 
-    # Auto tier (#255): with no explicit flag and no configured default,
-    # activation is enabled iff opentelemetry-api is importable — which it is
-    # in this test env.
+    # Opt-in contract (#290): with no explicit flag and the default (False),
+    # activation stays off even when opentelemetry-api is importable.
     try:
-        set_default_trace_context_activation(None)
+        set_default_trace_context_activation(False)
         with logging_context(_make_context()):
-            assert trace.get_current_span().get_span_context().is_valid
+            assert not trace.get_current_span().get_span_context().is_valid
     finally:
-        set_default_trace_context_activation(None)
+        set_default_trace_context_activation(False)
 
 
 def test_with_context_activates_host_span_when_enabled() -> None:
@@ -194,7 +193,7 @@ def test_setup_logging_sets_default_activation() -> None:
         with logging_context(_make_context()):
             assert trace.get_current_span().get_span_context().is_valid
     finally:
-        set_default_trace_context_activation(None)
+        set_default_trace_context_activation(False)
 
 
 def test_setup_logging_bare_call_preserves_explicit_activation() -> None:
@@ -209,62 +208,46 @@ def test_setup_logging_bare_call_preserves_explicit_activation() -> None:
     try:
         setup_logging(logger_name="afl.otel.idempotent", activate_trace_context=True)
         # A bare call (activate_trace_context defaults to None) must leave the
-        # explicitly-set default intact rather than silently reverting to auto.
+        # explicitly-set default intact rather than silently reverting to the
+        # opt-in default.
         setup_logging(logger_name="afl.otel.idempotent.b")
         assert get_default_trace_context_activation() is True
     finally:
-        set_default_trace_context_activation(None)
+        set_default_trace_context_activation(False)
 
 
 # ---------------------------------------------------------------------------
-# Auto tier (#255): default None resolves to "enabled iff opentelemetry-api
-# is importable".
+# Activation default (#290): activation is strictly opt-in — the process-wide
+# default is False and is never inferred from OTel importability.
 # ---------------------------------------------------------------------------
 
 
-def test_get_default_activation_auto_enabled_when_otel_available(
+def test_default_activation_is_false() -> None:
+    from azure_functions_logging import _context
+
+    assert _context._default_trace_context_activation is False
+    assert _context.get_default_trace_context_activation() is False
+
+
+def test_get_default_activation_reflects_explicit_true(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from azure_functions_logging import _context
 
-    monkeypatch.setattr(_context, "_default_trace_context_activation", None)
-    monkeypatch.setattr(_otel, "is_available", lambda: True)
+    monkeypatch.setattr(_context, "_default_trace_context_activation", True)
     assert _context.get_default_trace_context_activation() is True
 
 
-def test_get_default_activation_auto_disabled_when_otel_absent(
+def test_default_activation_ignores_otel_availability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from azure_functions_logging import _context
 
-    monkeypatch.setattr(_context, "_default_trace_context_activation", None)
-    monkeypatch.setattr(_otel, "is_available", lambda: False)
-    assert _context.get_default_trace_context_activation() is False
-
-
-def test_get_default_activation_explicit_overrides_auto(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from azure_functions_logging import _context
-
-    # An explicit stored default short-circuits the auto probe entirely.
+    # Even when OTel is importable, a bare install must not auto-activate:
+    # activation stays False until explicitly enabled (#290 opt-in contract).
     monkeypatch.setattr(_context, "_default_trace_context_activation", False)
     monkeypatch.setattr(_otel, "is_available", lambda: True)
     assert _context.get_default_trace_context_activation() is False
-
-
-def test_resolve_auto_returns_false_when_otel_import_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import sys
-
-    from azure_functions_logging import _context
-
-    # Simulate the base (zero-dependency) install where importing the helper's
-    # ``is_available`` path is fine but OTel itself is absent.
-    monkeypatch.setitem(sys.modules, "opentelemetry.context", None)
-    monkeypatch.setitem(sys.modules, "opentelemetry.propagate", None)
-    assert _context._resolve_auto_trace_context_activation() is False
 
 
 # ---------------------------------------------------------------------------

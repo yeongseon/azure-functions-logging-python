@@ -8,7 +8,6 @@ import contextvars
 import logging
 import threading
 from typing import Any, NamedTuple
-import warnings
 
 # Type alias for the token mapping returned by inject_context()
 ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
@@ -45,9 +44,9 @@ def _check_cold_start() -> bool:
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
-    For most new applications, prefer :func:`install_context_factory` because it
-    injects context at LogRecord creation time and does not depend on handler
-    filter configuration.
+    For most new applications, prefer ``setup_logging(use_record_factory=True)``
+    because it injects context at LogRecord creation time and does not depend on
+    handler filter configuration.
 
     ``ContextFilter`` remains supported for compatibility and for users who do
     not want to modify the global ``LogRecordFactory``.
@@ -55,7 +54,7 @@ class ContextFilter(logging.Filter):
     This filter is intended to be installed on handlers, so it applies to any
     record that reaches those handlers, including records from third-party
     loggers that propagate to them. For guaranteed record-creation-time
-    injection, prefer :func:`install_context_factory`.
+    injection, prefer ``setup_logging(use_record_factory=True)``.
     """
 
     CONTEXT_FIELDS: tuple[str, ...] = (
@@ -257,40 +256,29 @@ def restore_context(tokens: ContextTokens) -> None:
 # Process-wide default for OpenTelemetry trace-context activation. Toggled by
 # ``setup_logging(activate_trace_context=...)`` and consulted by
 # ``logging_context`` / ``with_context`` when their per-call flag is ``None``.
-# ``None`` selects the ``auto`` tier: enabled iff ``opentelemetry-api`` is
-# importable.
-_default_trace_context_activation: bool | None = None
+# Trace-context activation is strictly opt-in: the default is ``False`` so the
+# library never attaches the host trace context unless explicitly asked to.
+_default_trace_context_activation: bool = False
 
 
-def set_default_trace_context_activation(enabled: bool | None) -> None:
+def set_default_trace_context_activation(enabled: bool) -> None:
     """Set the process-wide default for OTel trace-context activation.
 
     Called by :func:`setup_logging`. When enabled, ``logging_context`` and
     ``with_context`` activate the host trace context unless a per-call
-    ``activate_trace_context`` argument overrides it. Passing ``None`` selects
-    the ``auto`` tier (enabled iff ``opentelemetry-api`` is importable).
+    ``activate_trace_context`` argument overrides it. Activation is opt-in;
+    the default is ``False`` until a caller explicitly enables it.
     """
     global _default_trace_context_activation
-    _default_trace_context_activation = enabled if enabled is None else bool(enabled)
-
-
-def _resolve_auto_trace_context_activation() -> bool:
-    """Resolve the ``auto`` tier: enabled iff ``opentelemetry-api`` is importable."""
-    try:
-        from ._otel import is_available
-    except ImportError:  # pragma: no cover - defensive; _otel always ships
-        return False
-    return is_available()
+    _default_trace_context_activation = bool(enabled)
 
 
 def get_default_trace_context_activation() -> bool:
-    """Return the resolved process-wide OTel trace-context activation default.
+    """Return the process-wide OTel trace-context activation default.
 
-    A stored default of ``None`` selects the ``auto`` tier: enabled iff
-    ``opentelemetry-api`` is importable.
+    Defaults to ``False`` (opt-in); toggled via
+    ``setup_logging(activate_trace_context=...)``.
     """
-    if _default_trace_context_activation is None:
-        return _resolve_auto_trace_context_activation()
     return _default_trace_context_activation
 
 
@@ -327,11 +315,9 @@ def logging_context(context: Any, *, activate_trace_context: bool | None = None)
             context (from ``context.trace_context``) via OpenTelemetry so log
             records emitted through an OTel ``LoggingHandler`` inherit the host
             span's ``trace_id``/``span_id``. Requires the ``[otel]`` extra;
-            degrades to a silent no-op when OpenTelemetry is unavailable. When
             ``None`` (default), the process-wide default configured via
             ``setup_logging(activate_trace_context=...)`` is used, which itself
-            defaults to the ``auto`` tier (enabled iff ``opentelemetry-api`` is
-            importable).
+            defaults to ``False`` (activation is strictly opt-in).
     """
     should_activate = (
         get_default_trace_context_activation()
@@ -414,29 +400,10 @@ def _install_context_factory() -> None:
     logging.setLogRecordFactory(context_record_factory)
 
 
-def install_context_factory() -> None:
-    """Deprecated shim for the LogRecordFactory injection strategy.
+def _uninstall_context_factory() -> bool:
+    """Restore the ``LogRecordFactory`` that preceded :func:`_install_context_factory`.
 
-    .. deprecated::
-        Direct use of ``install_context_factory`` is deprecated in favour of
-        the single ``setup_logging(use_record_factory=True)`` entry point,
-        which selects the ``LogRecordFactory`` injection strategy and manages
-        ``ContextFilter`` teardown consistently. This shim will be removed in
-        a future release.
-    """
-    warnings.warn(
-        "install_context_factory() is deprecated; use "
-        "setup_logging(use_record_factory=True) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    _install_context_factory()
-
-
-def uninstall_context_factory() -> bool:
-    """Restore the ``LogRecordFactory`` that preceded :func:`install_context_factory`.
-
-    This is the inverse of :func:`install_context_factory` and is primarily
+    This is the inverse of :func:`_install_context_factory` and is primarily
     intended for test teardown, where leaving a global factory installed would
     leak context injection into unrelated tests.
 

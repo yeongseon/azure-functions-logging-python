@@ -37,7 +37,7 @@ def setup_logging(
     """Configure logging for the current environment.
 
     Behavior depends on detected environment:
-    - **Azure / Core Tools**: Installs ContextFilter on existing root handlers AND on the root logger itself (so direct calls on the root logger carry context). Does NOT add handlers or modify root logger level (respects host.json). If `functions_formatter` is provided, it is applied to host-managed handlers. NOTE: a filter on the root logger does not run for records that propagate from named child loggers to host/third-party handlers attached later — use `install_context_factory()` to guarantee context coverage in that case.
+    - **Azure / Core Tools**: Installs ContextFilter on existing root handlers AND on the root logger itself (so direct calls on the root logger carry context). Does NOT add handlers or modify root logger level (respects host.json). If `functions_formatter` is provided, it is applied to host-managed handlers. NOTE: a filter on the root logger does not run for records that propagate from named child loggers to host/third-party handlers attached later — pass `use_record_factory=True` to `setup_logging()` to guarantee context coverage in that case.
     - **Standalone local**: Sets the target/root logger level. Adds a StreamHandler (ColorFormatter or JsonFormatter) ONLY when no handlers exist; otherwise just attaches filters to existing handlers.
 
     This function is idempotent per logger_name.
@@ -241,7 +241,7 @@ from azure_functions_logging import (
     logging_context,
     restore_context,
     reset_context,
-    install_context_factory,
+
     get_logging_metadata,
     with_context,
 )
@@ -293,15 +293,6 @@ def logging_context(context: Any) -> Iterator[None]:
     """
     ...
 
-def install_context_factory() -> None:  # DEPRECATED: prefer setup_logging(use_record_factory=True)
-    """Opt-in: install a global logging.setLogRecordFactory() that copies
-    contextvars onto every LogRecord at creation time. Ensures coverage even
-    on handlers added after setup_logging() and on loggers that bypass the
-    filter chain. Once installed, invocation_id/function_name/trace_id/
-    cold_start become reserved LogRecord attributes—passing them via stdlib
-    extra= raises KeyError. Use FunctionLogger (auto-sanitizes) or rename keys.
-    """
-    ...
 
 def get_logging_metadata(func: Any) -> dict[str, Any] | None:
     """Return logging metadata attached to a function by ``@with_context``.
@@ -342,7 +333,7 @@ from azure_functions_logging import (
     inject_context,         # low-level: returns ContextTokens
     restore_context,        # low-level: pair with inject_context()
     reset_context,          # test teardown only
-    install_context_factory,  # opt-in global LogRecordFactory
+
     ContextTokens,          # type alias used by inject_context/restore_context
 )
 ```
@@ -356,7 +347,7 @@ helpers above instead of importing them directly.
 
 ## Design Principles
 
-1. **Narrow root logger contract** — In Azure/Core Tools, no handlers are added; `setup_logging()` installs `ContextFilter` on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). To guarantee context on records that propagate from named child loggers to handlers attached later (host- or third-party-installed), call `install_context_factory()`. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added only when no handlers exist.
+1. **Narrow root logger contract** — In Azure/Core Tools, no handlers are added; `setup_logging()` installs `ContextFilter` on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). To guarantee context on records that propagate from named child loggers to handlers attached later (host- or third-party-installed), pass `use_record_factory=True` to `setup_logging()`. In standalone mode (`logger_name=None`), the root logger's level is set and a `StreamHandler` is added only when no handlers exist.
 2. **Respects host.json** — In Azure/Core Tools, never changes root logger level or replaces existing handlers
 3. **No runtime dependency on azure-functions** — Works with any context-like object
 4. **Silent on context failures** — Missing attributes don't cause exceptions
