@@ -1073,3 +1073,62 @@ def test_flatten_filter_honors_name_scoping() -> None:
     assert flt.filter(record) is True
     assert getattr(record, "order") == {"id": 1}
     assert "order.id" not in record.__dict__
+
+
+# ---------------------------------------------------------------------------
+# Dotted-key redaction safety net (#291)
+#
+# When AttributeFlattenFilter runs BEFORE RedactionFilter, nested secrets are
+# already flattened to scalar dotted keys (e.g. ``order.password``). Redaction
+# must still mask them by matching the final dotted segment.
+# ---------------------------------------------------------------------------
+
+
+def test_redaction_masks_flattened_dotted_key_when_flatten_runs_first() -> None:
+    flatten = AttributeFlattenFilter()
+    redact = RedactionFilter()
+    record = _make_record(msg="unsafe order")
+    setattr(record, "order", {"id": 1, "password": "s3cr3t", "api_key": "ak-1"})
+
+    # Unsafe ordering: flatten first (produces order.password), then redact.
+    assert flatten.filter(record) is True
+    assert redact.filter(record) is True
+
+    assert getattr(record, "order.password") == "***"
+    assert getattr(record, "order.api_key") == "***"
+    assert getattr(record, "order.id") == 1
+
+
+def test_redaction_masks_deep_flattened_dotted_key() -> None:
+    flatten = AttributeFlattenFilter()
+    redact = RedactionFilter()
+    record = _make_record(msg="deep")
+    setattr(record, "payload", {"outer": {"inner": {"secret": "x"}}})
+
+    flatten.filter(record)
+    redact.filter(record)
+
+    assert getattr(record, "payload.outer.inner.secret") == "***"
+
+
+def test_redaction_does_not_over_redact_non_final_sensitive_segment() -> None:
+    """Only the final dotted segment matters: ``password.hint`` stays visible."""
+    flt = RedactionFilter()
+    record = _make_record(msg="hint")
+    setattr(record, "password.hint", "first pet name")
+    setattr(record, "password_hint", "underscore form")
+
+    flt.filter(record)
+
+    assert getattr(record, "password.hint") == "first pet name"
+    assert getattr(record, "password_hint") == "underscore form"
+
+
+def test_redaction_dotted_key_matching_is_case_and_hyphen_insensitive() -> None:
+    flt = RedactionFilter()
+    record = _make_record(msg="mixed")
+    setattr(record, "Order.X-Functions-Key", "k-1")
+
+    flt.filter(record)
+
+    assert getattr(record, "Order.X-Functions-Key") == "***"

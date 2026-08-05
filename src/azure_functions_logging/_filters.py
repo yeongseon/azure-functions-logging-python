@@ -17,6 +17,7 @@ from typing import Any, Iterable
 from ._constants import _RESERVED_LOG_RECORD_KEYS
 from ._redaction import MASK as _MASK
 from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
+from ._redaction import is_sensitive as _is_sensitive
 from ._redaction import normalize_key as _normalize_key
 
 _REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
@@ -99,7 +100,7 @@ def _redact_value(
             return {
                 key: (
                     mask
-                    if isinstance(key, str) and _normalize_key(key) in sensitive_keys
+                    if isinstance(key, str) and _is_sensitive(key, sensitive_keys)
                     else _redact_value(item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1)
                 )
                 for key, item in value.items()
@@ -291,7 +292,7 @@ class RedactionFilter(logging.Filter):
                 try:
                     if key in _RESERVED_LOG_RECORD_KEYS:
                         continue
-                    if _normalize_key(key) in self._sensitive_keys:
+                    if _is_sensitive(key, self._sensitive_keys):
                         setattr(record, key, _MASK)
                     else:
                         value = record.__dict__[key]
