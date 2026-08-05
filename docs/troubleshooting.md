@@ -284,6 +284,46 @@ the entire `extra` mapping is exported unfiltered.
 
 See [OpenTelemetry correlation](opentelemetry.md) for the full ordering guide.
 
+## OpenTelemetry Appears "Not Installed" After a Broken Upgrade
+
+### Symptoms
+
+Trace-context activation silently no-ops (`trace_id` / `span_id` stay `null`) even
+though you installed the `[otel]` extra.
+
+### Root Cause
+
+`azure_functions_logging` gates OTel behavior on an internal `is_available()`
+probe that imports `opentelemetry.context` / `opentelemetry.propagate`. That probe
+catches **any** import exception and caches the result as "unavailable" for the
+rest of the process lifetime. A *partial or broken* OpenTelemetry install (e.g. a
+half-finished upgrade, or a version mismatch between `opentelemetry-api` and
+`opentelemetry-sdk`) therefore looks identical to "OTel is not installed" — the
+activation path is skipped and nothing is raised, by design (context injection
+must never crash your app).
+
+### Resolution
+
+1. Verify the import works in isolation:
+
+   ```bash
+   python -c "import opentelemetry.context, opentelemetry.propagate; print('ok')"
+   ```
+
+   If this raises anything other than `ModuleNotFoundError`, your OTel install is
+   broken — reinstall a consistent set of `opentelemetry-*` packages.
+2. Restart the worker process after fixing the install: the `is_available()`
+   result is cached per process and will not re-probe until restart.
+
+### Note on the OTel test path
+
+The `[otel]` extra pins only `opentelemetry-api>=1.24` (no upper bound). Runtime
+code imports **only** the stable public `opentelemetry.context` /
+`opentelemetry.propagate` APIs. The test suite (`tests/test_otel_spike.py`)
+additionally imports the **private** `opentelemetry.sdk._logs` path, which remains
+underscore-private upstream and can break on OTel upgrades. This affects tests
+only — it is never imported by shipped runtime code.
+
 ## Fast Diagnostic Checklist
 
 Run through this list during incidents:

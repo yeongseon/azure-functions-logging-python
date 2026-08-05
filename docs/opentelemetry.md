@@ -97,6 +97,14 @@ For handlers that must be attached *after* `setup_logging()`, pass
 `use_record_factory=True` so context is injected at record-creation time instead
 of via handler filters.
 
+> **`use_record_factory=True` covers context injection only.** It guarantees that
+> `trace_id` / `span_id` / invocation fields reach records emitted through
+> late-attached handlers, but it does **not** attach `RedactionFilter`,
+> `SamplingFilter`, or `AttributeFlattenFilter` to those handlers. Security and
+> noise filters must still be added explicitly to any OTel handler created after
+> `setup_logging()` (e.g. by a later `configure_azure_monitor()`) — otherwise PII
+> redaction and sampling are silently bypassed on that handler.
+
 ## Filters in OpenTelemetry mode
 
 In OTel mode the entire `extra` mapping is exported as log **attributes**, which
@@ -127,6 +135,14 @@ for handler in logging.getLogger().handlers:
 > a nested object. That is what you want for OTel attribute export, but usually
 > not for local/standalone JSON logs — attach it to the specific OTel handler
 > rather than the root logger when both kinds of handler are present.
+
+> **Handler scoping reduces blast radius but does not isolate mutation.** stdlib
+> `logging` passes the *same* `LogRecord` object to every handler in sequence, so
+> if the OTel handler runs **before** a JSON/stdout handler on the same logger,
+> that later handler still sees the flattened record. Scoping the filter to the
+> OTel handler shrinks the window but cannot fully isolate in-place mutation when
+> multiple handlers process one record. To keep plain JSON output nested, emit it
+> on a separate logger (not sharing handlers with the OTel path).
 
 ## Known limitation: thread boundaries
 

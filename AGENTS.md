@@ -109,7 +109,7 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 
 ## Design Constraints
 
-- The root logger is never modified by this library.
+- The root logger's handlers and level are never modified in Azure mode; the library may add package-owned filters (e.g. `ContextFilter`) to existing handlers and to the root logger for late-handler coverage.
 - In Azure environments, behavior is safe by default — no forced colors, no excessive handler additions, no interference with the worker's `AsyncLoggingHandler`.
 - Context injection failures never cause application failures.
 - The API surface stays as close to standard `logging` as possible.
