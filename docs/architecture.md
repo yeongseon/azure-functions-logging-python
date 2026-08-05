@@ -286,7 +286,7 @@ Cold start detection uses a module-level boolean that starts `True` and flips to
 Two complementary mechanisms inject context variable values onto each `LogRecord`:
 
 - **`ContextFilter` (default)** runs during the filter phase, before the formatter, and reads context variables at handler-dispatch time. It works with both `ColorFormatter` and `JsonFormatter` but reflects the *current* contextvar state when the handler runs — not when the record was created.
-- **`setup_logging(use_record_factory=True)`** swaps the global `logging.LogRecordFactory` so context fields are captured at record-creation time. This snapshot survives thread hops, queued/delayed handlers, and contextvar resets between record creation and handler dispatch. (The standalone `install_context_factory()` function is deprecated — prefer this entry point.)
+- **`setup_logging(use_record_factory=True)`** swaps the global `logging.LogRecordFactory` so context fields are captured at record-creation time. This snapshot survives thread hops, queued/delayed handlers, and contextvar resets between record creation and handler dispatch.
 
 When `use_record_factory=True`, `ContextFilter` is intentionally **not** attached to handlers, so the factory snapshot is the single source of truth and cannot be overwritten downstream.
 

@@ -37,7 +37,7 @@ This library addresses those gaps with a small API surface.
 - Structured NDJSON output (`format="json"`) for production ingestion.
 - `logging_context(context)` context manager that always restores prior context on exit (recommended).
 - `inject_context(context)` returns `ContextTokens` for paired `restore_context(tokens)` use in middleware.
-- `setup_logging(use_record_factory=True)` opt-in global LogRecordFactory so context flows to every `LogRecord`. (The standalone `install_context_factory()` is deprecated.)
+- `setup_logging(use_record_factory=True)` opt-in global LogRecordFactory so context flows to every `LogRecord`.
 - `JsonFormatter` for host-managed handlers via `setup_logging(functions_formatter=JsonFormatter())`.
 - Automatic `cold_start` flag detection on first invocation per process.
 - `FunctionLogger.bind()` for immutable request-scoped context binding.
@@ -81,7 +81,7 @@ This combines context-managed invocation context and request binding in a safe, 
 Behavior changes intentionally by runtime:
 
 - Local standalone process: sets the target/root logger level; adds a `StreamHandler` (`color` or `json`) only if no handlers exist, otherwise just attaches filters to existing handlers.
-- Azure/Core Tools runtime: installs `ContextFilter` on existing root handlers **and on the root logger itself** (so direct calls on the root logger carry context); does not add handlers or change root level. To guarantee context on records that propagate from named child loggers to handlers attached later, pass `use_record_factory=True` to `setup_logging()` (the standalone `install_context_factory()` is deprecated).
+- Azure/Core Tools runtime: installs `ContextFilter` on existing root handlers **and on the root logger itself** (so direct calls on the root logger carry context); does not add handlers or change root level. To guarantee context on records that propagate from named child loggers to handlers attached later, pass `use_record_factory=True` to `setup_logging()`.
 
 !!! warning
     In Azure-hosted execution, host-level `host.json` settings can still suppress logs even when application-level setup appears correct.

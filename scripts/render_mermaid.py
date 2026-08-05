@@ -21,11 +21,11 @@ when ``mmdc`` is unavailable.
 
 from __future__ import annotations
 
+from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 # Files/globs to scan, relative to the repository root.
 TARGET_GLOBS = ("README*.md", "DESIGN.md", "docs/**/*.md")
