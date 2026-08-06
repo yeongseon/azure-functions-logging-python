@@ -1111,8 +1111,8 @@ def test_redaction_masks_deep_flattened_dotted_key() -> None:
     assert getattr(record, "payload.outer.inner.secret") == "***"
 
 
-def test_redaction_does_not_over_redact_non_final_sensitive_segment() -> None:
-    """Only the final dotted segment matters: ``password.hint`` stays visible."""
+def test_redaction_masks_sensitive_parent_segment_fail_closed() -> None:
+    """Any sensitive segment masks the key: ``password.hint`` is fail-closed masked."""
     flt = RedactionFilter()
     record = _make_record(msg="hint")
     setattr(record, "password.hint", "first pet name")
@@ -1120,7 +1120,9 @@ def test_redaction_does_not_over_redact_non_final_sensitive_segment() -> None:
 
     flt.filter(record)
 
-    assert getattr(record, "password.hint") == "first pet name"
+    # Sensitive parent segment -> masked (security control is fail-closed).
+    assert getattr(record, "password.hint") == "***"
+    # No dotted boundary and not a whole sensitive key -> left visible.
     assert getattr(record, "password_hint") == "underscore form"
 
 
@@ -1132,3 +1134,89 @@ def test_redaction_dotted_key_matching_is_case_and_hyphen_insensitive() -> None:
     flt.filter(record)
 
     assert getattr(record, "Order.X-Functions-Key") == "***"
+
+
+@pytest.mark.parametrize(
+    ("parent", "leaf"),
+    [
+        ("token", "raw"),
+        ("secret", "value"),
+        ("credential", "blob"),
+        ("authorization", "header"),
+    ],
+)
+def test_redaction_masks_sensitive_parent_with_benign_leaf(parent: str, leaf: str) -> None:
+    """Regression (#302): sensitive parent + benign leaf must not leak after flatten."""
+    flatten = AttributeFlattenFilter()
+    redact = RedactionFilter()
+    record = _make_record(msg="leak")
+    setattr(record, parent, {leaf: "eyJhbGciSECRET"})
+
+    # Unsafe ordering: flatten first (produces parent.leaf), then redact.
+    flatten.filter(record)
+    redact.filter(record)
+
+    assert getattr(record, f"{parent}.{leaf}") == "***"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"token": {"raw": "eyJhbGci"}},
+        {"secret": {"value": "hunter2"}},
+        {"credential": {"blob": "AAA"}},
+        {"order": {"password": "p@ss", "id": 7}},
+    ],
+)
+def test_redaction_filter_ordering_is_independent(payload: dict[str, object]) -> None:
+    """Regression (#302): flatten->redact and redact->flatten mask the same secrets.
+
+    The two orderings may yield different key *shapes* (nested vs dotted), but no
+    secret value may survive in either ordering.
+    """
+    secret_values = {"eyJhbGci", "hunter2", "AAA", "p@ss"}
+
+    def surviving_values(order: str) -> set[str]:
+        record = _make_record(msg="order")
+        for key, value in payload.items():
+            setattr(record, key, dict(value) if isinstance(value, dict) else value)
+        flatten = AttributeFlattenFilter()
+        redact = RedactionFilter()
+        if order == "flatten_redact":
+            flatten.filter(record)
+            redact.filter(record)
+        else:
+            redact.filter(record)
+            flatten.filter(record)
+        found: set[str] = set()
+        for value in record.__dict__.values():
+            if isinstance(value, str):
+                found.add(value)
+            elif isinstance(value, dict):
+                found.update(str(v) for v in value.values())
+        return found & secret_values
+
+    assert surviving_values("flatten_redact") == set()
+    assert surviving_values("redact_flatten") == set()
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "partition.key",
+        "row.key",
+        "metrics.token_count",
+        "tokenizer.name",
+        "order.id",
+        "user.name",
+    ],
+)
+def test_redaction_does_not_over_redact_benign_dotted_keys(key: str) -> None:
+    """Regression (#302): whole-segment matching must not touch benign dotted keys."""
+    flt = RedactionFilter()
+    record = _make_record(msg="benign")
+    setattr(record, key, "visible-value")
+
+    flt.filter(record)
+
+    assert getattr(record, key) == "visible-value"
