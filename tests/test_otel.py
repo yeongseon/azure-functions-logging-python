@@ -395,3 +395,92 @@ def test_otel_logging_handler_has_no_trace_ids_outside_activation() -> None:
     assert len(emitted) == 1
     # No active host span -> invalid (zero) ids, proving activation is the source.
     assert emitted[0].log_record.trace_id in (0, None)
+
+
+# ---------------------------------------------------------------------------
+# End-to-end via the PUBLIC API: logging_context() drives host-span correlation
+# through a real OTel LoggingHandler, and a RedactionFilter attached to that
+# handler masks sensitive extras before they are exported. This mirrors the
+# examples/otel_app flow (configure exporter -> setup_logging -> redaction ->
+# logging_context) but with an in-memory exporter, so it runs without Azure.
+# ---------------------------------------------------------------------------
+
+
+def test_public_api_end_to_end_correlates_and_redacts() -> None:
+    pytest.importorskip("opentelemetry.sdk._logs")
+    import logging
+
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import (
+        InMemoryLogExporter,
+        SimpleLogRecordProcessor,
+    )
+
+    from azure_functions_logging import RedactionFilter, get_logger, logging_context
+
+    exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+    handler.addFilter(RedactionFilter())
+
+    logger_obj = logging.getLogger("afl.otel.e2e.public")
+    logger_obj.setLevel(logging.INFO)
+    logger_obj.addHandler(handler)
+    logger_obj.propagate = False
+    afl_logger = get_logger("afl.otel.e2e.public")
+    try:
+        with logging_context(_make_context(), activate_trace_context=True):
+            afl_logger.info(
+                "processing",
+                extra={"order_id": "o-42", "password": "secret-should-mask"},
+            )
+    finally:
+        logger_obj.removeHandler(handler)
+        provider.shutdown()
+
+    emitted = exporter.get_finished_logs()
+    assert len(emitted) == 1
+    record = emitted[0].log_record
+    # Correlation: record inherits the host span's trace_id / span_id.
+    assert format(record.trace_id, "032x") == _TRACE_ID_HEX
+    assert format(record.span_id, "016x") == _PARENT_ID_HEX
+    # Redaction: the sensitive extra is masked; the benign one is preserved.
+    attrs = dict(record.attributes or {})
+    assert attrs.get("password") not in (None, "secret-should-mask")
+    assert attrs.get("order_id") == "o-42"
+
+
+def test_public_api_no_correlation_when_disabled() -> None:
+    pytest.importorskip("opentelemetry.sdk._logs")
+    import logging
+
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import (
+        InMemoryLogExporter,
+        SimpleLogRecordProcessor,
+    )
+
+    from azure_functions_logging import get_logger, logging_context
+
+    exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+
+    logger_obj = logging.getLogger("afl.otel.e2e.public.off")
+    logger_obj.setLevel(logging.INFO)
+    logger_obj.addHandler(handler)
+    logger_obj.propagate = False
+    afl_logger = get_logger("afl.otel.e2e.public.off")
+    try:
+        with logging_context(_make_context(), activate_trace_context=False):
+            afl_logger.info("uncorrelated")
+    finally:
+        logger_obj.removeHandler(handler)
+        provider.shutdown()
+
+    emitted = exporter.get_finished_logs()
+    assert len(emitted) == 1
+    # Activation is the sole source of correlation: disabled -> zero/None ids.
+    assert emitted[0].log_record.trace_id in (0, None)
