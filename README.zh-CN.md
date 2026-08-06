@@ -35,7 +35,7 @@ Azure Functions Python 的日志记录有一些通用日志库无法处理的特
 | 嘈杂的第三方日志 | `azure-core`、`urllib3` 充斥 Application Insights | `SamplingFilter` / `RedactionFilter` |
 | 本地与云端输出不匹配 | 彩色输出在生产管道中崩溃 | 环境感知的格式化器自动切换 |
 | PII 泄露到日志 | 敏感值通过 extra 字段被意外记录 | 基于键的脱敏 `RedactionFilter` |
-| 日志与调用追踪脱离 | Python 是唯一没有内置 OpenTelemetry 调用中间件的 Functions worker 运行时，所以 worker 日志记录携带 `span_id=0` | 绑定 host 的 W3C trace context，使 OpenTelemetry 日志继承调用的 `trace_id` / `span_id` |
+| 日志与调用追踪脱离 | Python 是唯一没有内置 OpenTelemetry 调用中间件的 Functions worker 运行时，除非你在每个处理器中自行激活 span，否则 worker 日志记录会携带 `span_id=0` 而被脱离 | 绑定 host 的 W3C trace context，使 OpenTelemetry 日志继承调用的 `trace_id` / `span_id` |
 
 ## 它做什么
 
@@ -48,9 +48,9 @@ Azure Functions Python 的日志记录有一些通用日志库无法处理的特
 
 ## OpenTelemetry 追踪关联
 
-> **Python 是唯一没有内置 OpenTelemetry 调用中间件的 Azure Functions worker 运行时。** host 为每次调用发出 W3C `traceparent`，但 Python worker 从不在进程内激活它 — 因此 worker 日志记录被标记为 `span_id=0`，并与 host 的调用 span 脱离。
+> **Python 是唯一没有内置 OpenTelemetry 调用中间件的 Azure Functions worker 运行时。** host 为每次调用发出 W3C `traceparent`，但 Python worker 从不在进程内激活它 — 因此除非你自行激活 span，否则 worker 日志记录会被标记为 `span_id=0`，并与 host 的调用 span 脱离。
 
-这是通用日志库无法自行弥补的缺口。structlog、Loguru 和 stdlib `logging` 依靠 OpenTelemetry 的 `LoggingHandler` / `LoggingInstrumentor` 来附加 `trace_id` / `span_id`，但它们只有在进程中 **存在活动 span 时** 才生效 — 而 Python worker 并不提供它。结果到处都一样：`trace_id=0`、`span_id=0`、与调用无关联。
+你 *可以* 手动弥补这个缺口，但这是手工操作且容易遗忘。structlog、Loguru 和 stdlib `logging` 都依靠 OpenTelemetry 的 `LoggingHandler` / `LoggingInstrumentor`，它们只有在进程中 **存在活动 span 时** 才会附加 `trace_id` / `span_id`。由于 Python worker 从不激活 span，Microsoft 文档化的模式是提取 host 的 `traceparent` 并在 **每个处理器中** 自行启动 span。只要在一个路径中遗漏，那些记录就会静默地回退到 `span_id=0`。
 
 `azure-functions-logging` 弥补了这个缺口。通过 `activate_trace_context=True`（需要 `[otel]` extra）选择开启，库会在处理器运行期间绑定 host 的 W3C trace context，使你现有的 OpenTelemetry 日志记录继承调用的 `trace_id` / `span_id`：
 
@@ -64,6 +64,8 @@ with logging_context(context):
 ```
 
 这是 **关联，而非追踪** — 库从不创建、记录或导出 span。它补充而非替代 OpenTelemetry 或 Application Insights SDK，后者仍负责产生 span。参见 [OpenTelemetry 追踪关联指南](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)。
+
+更倾向于按调用激活？跳过进程级默认设置，直接传入：`with logging_context(context, activate_trace_context=True):`。
 
 
 ## 流水线一览
