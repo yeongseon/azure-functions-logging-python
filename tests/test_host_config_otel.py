@@ -83,6 +83,8 @@ def _clear_otel_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY", raising=False)
     monkeypatch.delenv("OTEL_LOGS_EXPORTER", raising=False)
     monkeypatch.delenv("OTEL_TRACES_EXPORTER", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_MONITOR_CONNECTION_STRING", raising=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -229,6 +231,24 @@ def test_6b_silent_when_env_var_set(
 ) -> None:
     clean_root.addHandler(_FakeOtelHandler())
     monkeypatch.setenv(env_name, "1")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        warn_otel_logging_misconfig()
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    ["APPLICATIONINSIGHTS_CONNECTION_STRING", "AZURE_MONITOR_CONNECTION_STRING"],
+)
+def test_6b_silent_when_azure_monitor_connection_string_set(
+    clean_root: logging.Logger,
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+) -> None:
+    """Regression (#303): configure_azure_monitor() exports via the connection
+    string and sets no PYTHON_*/OTEL_*_EXPORTER var, so 6b must stay silent."""
+    clean_root.addHandler(_FakeOtelHandler())
+    monkeypatch.setenv(env_name, "InstrumentationKey=abc;IngestionEndpoint=https://x/")
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         warn_otel_logging_misconfig()
