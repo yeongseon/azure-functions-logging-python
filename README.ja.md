@@ -35,6 +35,7 @@ Azure Functions Python のロギングには、汎用的なロギングライブ
 | サードパーティロガーがうるさい | `azure-core`, `urllib3` が Application Insights を埋め尽くす | `SamplingFilter` / `RedactionFilter` |
 | ローカルとクラウドの出力不一致 | 色付き出力が本番パイプラインを壊す | 環境認識フォーマッタ自動切替 |
 | PII がログに漏洩 | extra フィールド経由で機密値が誤って記録される | キーベースの redaction を行う `RedactionFilter` |
+| ログが呼び出しトレースから分離される | Python は OpenTelemetry 呼び出しミドルウェアを内蔵しない唯一の Functions worker ランタイムのため、worker のログレコードが `span_id=0` を持つ | host の W3C trace context をバインドし、OpenTelemetry ログが呼び出しの `trace_id` / `span_id` を継承する |
 
 ## 何をするのか
 
@@ -44,6 +45,26 @@ Azure Functions Python のロギングには、汎用的なロギングライブ
 - **PII 保護** — `RedactionFilter` が機密フィールドをログ集約に到達する前にマスキング
 
 > **スコープ免責事項。** このパッケージは Python `logging` / stdout に構造化 JSON を書き込みます。これらのフィールドが Application Insights にどう現れるかは、Azure Functions host、worker、ロギング設定、および ingestion パイプラインに依存します。ライブラリは ingestion やスキーマ マッピングを所有しません — `customDimensions` にパースされる形式と、生の `message` 内に残る形式の両方が本番環境で有効です。
+
+## OpenTelemetry トレース相関付け
+
+> **Python は OpenTelemetry 呼び出しミドルウェアを内蔵しない唯一の Azure Functions worker ランタイムです。** host はすべての呼び出しに W3C `traceparent` を発行しますが、Python worker はそれをプロセス内でアクティベートしません — そのため worker のログレコードは `span_id=0` でスタンプされ、host の呼び出し span から分離されます。
+
+これは一般的な logging ライブラリが単独では埋められないギャップです。structlog、Loguru、stdlib `logging` は `trace_id` / `span_id` を付与するために OpenTelemetry の `LoggingHandler` / `LoggingInstrumentor` に依存しますが、これらはプロセス内に **アクティブな span がある場合にのみ** 機能します — Python worker はそれを提供しません。結果はどこでも同じです: `trace_id=0`、`span_id=0`、呼び出しとの相関なし。
+
+`azure-functions-logging` はそのギャップを埋めます。`activate_trace_context=True`（`[otel]` extra が必要）でオプトインすると、ライブラリがハンドラ実行中に host の W3C trace context をバインドし、既存の OpenTelemetry ログレコードが呼び出しの `trace_id` / `span_id` を継承します:
+
+```python
+from azure_functions_logging import logging_context, setup_logging
+
+setup_logging(activate_trace_context=True)  # 必要: pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry レコードが呼び出しの trace_id / span_id を継承
+```
+
+これは **相関付けであってトレーシングではありません** — ライブラリは span を生成・記録・エクスポートしません。OpenTelemetry や Application Insights SDK を置き換えるのではなく補完し、span の生成は引き続きそれらの責任です。[OpenTelemetry トレース相関付けガイド](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)を参照してください。
+
 
 ## パイプライン概要
 
