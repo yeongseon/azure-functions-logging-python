@@ -35,6 +35,7 @@ Azure Functions Python의 logging에는 일반 logging 라이브러리가 다루
 | 시끄러운 서드파티 로거 | `azure-core`, `urllib3` 등이 Application Insights를 채움 | `SamplingFilter` / `RedactionFilter` |
 | 로컬과 클라우드 출력 불일치 | 색상 출력이 프로덕션 파이프라인을 깨뜨림 | 환경 인지 포매터 자동 전환 |
 | PII가 로그에 유출 | extra 필드를 통해 민감 값이 우발적으로 기록 | 키 기반 redaction을 수행하는 `RedactionFilter` |
+| 로그가 호출 트레이스에서 분리됨 | Python은 OpenTelemetry 호출 미들웨어가 내장되지 않은 유일한 Functions worker 런타임이라, worker 로그 레코드가 `span_id=0`을 가짐 | host의 W3C trace context를 바인딩해 OpenTelemetry 로그가 호출의 `trace_id` / `span_id`를 상속하도록 함 |
 
 ## 무엇을 하는가
 
@@ -44,6 +45,26 @@ Azure Functions Python의 logging에는 일반 logging 라이브러리가 다루
 - **PII 보호** — `RedactionFilter`로 민감 필드를 로그 집계에 도달하기 전에 마스킹
 
 > **범위 면책.** 이 패키지는 Python `logging` / stdout으로 구조화된 JSON을 씁니다. Application Insights에서 어떻게 표시되는지는 Azure Functions host, worker, logging 구성, ingestion 파이프라인에 따라 달라집니다. 라이브러리는 ingestion이나 schema mapping을 책임지지 않습니다 — `customDimensions`로 파싱되는 형태와 raw `message`에 들어가는 형태 모두 프로덕션에서 유효합니다.
+
+## OpenTelemetry 트레이스 상관관계
+
+> **Python은 OpenTelemetry 호출 미들웨어가 내장되지 않은 유일한 Azure Functions worker 런타임입니다.** host는 모든 호출에 대해 W3C `traceparent`를 발행하지만 Python worker는 이를 프로세스 안에서 활성화하지 않습니다 — 그래서 worker 로그 레코드는 `span_id=0`으로 기록되고 host의 호출 span에서 분리됩니다.
+
+이는 일반 logging 라이브러리가 스스로 메울 수 **없는** 간극입니다. structlog, Loguru, stdlib `logging`은 `trace_id` / `span_id`를 붙이기 위해 OpenTelemetry의 `LoggingHandler` / `LoggingInstrumentor`에 의존하지만, 이들은 프로세스에 **활성 span이 있을 때만** 동작합니다 — Python worker는 그것을 제공하지 않습니다. 결과는 어디서나 동일합니다: `trace_id=0`, `span_id=0`, 호출과의 상관관계 없음.
+
+`azure-functions-logging`은 그 간극을 메웁니다. `activate_trace_context=True`(`[otel]` extra 필요)로 옵트인하면 라이브러리가 핸들러 실행 동안 host의 W3C trace context를 바인딩하여, 기존 OpenTelemetry 로그 레코드가 호출의 `trace_id` / `span_id`를 상속하게 합니다:
+
+```python
+from azure_functions_logging import logging_context, setup_logging
+
+setup_logging(activate_trace_context=True)  # 필요: pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry 레코드가 호출의 trace_id / span_id를 상속
+```
+
+이는 **상관관계이지 트레이싱이 아닙니다** — 라이브러리는 결코 span을 생성, 기록, 내보내지 않습니다. OpenTelemetry나 Application Insights SDK를 대체하지 않고 보완하며, span 생성은 여전히 그들의 책임입니다. [OpenTelemetry 트레이스 상관관계 가이드](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)를 참고하세요.
+
 
 ## 파이프라인 개요
 

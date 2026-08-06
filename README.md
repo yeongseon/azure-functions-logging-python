@@ -35,6 +35,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 | Noisy third-party loggers | `azure-core`, `urllib3` flood your Application Insights | `SamplingFilter` / `RedactionFilter` |
 | Local vs cloud output mismatch | Colorized output breaks in production pipelines | Environment-aware formatter switching |
 | PII leaking into logs | Sensitive values accidentally logged as extra fields | `RedactionFilter` with key-based redaction |
+| Worker logs orphaned from the invocation trace | Python is the only Functions worker runtime without built-in OpenTelemetry invocation middleware, so worker log records carry `span_id=0` | Binds the host's W3C trace context so your OpenTelemetry logs inherit the invocation's `trace_id` / `span_id` |
 
 ## What it does
 
@@ -44,6 +45,26 @@ Azure Functions Python logging has specific failure modes that generic logging l
 - **PII protection** — `RedactionFilter` masks sensitive fields before they reach log aggregation
 
 > **Scope disclaimer.** This package writes structured JSON to Python `logging` / stdout. How those fields appear in Application Insights depends on the Azure Functions host, worker, logging configuration, and ingestion pipeline. The library does not own ingestion or schema mapping — both `customDimensions`-parsed and raw-`message` shapes are valid in production.
+
+## OpenTelemetry trace correlation
+
+> **Python is the only Azure Functions worker runtime without built-in OpenTelemetry invocation middleware.** The host emits a W3C `traceparent` for every invocation, but the Python worker never activates it in-process — so worker log records are stamped with `span_id=0` and get orphaned from the host's invocation span.
+
+This is a gap that generic logging libraries **cannot** close on their own. structlog, Loguru, and stdlib `logging` rely on OpenTelemetry's `LoggingHandler` / `LoggingInstrumentor` to attach `trace_id` / `span_id` — but those only work when there is an **active span in the process**, which the Python worker does not provide. The result is the same everywhere: `trace_id=0`, `span_id=0`, no correlation to the invocation.
+
+`azure-functions-logging` fills that gap. Opt in with `activate_trace_context=True` (requires the `[otel]` extra) and the library binds the host's W3C trace context for the duration of the handler, so your existing OpenTelemetry log records inherit the invocation's `trace_id` / `span_id`:
+
+```python
+from azure_functions_logging import logging_context, setup_logging
+
+setup_logging(activate_trace_context=True)  # requires: pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry record inherits the invocation trace_id / span_id
+```
+
+This is **correlation, not tracing** — the library never creates, records, or exports spans itself. It is complementary to (not a replacement for) OpenTelemetry or the Application Insights SDK, which remain responsible for producing spans. See the [OpenTelemetry trace correlation guide](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/).
+
 
 ## Pipeline at a glance
 
