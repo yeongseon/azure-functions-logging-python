@@ -35,7 +35,7 @@ Azure Functions Python のロギングには、汎用的なロギングライブ
 | サードパーティロガーがうるさい | `azure-core`, `urllib3` が Application Insights を埋め尽くす | `SamplingFilter` / `RedactionFilter` |
 | ローカルとクラウドの出力不一致 | 色付き出力が本番パイプラインを壊す | 環境認識フォーマッタ自動切替 |
 | PII がログに漏洩 | extra フィールド経由で機密値が誤って記録される | キーベースの redaction を行う `RedactionFilter` |
-| ログが呼び出しトレースから分離される | Python は OpenTelemetry 呼び出しミドルウェアを内蔵しない唯一の Functions worker ランタイムのため、worker のログレコードが `span_id=0` を持つ | host の W3C trace context をバインドし、OpenTelemetry ログが呼び出しの `trace_id` / `span_id` を継承する |
+| ログが呼び出しトレースから分離される | Python は OpenTelemetry 呼び出しミドルウェアを内蔵しない唯一の Functions worker ランタイムのため、ハンドラごとに自分で span をアクティベートしない限り worker のログレコードは `span_id=0` で分離される | host の W3C trace context をバインドし、OpenTelemetry ログが呼び出しの `trace_id` / `span_id` を継承する |
 
 ## 何をするのか
 
@@ -48,9 +48,9 @@ Azure Functions Python のロギングには、汎用的なロギングライブ
 
 ## OpenTelemetry トレース相関付け
 
-> **Python は OpenTelemetry 呼び出しミドルウェアを内蔵しない唯一の Azure Functions worker ランタイムです。** host はすべての呼び出しに W3C `traceparent` を発行しますが、Python worker はそれをプロセス内でアクティベートしません — そのため worker のログレコードは `span_id=0` でスタンプされ、host の呼び出し span から分離されます。
+> **Python は OpenTelemetry 呼び出しミドルウェアを内蔵しない唯一の Azure Functions worker ランタイムです。** host はすべての呼び出しに W3C `traceparent` を発行しますが、Python worker はそれをプロセス内でアクティベートしません — そのため自分で span をアクティベートしない限り、worker のログレコードは `span_id=0` でスタンプされ、host の呼び出し span から分離されます。
 
-これは一般的な logging ライブラリが単独では埋められないギャップです。structlog、Loguru、stdlib `logging` は `trace_id` / `span_id` を付与するために OpenTelemetry の `LoggingHandler` / `LoggingInstrumentor` に依存しますが、これらはプロセス内に **アクティブな span がある場合にのみ** 機能します — Python worker はそれを提供しません。結果はどこでも同じです: `trace_id=0`、`span_id=0`、呼び出しとの相関なし。
+このギャップは手作業で埋めることは *できます* が、手間がかかり忘れやすいものです。structlog、Loguru、stdlib `logging` はいずれも OpenTelemetry の `LoggingHandler` / `LoggingInstrumentor` に依存し、これらはプロセス内に **アクティブな span がある場合にのみ** `trace_id` / `span_id` を付与します。Python worker はそれをアクティベートしないため、Microsoft が文書化しているパターンは host の `traceparent` を抽出し **すべてのハンドラで** 自分で span を開始することです。1つの経路でも忘れると、それらのレコードは静かに `span_id=0` にフォールバックします。
 
 `azure-functions-logging` はそのギャップを埋めます。`activate_trace_context=True`（`[otel]` extra が必要）でオプトインすると、ライブラリがハンドラ実行中に host の W3C trace context をバインドし、既存の OpenTelemetry ログレコードが呼び出しの `trace_id` / `span_id` を継承します:
 
@@ -64,6 +64,8 @@ with logging_context(context):
 ```
 
 これは **相関付けであってトレーシングではありません** — ライブラリは span を生成・記録・エクスポートしません。OpenTelemetry や Application Insights SDK を置き換えるのではなく補完し、span の生成は引き続きそれらの責任です。[OpenTelemetry トレース相関付けガイド](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)を参照してください。
+
+呼び出しごとのアクティベーションを好みますか？ プロセス全体のデフォルトをスキップして直接渡します: `with logging_context(context, activate_trace_context=True):`。
 
 
 ## パイプライン概要
