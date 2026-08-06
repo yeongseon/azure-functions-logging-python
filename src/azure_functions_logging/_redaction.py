@@ -58,21 +58,25 @@ def is_sensitive(key: str, sensitive_keys: frozenset[str] = SENSITIVE_KEYS) -> b
     Matches when either:
 
     - the full normalized key is in ``sensitive_keys``, or
-    - the **final dotted segment** of the normalized key is in ``sensitive_keys``.
+    - **any** dotted segment of the normalized key is in ``sensitive_keys``.
 
     The dotted-segment check is a safety net for keys produced by
     :class:`~azure_functions_logging._filters.AttributeFlattenFilter`, which
     rewrites ``{"order": {"password": "x"}}`` into the scalar key
-    ``order.password``. Without it, a flatten-before-redact filter ordering
-    would ship nested secrets unmasked. Only the final segment is considered,
-    so non-sensitive leaves like ``password.hint`` are left untouched.
+    ``order.password`` and ``{"token": {"raw": "x"}}`` into ``token.raw``.
+    Without matching *any* segment, a flatten-before-redact ordering would ship
+    nested secrets unmasked whenever the sensitive name is a parent and the leaf
+    is benign (e.g. ``token.raw``, ``secret.value``, ``credential.blob``).
+    Segment matching is against ``.``-delimited whole segments, not substrings,
+    so non-sensitive keys like ``partition.key``, ``metrics.token_count``, and
+    ``tokenizer.name`` are left untouched. A benign leaf under a sensitive parent
+    (e.g. ``password.hint``) is fail-closed masked, which is the correct posture
+    for a security control.
     """
     normalized = normalize_key(key)
     if normalized in sensitive_keys:
         return True
-    if "." in normalized:
-        return normalized.rsplit(".", 1)[-1] in sensitive_keys
-    return False
+    return any(seg in sensitive_keys for seg in normalized.split("."))
 
 
 def mask_value(
