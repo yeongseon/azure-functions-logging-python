@@ -308,6 +308,18 @@ _OTEL_GENERIC_EXPORT_ENV_VARS: tuple[str, ...] = (
 )
 
 
+# Azure Monitor export settings. ``configure_azure_monitor()`` wires its
+# exporter from ``APPLICATIONINSIGHTS_CONNECTION_STRING`` and does not set any
+# ``PYTHON_*`` or ``OTEL_*_EXPORTER`` variable, so on the Microsoft-documented
+# ``configure_azure_monitor()`` -> ``setup_logging()`` path these logs are in
+# fact exported. Treat a connection string as a "user manages export" signal so
+# 6b does not cry wolf (issue #303).
+_AZURE_MONITOR_EXPORT_ENV_VARS: tuple[str, ...] = (
+    "APPLICATIONINSIGHTS_CONNECTION_STRING",
+    "AZURE_MONITOR_CONNECTION_STRING",
+)
+
+
 def warn_otel_logging_misconfig(
     *,
     functions_formatter: logging.Formatter | None = None,
@@ -327,9 +339,11 @@ def warn_otel_logging_misconfig(
       formatter does not affect what OpenTelemetry emits. It still applies to
       any non-OTel handler that coexists on the root logger, so this is a
       heads-up rather than an absolute "formatter has no effect" claim.
-    - **6b** — an OTel handler is present but neither telemetry env var is set:
-      the host may not export these logs. Worded tentatively because the
-      environment is not fully observable from inside the worker.
+    - **6b** — an OTel handler is present but no export signal is observable
+      (no telemetry env var, no generic OTLP exporter, and no Azure Monitor
+      connection string): the host may not export these logs. Worded
+      tentatively because the environment is not fully observable from inside
+      the worker.
     - **6c** — ``host.json`` requests ``telemetryMode: OpenTelemetry`` but no
       OTel handler is attached: most often a call-order mistake. Worded as an
       ordering hint rather than a definitive "worker unconfigured" claim, so it
@@ -350,9 +364,14 @@ def warn_otel_logging_misconfig(
             stacklevel=stacklevel,
         )
 
-    # 6b: OTel handler present but neither telemetry env var is set (tentative).
+    # 6b: OTel handler present but no export signal is observable (tentative).
     if has_otel_handler and not any(
-        os.environ.get(name) for name in (*_OTEL_TELEMETRY_ENV_VARS, *_OTEL_GENERIC_EXPORT_ENV_VARS)
+        os.environ.get(name)
+        for name in (
+            *_OTEL_TELEMETRY_ENV_VARS,
+            *_OTEL_GENERIC_EXPORT_ENV_VARS,
+            *_AZURE_MONITOR_EXPORT_ENV_VARS,
+        )
     ):
         joined = " or ".join(_OTEL_TELEMETRY_ENV_VARS)
         warnings.warn(
