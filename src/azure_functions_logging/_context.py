@@ -9,6 +9,8 @@ import logging
 import threading
 from typing import Any, NamedTuple
 
+from ._host_instance import get_host_instance_id
+
 # Type alias for the token mapping returned by inject_context()
 ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
 
@@ -63,6 +65,7 @@ class ContextFilter(logging.Filter):
         "trace_id",
         "span_id",
         "cold_start",
+        "host_instance_id",
     )
 
     def __init__(
@@ -95,6 +98,7 @@ class ContextFilter(logging.Filter):
         record.trace_id = trace_id_var.get()
         record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
+        record.host_instance_id = get_host_instance_id()
         for field_name, var in self._extra_context_vars.items():
             setattr(record, field_name, var.get())
         return True
@@ -351,6 +355,7 @@ CONTEXT_RECORD_FIELDS: tuple[str, ...] = (
     "trace_id",
     "span_id",
     "cold_start",
+    "host_instance_id",
 )
 
 
@@ -393,6 +398,7 @@ def _install_context_factory() -> None:
         record.trace_id = trace_id_var.get()
         record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
+        record.host_instance_id = get_host_instance_id()
         return record
 
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)

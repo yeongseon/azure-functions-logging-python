@@ -39,7 +39,7 @@ Azure Functions Python의 logging에는 일반 logging 라이브러리가 다루
 
 ## 무엇을 하는가
 
-- **호출 컨텍스트** — 모든 로그에 `invocation_id`, `function_name`, `cold_start`를 자동 주입
+- **호출 컨텍스트** — 모든 로그에 `invocation_id`, `function_name`, `cold_start`, `host_instance_id`(스케일아웃된 워커 인스턴스)를 자동 주입
 - **구조화된 JSON 출력** — Application Insights에 바로 적합한 NDJSON 포맷
 - **노이즈 제어** — `SamplingFilter`로 시끄러운 서드파티 로거의 비율을 제한
 - **PII 보호** — `RedactionFilter`로 민감 필드를 로그 집계에 도달하기 전에 마스킹
@@ -145,6 +145,7 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
  "message": "Processing order", "invocation_id": "abc-123-def",
  "function_name": "process_order", "trace_id": null, "cold_start": true,
+ "host_instance_id": "0d1f2a3b4c5d",
  "exception": null, "extra": {"order_id": "o-999"}}
 ```
 
@@ -284,6 +285,8 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 `logging_context(context)`([Quick Start](#quick-start) 참조)는 핸들러가 실행되는 동안 `invocation_id`, `function_name`, `trace_id`, `cold_start`를 바인딩하고, 종료 시 항상 이전 컨텍스트를 복원합니다. 더 낮은 수준의 제어가 필요하면 `inject_context()` / `restore_context()`를, 암묵적으로 주입하려면 `@with_context` 데코레이터(동기/비동기 핸들러 모두 지원)를 사용하세요.
 
 > **`cold_start` 의미.** `cold_start=True`는 모듈 로드 이후 이 Python 워커 프로세스가 처음 관찰한 호출을 의미합니다. 플랫폼 수준의 콜드 스타트 지표가 **아닙니다**.
+
+> **워커 인스턴스.** 모든 레코드는 로그를 생성한 워커 인스턴스를 나타내는 베스트 에포트 식별자인 `host_instance_id`도 함께 담습니다(`WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` 순으로 해석). 이는 Application Insights의 `cloud_RoleInstance`를 보완하지만 항상 동일하다고 보장하지는 않습니다.
 
 → [사용법: 컨텍스트 주입](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 

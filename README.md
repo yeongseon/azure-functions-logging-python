@@ -39,7 +39,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 
 ## What it does
 
-- **Invocation context** — auto-injects `invocation_id`, `function_name`, `cold_start` into every log
+- **Invocation context** — auto-injects `invocation_id`, `function_name`, `cold_start`, and `host_instance_id` (the scaled-out worker instance) into every log
 - **Structured JSON output** — Application Insights-ready NDJSON format for production
 - **Noise control** — `SamplingFilter` rate-limits chatty third-party loggers
 - **PII protection** — `RedactionFilter` masks sensitive fields before they reach log aggregation
@@ -308,6 +308,8 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 `logging_context(context)` (see [Quick Start](#quick-start)) binds `invocation_id`, `function_name`, `trace_id`, and `cold_start` for the duration of a handler and always restores the previous context on exit. For lower-level control use `inject_context()` / `restore_context()`, or the `@with_context` decorator to inject implicitly (sync and async handlers).
 
 > **`cold_start` semantics.** `cold_start=True` means the first invocation observed by this Python worker process after module load — **not** a platform-level cold-start metric.
+
+> **Worker instance.** Every record also carries `host_instance_id`, a best-effort identifier of the worker instance that produced the log (resolved from `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()`). It is complementary to, but not guaranteed equal to, Application Insights' `cloud_RoleInstance`.
 
 → [Usage: context injection](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 

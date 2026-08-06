@@ -77,6 +77,7 @@ _JSON_SCHEMA_KEYS: set[str] = {
     "trace_id",
     "span_id",
     "cold_start",
+    "host_instance_id",
     "exception",
     "extra",
 }
