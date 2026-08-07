@@ -24,6 +24,18 @@ METADATA_ATTR = "_azure_functions_metadata"
 #: Namespace owned by this package.
 NAMESPACE = "logging"
 
+#: Public, stable alias for :data:`NAMESPACE`.
+#:
+#: The presence of this key inside a handler's ``_azure_functions_metadata``
+#: dict is a **stable cross-repo contract**: sibling DX Toolkit decorators (e.g.
+#: ``@validate_http`` in ``azure-functions-validation``) may inspect it, using
+#: the literal string ``"logging"``, to detect decorator ordering *without
+#: importing this package*. In particular, when ``@validate_http`` receives a
+#: function that already carries this key, ``@with_context`` was applied first
+#: (inner), which is the wrong order (see logging#310). Do not rename this key
+#: without a coordinated change across the toolkit.
+LOGGING_METADATA_KEY = NAMESPACE
+
 #: Schema version for the ``logging`` namespace payload.
 LOGGING_METADATA_VERSION = 1
 
@@ -52,6 +64,9 @@ def set_logging_metadata(
     ``logging`` namespace, and writes the result onto ``wrapper`` only. The
     original ``func`` is left untouched so the metadata never leaks onto
     undecorated references.
+
+    Writing the ``"logging"`` key here is also what makes cross-repo decorator
+    ordering detection possible: see :data:`LOGGING_METADATA_KEY`.
     """
     existing = getattr(func, METADATA_ATTR, None)
     base: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}

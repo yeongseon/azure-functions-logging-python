@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from azure_functions_logging._metadata import (
+    LOGGING_METADATA_KEY,
     LOGGING_METADATA_VERSION,
     METADATA_ATTR,
     NAMESPACE,
@@ -98,3 +99,42 @@ class TestReadLoggingMetadata:
 
         setattr(func, METADATA_ATTR, {"logging": "not-a-dict"})
         assert read_logging_metadata(func) is None
+
+
+class TestOrderingDetectionContract:
+    """The ``"logging"`` key is a stable marker sibling packages inspect.
+
+    See logging#310 and the validation-repo follow-up for the full cross-repo
+    decorator-ordering contract.
+    """
+
+    def test_key_alias_matches_namespace(self) -> None:
+        assert LOGGING_METADATA_KEY == NAMESPACE == "logging"
+
+    def test_with_context_publishes_detectable_marker(self) -> None:
+        """After ``@with_context``, the shared attr carries the ``"logging"`` key.
+
+        This is the contract that lets ``@validate_http`` (in the validation
+        package) detect the wrong decorator order without importing this
+        package — it checks for exactly this key on the function it receives.
+        """
+        from azure_functions_logging import with_context
+
+        @with_context
+        def handler(req: object, context: object) -> None:
+            pass
+
+        meta = getattr(handler, METADATA_ATTR)
+        assert LOGGING_METADATA_KEY in meta
+        assert meta[LOGGING_METADATA_KEY]
+
+    def test_with_context_marker_present_async(self) -> None:
+        from azure_functions_logging import with_context
+
+        @with_context
+        async def handler(req: object, context: object) -> None:
+            pass
+
+        meta = getattr(handler, METADATA_ATTR)
+        assert LOGGING_METADATA_KEY in meta
+        assert meta[LOGGING_METADATA_KEY]
