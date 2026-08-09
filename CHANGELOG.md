@@ -1,6 +1,38 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.9.0] - 2026-08-09
+
+### Bug Fixes
+
+- *(host-config)* Treat Azure Monitor connection string as an OTel export signal (#306) 
+- *(redaction)* Mask any sensitive dotted segment to prevent PII leak (#305) 
+- *(filters)* Redact flattened dotted keys to prevent PII leak (#294) 
+
+### Documentation
+
+- Soften OpenTelemetry trace-correlation gap wording (#307) 
+- Emphasize Python-only OpenTelemetry invocation-middleware gap in READMEs (#301) 
+- *(otel)* Reframe distributed-tracing non-goal as "binds host trace context, does not trace" (#297) 
+- *(otel)* Clarify record mutation, late-handler filters, and root-logger wording (#296) 
+- *(agents)* Consolidate AGENT.md into AGENTS.md 
+
+### Features
+
+- *(metadata)* Document logging namespace key as cross-repo ordering contract (#310) (#311) 
+- Make trace-context activation strictly opt-in and remove factory shims (#295) 
+
+### Miscellaneous Tasks
+
+- Track issue priority via priority:* labels instead of body line 
+
+### Other
+
+- Bump version to 0.9.0 
+
+### Testing
+
+- *(otel)* Cover public-API trace correlation + redaction end-to-end (#300) 
 ## [0.8.1] - 2026-08-04
 
 ### Bug Fixes
@@ -10,6 +42,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - *(otel)* Document that in-handler spans become children of the host span 
 
 ### Miscellaneous Tasks
