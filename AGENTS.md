@@ -143,3 +143,10 @@ When using AI-assisted development:
 
 If it is not automated, it will drift.
 If it is not documented, it is not a stable rule.
+
+## Branch Hygiene
+
+- Merged PR branches are deleted automatically ("Automatically delete head branches" is enabled on this repository); keep that setting on.
+- When merging from the CLI, always pass `--delete-branch` (e.g. `gh pr merge --squash --delete-branch`) so the head branch is removed.
+- Never delete `main` or `gh-pages`, and never delete a branch that still has an open PR.
+- Run `git fetch -p` periodically to prune stale local tracking refs.
