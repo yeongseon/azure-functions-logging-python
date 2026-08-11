@@ -1,6 +1,25 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.0] - 2026-08-11
+
+### Documentation
+
+- *(release)* Require cookbook dogfood verification after publish 
+
+### Features
+
+- Add host_instance_id field for scaled-out worker attribution (#309) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump ruff from 0.16.0 to 0.16.1 (#312) 
+- *(deps)* Bump azure/login from 3.0.0 to 3.0.1 (#314) 
+- *(codeql)* Bump codeql-action init+analyze to v4.37.6 together 
+
+### Other
+
+- Bump version to 0.10.0 
 ## [0.9.0] - 2026-08-09
 
 ### Bug Fixes
@@ -11,6 +30,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Soften OpenTelemetry trace-correlation gap wording (#307) 
 - Emphasize Python-only OpenTelemetry invocation-middleware gap in READMEs (#301) 
 - *(otel)* Reframe distributed-tracing non-goal as "binds host trace context, does not trace" (#297) 
