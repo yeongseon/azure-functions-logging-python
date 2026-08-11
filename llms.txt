@@ -1,0 +1,25 @@
+# Azure Functions Logging
+
+> Developer-friendly structured logging helpers for Azure Functions Python.
+
+Part of the **Azure Functions Python DX Toolkit**. Drop-in structured (JSON) logging with context injection and binding for Azure Functions Python, so logs are queryable in Application Insights without boilerplate. Install from PyPI with `pip install azure-functions-logging`.
+
+## Getting Started
+- [Installation](https://yeongseon.github.io/azure-functions-logging-python/installation/): Install the package.
+- [Quickstart](https://yeongseon.github.io/azure-functions-logging-python/getting-started/): Minimal end-to-end example.
+- [Configuration](https://yeongseon.github.io/azure-functions-logging-python/configuration/): Configure formatters and levels.
+
+## User Guide
+- [Usage](https://yeongseon.github.io/azure-functions-logging-python/usage/): Helper reference and injection modes.
+- [Architecture](https://yeongseon.github.io/azure-functions-logging-python/architecture/): How the logging pipeline works.
+
+## Examples
+- [Basic Setup](https://yeongseon.github.io/azure-functions-logging-python/examples/basic_setup/): Get started fast.
+- [JSON Output](https://yeongseon.github.io/azure-functions-logging-python/examples/json_output/): Structured logs.
+- [Context Injection](https://yeongseon.github.io/azure-functions-logging-python/examples/context_injection/): Enrich records with context.
+- [Third-Party Noise Control](https://yeongseon.github.io/azure-functions-logging-python/examples/third_party_noise_control/): Quiet noisy loggers.
+
+## Reference
+- [API Reference](https://yeongseon.github.io/azure-functions-logging-python/api/): Public API surface.
+- [FAQ](https://yeongseon.github.io/azure-functions-logging-python/faq/): Frequently asked questions.
+- [Troubleshooting](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/): Common issues and fixes.
