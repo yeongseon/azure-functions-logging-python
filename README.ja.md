@@ -39,7 +39,7 @@ Azure Functions Python のロギングには、汎用的なロギングライブ
 
 ## 何をするのか
 
-- **呼び出しコンテキスト** — すべてのログに `invocation_id`, `function_name`, `cold_start` を自動注入
+- **呼び出しコンテキスト** — すべてのログに `invocation_id`, `function_name`, `cold_start`, `host_instance_id`（スケールアウトされたワーカーインスタンス）を自動注入
 - **構造化 JSON 出力** — Application Insights にそのまま使える NDJSON フォーマット
 - **ノイズ制御** — `SamplingFilter` がうるさいサードパーティロガーをレート制限
 - **PII 保護** — `RedactionFilter` が機密フィールドをログ集約に到達する前にマスキング
@@ -145,6 +145,7 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
  "message": "Processing order", "invocation_id": "abc-123-def",
  "function_name": "process_order", "trace_id": null, "cold_start": true,
+ "host_instance_id": "0d1f2a3b4c5d",
  "exception": null, "extra": {"order_id": "o-999"}}
 ```
 
@@ -284,6 +285,8 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 `logging_context(context)`（[Quick Start](#quick-start) 参照）はハンドラの実行期間中 `invocation_id`、`function_name`、`trace_id`、`cold_start` をバインドし、終了時には常に以前のコンテキストを復元します。より低レベルな制御が必要な場合は `inject_context()` / `restore_context()` を、暗黙的に注入するには `@with_context` デコレータ（同期/非同期ハンドラの両方をサポート）を使用します。
 
 > **`cold_start` の意味。** `cold_start=True` はモジュールロード後にこの Python ワーカープロセスが初めて観測した呼び出しを意味します。プラットフォームレベルのコールドスタート指標では **ありません**。
+
+> **ワーカーインスタンス。** すべてのレコードには、ログを生成したワーカーインスタンスを示すベストエフォートの識別子 `host_instance_id` も含まれます（`WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` の順で解決）。これは Application Insights の `cloud_RoleInstance` を補完しますが、常に一致することは保証されません。
 
 → [使い方: コンテキスト注入](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 

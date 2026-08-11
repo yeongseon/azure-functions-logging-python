@@ -39,7 +39,7 @@ Azure Functions Python 的日志记录有一些通用日志库无法处理的特
 
 ## 它做什么
 
-- **调用上下文** — 自动将 `invocation_id`、`function_name`、`cold_start` 注入每条日志
+- **调用上下文** — 自动将 `invocation_id`、`function_name`、`cold_start`、`host_instance_id`（横向扩展的工作实例）注入每条日志
 - **结构化 JSON 输出** — 适用于 Application Insights 的 NDJSON 格式
 - **噪声控制** — `SamplingFilter` 限制嘈杂第三方日志的速率
 - **PII 保护** — `RedactionFilter` 在敏感字段到达日志聚合之前进行脱敏
@@ -145,6 +145,7 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
 {"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
  "message": "Processing order", "invocation_id": "abc-123-def",
  "function_name": "process_order", "trace_id": null, "cold_start": true,
+ "host_instance_id": "0d1f2a3b4c5d",
  "exception": null, "extra": {"order_id": "o-999"}}
 ```
 
@@ -284,6 +285,8 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 `logging_context(context)`（参见 [Quick Start](#quick-start)）在处理函数执行期间绑定 `invocation_id`、`function_name`、`trace_id` 和 `cold_start`，并始终在退出时恢复先前的上下文。如需更底层的控制，可使用 `inject_context()` / `restore_context()`，或使用 `@with_context` 装饰器隐式注入（支持同步和异步处理函数）。
 
 > **`cold_start` 语义。** `cold_start=True` 表示本 Python worker 进程在模块加载后观察到的首次调用 —— **并非**平台级别的冷启动指标。
+
+> **工作实例。** 每条记录还携带 `host_instance_id`，这是产生该日志的工作实例的尽力而为的标识符（按 `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` 的顺序解析）。它是 Application Insights 的 `cloud_RoleInstance` 的补充，但不保证与其完全一致。
 
 → [Usage: context injection](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
 

@@ -77,7 +77,7 @@ logger.info("service started", service="orders", region="eastus")
 Typical JSON event shape:
 
 ```json
-{"timestamp":"...","level":"INFO","logger":"orders","message":"service started","invocation_id":null,"function_name":null,"trace_id":null,"cold_start":null,"exception":null,"extra":{"service":"orders","region":"eastus"}}
+{"timestamp":"...","level":"INFO","logger":"orders","message":"service started","invocation_id":null,"function_name":null,"trace_id":null,"cold_start":null,"host_instance_id":"0d1f2a3b4c5d","exception":null,"extra":{"service":"orders","region":"eastus"}}
 ```
 
 JSON best practices:
@@ -113,6 +113,7 @@ Fields populated from context:
 - `function_name`
 - `trace_id`
 - `cold_start`
+- `host_instance_id`
 
 Why it matters:
 
@@ -175,6 +176,25 @@ No manual state tracking needed.
 
 !!! note "What `cold_start` actually measures"
     `cold_start=True` means *the first invocation observed by this Python worker process after module load*. It is **not** a platform-level cold start metric and does not correspond to App Service plan / instance allocation cold starts reported by Azure Functions metrics. The flag is process-global and flips back to `False` after the first `inject_context()` call on the worker.
+
+### Worker instance identification
+
+In scale-out, Azure Functions spreads invocations across multiple worker instances. Every log record carries `host_instance_id` so you can attribute logs to the specific worker that produced them.
+
+The value is resolved once per worker process (cached, and recomputed per PID so forked workers get their own identity) from the first non-empty source in this order:
+
+1. `WEBSITE_INSTANCE_ID`
+2. `WEBSITE_POD_NAME`
+3. `CONTAINER_NAME`
+4. `socket.gethostname()`
+
+This mirrors the Azure Functions host's own instance-id logic (`EnvironmentExtensions.GetInstanceId`) and the OpenTelemetry Azure resource detector's `faas.instance` precedence. `WEBSITE_INSTANCE_ID` is present on App Service / Dedicated / Elastic Premium / Windows Consumption, but is typically absent on Linux/Flex Consumption and container-based hosting (Container Apps), where `WEBSITE_POD_NAME` / `CONTAINER_NAME` are used instead. `socket.gethostname()` is a last-resort fallback so local and non-Azure runs still get a value; if every source fails, the field is `null`.
+
+!!! note "Relationship to Application Insights `cloud_RoleInstance`"
+    `host_instance_id` is a best-effort worker-instance identifier. It is **complementary to, but not guaranteed equal to,** Application Insights' `cloud_RoleInstance`. Because the hostname fallback can surface a container/machine name, operators should be aware the field may contain infrastructure hostnames.
+
+!!! warning "`host_instance_id` is a reserved key"
+    When `setup_logging(use_record_factory=True)` is active, `host_instance_id` is a reserved LogRecord attribute (like the other context fields). Passing it via `extra=` to a stdlib logger raises `KeyError` — choose a different key name.
 
 ### Example with Duration
 

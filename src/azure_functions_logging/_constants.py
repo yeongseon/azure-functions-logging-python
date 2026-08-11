@@ -16,6 +16,7 @@ _LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(
     {
         "cold_start",
         "function_name",
+        "host_instance_id",
         "invocation_id",
         "span_id",
         "trace_id",

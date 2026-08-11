@@ -103,7 +103,7 @@ Practical recommendation:
 
 `use_record_factory` is an opt-in flag that also installs a global
 `logging.LogRecordFactory` so context fields (`invocation_id`, `function_name`,
-`trace_id`, `cold_start`) are injected at LogRecord creation time. It guarantees
+`trace_id`, `cold_start`, `host_instance_id`) are injected at LogRecord creation time. It guarantees
 context propagation even when handler filters are misconfigured or bypassed by
 third-party logging setups.
 
@@ -122,8 +122,8 @@ Behavior details:
   record-creation time survive thread hops, queued handlers, and delayed flushes
   (no filter runs at handler dispatch time to overwrite the snapshot).
 - Modifies the **global** `LogRecordFactory` and affects all loggers in the process.
-- The four context field names (`invocation_id`, `function_name`, `trace_id`,
-  `cold_start`) become reserved on every LogRecord; prefer `FunctionLogger`
+- The context field names (`invocation_id`, `function_name`, `trace_id`,
+  `span_id`, `cold_start`, `host_instance_id`) become reserved on every LogRecord; prefer `FunctionLogger`
   (which sanitizes `extra` keys) when this option is enabled.
 - Input validation (e.g. `format`) runs **before** the factory is installed, so
   invalid arguments raise `ValueError` without any global side effects.

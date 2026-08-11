@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Any
 
+from ._host_instance import get_host_instance_id
 from ._logger import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
 
 _STANDARD_RECORD_FIELDS: frozenset[str] = _STDLIB_RECORD_KEYS
@@ -173,6 +174,7 @@ class JsonFormatter(logging.Formatter):
             "trace_id": getattr(record, "trace_id", None),
             "span_id": getattr(record, "span_id", None),
             "cold_start": getattr(record, "cold_start", None),
+            "host_instance_id": getattr(record, "host_instance_id", None) or get_host_instance_id(),
             "exception": exception,
             "extra": extra,
         }
@@ -230,6 +232,7 @@ def _emergency_payload(record: logging.LogRecord) -> str:
             "trace_id": None,
             "span_id": None,
             "cold_start": None,
+            "host_instance_id": None,
             "exception": None,
             "extra": {"__serialization_error__": True},
         },
