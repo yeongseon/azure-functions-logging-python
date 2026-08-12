@@ -176,7 +176,7 @@ sequenceDiagram
 
     Trigger->>Handler: invoke with func.Context
     Handler->>CTX: inject_context(context)
-    CTX->>Vars: set invocation_id, function_name, trace_id, cold_start
+    CTX->>Vars: set invocation_id, function_name, trace_id, span_id, cold_start
     Handler->>Handler: logger.info("Processing request")
     alt default mode (ContextFilter)
         Handler->>CF: LogRecord passes through filter
@@ -278,7 +278,7 @@ For production teams, this architecture means:
 
 ### 3. contextvars for invocation metadata
 
-Invocation-scoped metadata (`invocation_id`, `function_name`, `trace_id`, `cold_start`) is stored in `contextvars` rather than thread-locals or logger attributes. This provides automatic async-task isolation and avoids polluting the global logger namespace.
+Invocation-scoped metadata (`invocation_id`, `function_name`, `trace_id`, `span_id`, `cold_start`) is stored in `contextvars` rather than thread-locals or logger attributes. This provides automatic async-task isolation and avoids polluting the global logger namespace.
 
 ### 4. Wrapper over logger subclass
 

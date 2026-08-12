@@ -105,7 +105,7 @@ Practical recommendation:
 
 `use_record_factory` is an opt-in flag that also installs a global
 `logging.LogRecordFactory` so context fields (`invocation_id`, `function_name`,
-`trace_id`, `cold_start`, `host_instance_id`) are injected at LogRecord creation time. It guarantees
+`trace_id`, `span_id`, `cold_start`, `host_instance_id`) are injected at LogRecord creation time. It guarantees
 context propagation even when handler filters are misconfigured or bypassed by
 third-party logging setups.
 

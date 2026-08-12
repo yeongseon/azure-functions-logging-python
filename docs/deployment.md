@@ -19,7 +19,7 @@ The sample exposes two HTTP functions:
 This deployment is logging-focused:
 
 - Application logs are emitted as structured JSON using `afl.JsonFormatter()`
-- Invocation context (`invocation_id`, `function_name`, `trace_id`, `cold_start`) is injected via `@afl.with_context`
+- Invocation context (`invocation_id`, `function_name`, `trace_id`, `span_id`, `cold_start`) is injected via `@afl.with_context`
 - Logs are verified in both live stream and Application Insights (with KQL)
 
 ## Azure concepts you need for this guide
