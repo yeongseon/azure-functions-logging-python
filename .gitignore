@@ -30,3 +30,7 @@ site/
 
 # Review
 .venv-review/
+
+# Agent orchestration state
+.sisyphus/
+.omc/
