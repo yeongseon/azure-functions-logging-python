@@ -293,7 +293,7 @@ def handler(req, context=None):
 
 
 metadata = get_logging_metadata(handler)
-# -> {"param": "context", ...} or None if not decorated
+# -> {"version": 1, "context_param": "context"} or None if not decorated
 ```
 
 ## logging_context

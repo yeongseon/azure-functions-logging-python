@@ -265,7 +265,7 @@ curl -s "$BASE_URL/api/logme?correlation_id=stream-check-001"
 You should see host lines plus an NDJSON line similar to:
 
 ```text
-{"timestamp":"2025-01-15T10:35:00.123456+00:00","level":"INFO","logger":"function_app","message":"e2e log entry","invocation_id":"ab2a5eb3-1f80-46ea-a818-601ca6ed1111","function_name":"logme","trace_id":null,"cold_start":null,"exception":null,"extra":{"correlation_id":"stream-check-001"}}
+{"timestamp":"2025-01-15T10:35:00.123456+00:00","level":"INFO","logger":"function_app","message":"e2e log entry","invocation_id":"ab2a5eb3-1f80-46ea-a818-601ca6ed1111","function_name":"logme","trace_id":null,"span_id":null,"cold_start":null,"host_instance_id":null,"exception":null,"extra":{"correlation_id":"stream-check-001"}}
 ```
 
 If this line is not JSON, re-check Step 4 (`afl.JsonFormatter()`).

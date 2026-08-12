@@ -35,9 +35,15 @@ Public symbols intentionally kept small:
 - `FunctionLogger`
 - `JsonFormatter`
 - `inject_context`
+- `logging_context`
+- `reset_context`
+- `restore_context`
+- `ContextTokens`
 - `with_context`
+- `get_logging_metadata`
 - `RedactionFilter`
 - `SamplingFilter`
+- `AttributeFlattenFilter`
 - `__version__`
 Everything else remains internal to keep migration and evolution manageable. (`__version__` is exported for programmatic version checks.)
 
@@ -140,6 +146,7 @@ Invocation metadata is carried through `contextvars`:
 - `invocation_id_var`
 - `function_name_var`
 - `trace_id_var`
+- `span_id_var`
 - `cold_start_var`
 
 Benefits of `contextvars`:
