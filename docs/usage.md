@@ -77,7 +77,7 @@ logger.info("service started", service="orders", region="eastus")
 Typical JSON event shape:
 
 ```json
-{"timestamp":"...","level":"INFO","logger":"orders","message":"service started","invocation_id":null,"function_name":null,"trace_id":null,"cold_start":null,"host_instance_id":"0d1f2a3b4c5d","exception":null,"extra":{"service":"orders","region":"eastus"}}
+{"timestamp":"...","level":"INFO","logger":"orders","message":"service started","invocation_id":null,"function_name":null,"trace_id":null,"span_id":null,"cold_start":null,"host_instance_id":"0d1f2a3b4c5d","exception":null,"extra":{"service":"orders","region":"eastus"}}
 ```
 
 JSON best practices:
@@ -112,6 +112,7 @@ Fields populated from context:
 - `invocation_id`
 - `function_name`
 - `trace_id`
+- `span_id`
 - `cold_start`
 - `host_instance_id`
 

@@ -35,9 +35,15 @@ Public symbols intentionally kept small:
 - `FunctionLogger`
 - `JsonFormatter`
 - `inject_context`
+- `logging_context`
+- `reset_context`
+- `restore_context`
+- `ContextTokens`
 - `with_context`
+- `get_logging_metadata`
 - `RedactionFilter`
 - `SamplingFilter`
+- `AttributeFlattenFilter`
 - `__version__`
 Everything else remains internal to keep migration and evolution manageable. (`__version__` is exported for programmatic version checks.)
 
@@ -140,6 +146,7 @@ Invocation metadata is carried through `contextvars`:
 - `invocation_id_var`
 - `function_name_var`
 - `trace_id_var`
+- `span_id_var`
 - `cold_start_var`
 
 Benefits of `contextvars`:
@@ -169,7 +176,7 @@ sequenceDiagram
 
     Trigger->>Handler: invoke with func.Context
     Handler->>CTX: inject_context(context)
-    CTX->>Vars: set invocation_id, function_name, trace_id, cold_start
+    CTX->>Vars: set invocation_id, function_name, trace_id, span_id, cold_start
     Handler->>Handler: logger.info("Processing request")
     alt default mode (ContextFilter)
         Handler->>CF: LogRecord passes through filter
@@ -271,7 +278,7 @@ For production teams, this architecture means:
 
 ### 3. contextvars for invocation metadata
 
-Invocation-scoped metadata (`invocation_id`, `function_name`, `trace_id`, `cold_start`) is stored in `contextvars` rather than thread-locals or logger attributes. This provides automatic async-task isolation and avoids polluting the global logger namespace.
+Invocation-scoped metadata (`invocation_id`, `function_name`, `trace_id`, `span_id`, `cold_start`) is stored in `contextvars` rather than thread-locals or logger attributes. This provides automatic async-task isolation and avoids polluting the global logger namespace.
 
 ### 4. Wrapper over logger subclass
 

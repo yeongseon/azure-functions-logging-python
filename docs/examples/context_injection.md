@@ -4,7 +4,7 @@
 
 ## Goal
 
-Call `inject_context(context)` once per invocation and observe `invocation_id`, `function_name`, `trace_id`, and `cold_start` in logs.
+Call `inject_context(context)` once per invocation and observe `invocation_id`, `function_name`, `trace_id`, `span_id`, and `cold_start` in logs.
 
 ## Baseline Handler
 
@@ -32,6 +32,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 | `invocation_id` | `context.invocation_id` | `9f87...` |
 | `function_name` | `context.function_name` | `hello` |
 | `trace_id` | `context.trace_context.trace_parent` (trace ID portion) | `7ed7...` |
+| `span_id` | `context.trace_context.trace_parent` (span ID portion) | `b7ad...` |
 | `cold_start` | internal first-call detection | `true` or `false` |
 
 ## Why Call It Early

@@ -13,6 +13,8 @@ def setup_logging(
     functions_formatter: logging.Formatter | None = None,
     host_json_path: Path | str | None = None,
     use_record_factory: bool = False,
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+    activate_trace_context: bool | None = None,
 ) -> None
 ```
 
@@ -103,7 +105,7 @@ Practical recommendation:
 
 `use_record_factory` is an opt-in flag that also installs a global
 `logging.LogRecordFactory` so context fields (`invocation_id`, `function_name`,
-`trace_id`, `cold_start`, `host_instance_id`) are injected at LogRecord creation time. It guarantees
+`trace_id`, `span_id`, `cold_start`, `host_instance_id`) are injected at LogRecord creation time. It guarantees
 context propagation even when handler filters are misconfigured or bypassed by
 third-party logging setups.
 
@@ -127,6 +129,25 @@ Behavior details:
   (which sanitizes `extra` keys) when this option is enabled.
 - Input validation (e.g. `format`) runs **before** the factory is installed, so
   invalid arguments raise `ValueError` without any global side effects.
+
+## Parameter: `extra_context_vars`
+
+`extra_context_vars` is an optional mapping of `field_name -> contextvars.ContextVar`
+whose current values `ContextFilter` copies onto each `LogRecord`, alongside the
+built-in context fields. Field names must not collide with the built-in fields.
+This only applies to the `ContextFilter` strategy and is ignored when
+`use_record_factory=True`.
+
+## Parameter: `activate_trace_context`
+
+`activate_trace_context` sets the process-wide default that `logging_context` and
+`with_context` consult to attach the host's W3C trace context (via OpenTelemetry),
+making OTel log records inherit the host span's `trace_id`/`span_id`. It requires
+the `[otel]` extra and degrades to a silent no-op when OpenTelemetry is not
+installed. `True`/`False` force the default on/off; the default `None` leaves the
+stored default unchanged (which itself defaults to `False` — activation is
+strictly opt-in). A per-call `activate_trace_context` argument overrides this default.
+
 ## Idempotency and Reconfiguration
 
 `setup_logging()` uses internal setup state to guarantee idempotency.
