@@ -82,7 +82,9 @@ def log_after(req: func.HttpRequest, context: func.Context) -> func.HttpResponse
                 "endpoint": "after",
             },
         )
-        logger.warning("Every log carries invocation_id, function_name, and cold_start automatically")
+        logger.warning(
+            "Every log carries invocation_id, function_name, and cold_start automatically"
+        )
 
         return func.HttpResponse(
             json.dumps({"endpoint": "after", "correlation_id": correlation_id}),
@@ -90,6 +92,7 @@ def log_after(req: func.HttpRequest, context: func.Context) -> func.HttpResponse
         )
     finally:
         afl.restore_context(tokens)
+
 
 # ── legacy alias (e2e test compatibility) ────────────────────────────────
 
