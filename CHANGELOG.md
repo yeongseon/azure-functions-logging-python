@@ -1,10 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.1] - 2026-08-12
+
+### Bug Fixes
+
+- *(otel)* Skip attaching invalid extracted span context (#316) 
+
+### Documentation
+
+- Add Branch Hygiene section to AGENTS.md 
+
+### Other
+
+- Bump version to 0.10.1 
 ## [0.10.0] - 2026-08-11
 
 ### Documentation
 
+- Update changelog 
 - *(release)* Require cookbook dogfood verification after publish 
 
 ### Features
