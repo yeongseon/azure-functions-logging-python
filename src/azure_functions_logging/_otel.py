@@ -44,7 +44,7 @@ def is_available() -> bool:
     if _available is not None:
         return _available
     try:
-        import opentelemetry.context  # noqa: F401
+        import opentelemetry.context
         import opentelemetry.propagate  # noqa: F401
     except Exception:  # nosec B110 — optional dependency; absence is expected
         _available = False
