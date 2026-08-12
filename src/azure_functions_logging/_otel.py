@@ -79,6 +79,8 @@ def activated_trace_context(
 
     * *trace_parent* is empty/``None``;
     * OpenTelemetry is not installed (:func:`is_available` is ``False``);
+    * the extracted span context is invalid (a no-op span) -- attaching it
+      would break the trace tree, so the current context is left untouched;
     * extraction/attach fails for any reason (malformed header, etc.).
 
     Args:
@@ -91,6 +93,7 @@ def activated_trace_context(
 
     try:
         from opentelemetry import context as otel_context
+        from opentelemetry import trace as otel_trace
         from opentelemetry.propagate import extract as otel_extract
     except Exception:  # nosec B110 — optional dependency; degrade to no-op
         yield
@@ -102,7 +105,14 @@ def activated_trace_context(
 
     token = None
     try:
-        token = otel_context.attach(otel_extract(carrier))
+        extracted = otel_extract(carrier)
+        # Only attach a valid remote span context. An invalid/no-op span
+        # context (e.g. the host emitted no real trace) must not be attached,
+        # otherwise downstream log records get parented to an invalid context
+        # and the trace tree breaks. Leave the current context untouched.
+        span_context = otel_trace.get_current_span(extracted).get_span_context()
+        if span_context.is_valid:
+            token = otel_context.attach(extracted)
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         token = None
 

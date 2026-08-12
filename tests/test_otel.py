@@ -21,6 +21,9 @@ from azure_functions_logging import _otel
 _TRACE_ID_HEX = "4bf92f3577b34da6a3ce929d0e0e4736"
 _PARENT_ID_HEX = "00f067aa0ba902b7"
 _TRACEPARENT = f"00-{_TRACE_ID_HEX}-{_PARENT_ID_HEX}-01"
+# All-zero trace-id/span-id: structurally well-formed but an INVALID (no-op)
+# span context once extracted.
+_INVALID_TRACEPARENT = "00-00000000000000000000000000000000-0000000000000000-00"
 
 
 @pytest.fixture(autouse=True)
@@ -94,6 +97,36 @@ def test_activated_trace_context_survives_malformed_traceparent() -> None:
     # A structurally invalid traceparent must never raise out of the CM.
     with _otel.activated_trace_context("not-a-valid-traceparent"):
         pass
+
+
+def test_activated_trace_context_skips_invalid_span_context() -> None:
+    # An extracted but INVALID (no-op) span context must not be attached;
+    # attaching it would parent downstream records to an invalid context and
+    # break the trace tree. The current context must be left untouched.
+    pytest.importorskip("opentelemetry.context")
+    from opentelemetry import trace
+
+    assert not trace.get_current_span().get_span_context().is_valid
+    with _otel.activated_trace_context(_INVALID_TRACEPARENT):
+        assert not trace.get_current_span().get_span_context().is_valid
+    assert not trace.get_current_span().get_span_context().is_valid
+
+
+def test_activated_trace_context_invalid_preserves_existing_context() -> None:
+    # A nested activation with an invalid traceparent must NOT detach or clear
+    # an already-active valid host span context (Oracle risk: no accidental
+    # clobber of the surrounding context).
+    pytest.importorskip("opentelemetry.context")
+    from opentelemetry import trace
+
+    with _otel.activated_trace_context(_TRACEPARENT):
+        assert trace.get_current_span().get_span_context().is_valid
+        with _otel.activated_trace_context(_INVALID_TRACEPARENT):
+            inner = trace.get_current_span().get_span_context()
+            assert inner.is_valid
+            assert format(inner.trace_id, "032x") == _TRACE_ID_HEX
+        assert trace.get_current_span().get_span_context().is_valid
+    assert not trace.get_current_span().get_span_context().is_valid
 
 
 # ---------------------------------------------------------------------------
