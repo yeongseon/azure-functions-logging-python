@@ -15,6 +15,8 @@
 
 다른 언어로 보기: [English](README.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
+> ℹ️ 이 번역은 커뮤니티가 관리하는 참고용 문서로, 최신 [English README](README.md)보다 뒤처질 수 있습니다. 정확한 최신 정보는 영어 원문을 기준으로 하세요.
+
 **Azure Functions Python v2를 위한 호출(invocation) 인지 가능한 관측성(observability).**
 `invocation_id`를 노출하고, cold start를 감지하며, `host.json` 설정 오류를 경고하고, Application Insights에 바로 사용 가능한 구조화된 로그를 출력합니다 — Python 표준 `logging`을 대체하지 않습니다.
 

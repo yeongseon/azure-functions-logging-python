@@ -15,6 +15,8 @@
 
 阅读其他语言版本: [English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md)
 
+> ℹ️ 本翻译由社区维护，仅供参考，可能落后于最新的 [English README](README.md)。请以英文版为准。
+
 **面向 Azure Functions Python v2 的、感知调用（invocation-aware）的可观测性。**
 暴露 `invocation_id`，检测冷启动，对 `host.json` 错误配置发出警告，并输出可直接用于 Application Insights 的结构化日志 — 不替换 Python 标准 `logging`。
 
