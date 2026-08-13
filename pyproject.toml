@@ -23,8 +23,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://yeongseon.github.io/azure-functions-logging-python/"
-Documentation = "https://yeongseon.github.io/azure-functions-logging-python/"
+Homepage = "https://yeongseon.dev/azure-functions-python/logging/"
+Documentation = "https://yeongseon.dev/azure-functions-python/logging/"
 Repository = "https://github.com/yeongseon/azure-functions-logging-python"
 Issues = "https://github.com/yeongseon/azure-functions-logging-python/issues"
 

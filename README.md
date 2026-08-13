@@ -10,7 +10,7 @@
 [![Security Scans](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml)
 [![codecov](https://codecov.io/gh/yeongseon/azure-functions-logging-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-logging-python)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
-[![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-logging-python/)
+[![Docs](https://img.shields.io/badge/docs-yeongseon.dev-blue)](https://yeongseon.dev/azure-functions-python/logging/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Read this in: [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
@@ -63,7 +63,7 @@ with logging_context(context):
     logger.info("processing")  # OpenTelemetry record inherits the invocation trace_id / span_id
 ```
 
-This is **correlation, not tracing** — the library never creates, records, or exports spans itself. It is complementary to (not a replacement for) OpenTelemetry or the Application Insights SDK, which remain responsible for producing spans. See the [OpenTelemetry trace correlation guide](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/).
+This is **correlation, not tracing** — the library never creates, records, or exports spans itself. It is complementary to (not a replacement for) OpenTelemetry or the Application Insights SDK, which remain responsible for producing spans. See the [OpenTelemetry trace correlation guide](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/).
 
 Prefer per-call activation? Skip the process-wide default and pass it directly: `with logging_context(context, activate_trace_context=True):`.
 
@@ -221,7 +221,7 @@ traces
 This package does not own:
 
 - **Replacing stdlib logging** — it wraps and enriches Python's standard `logging`, never replaces it
-- **Distributed tracing** — it **binds** the Azure Functions host's W3C trace context so your existing OpenTelemetry log records inherit the invocation span's `trace_id` / `span_id`, but it never creates, records, or exports spans itself — correlation, not tracing. Use OpenTelemetry or the Application Insights SDK to produce spans. See [OpenTelemetry trace correlation](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)
+- **Distributed tracing** — it **binds** the Azure Functions host's W3C trace context so your existing OpenTelemetry log records inherit the invocation span's `trace_id` / `span_id`, but it never creates, records, or exports spans itself — correlation, not tracing. Use OpenTelemetry or the Application Insights SDK to produce spans. See [OpenTelemetry trace correlation](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/)
 - **API documentation** — use [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python) for API documentation and spec generation
 
 ## Installation
@@ -301,7 +301,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## Core capabilities
 
-Every capability below has a full how-to on the [documentation site](https://yeongseon.github.io/azure-functions-logging-python/) — this section summarizes what each does and links to the single source, so the README stays a quick overview rather than a second copy of the docs.
+Every capability below has a full how-to on the [documentation site](https://yeongseon.dev/azure-functions-python/logging/) — this section summarizes what each does and links to the single source, so the README stays a quick overview rather than a second copy of the docs.
 
 ### Invocation context
 
@@ -311,43 +311,43 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 > **Worker instance.** Every record also carries `host_instance_id`, a best-effort identifier of the worker instance that produced the log (resolved from `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()`). It is complementary to, but not guaranteed equal to, Application Insights' `cloud_RoleInstance`.
 
-→ [Usage: context injection](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
+→ [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
 ### Structured JSON output
 
 Pass `setup_logging(functions_formatter=JsonFormatter())` to emit Application Insights-ready NDJSON on host-managed handlers (or `format="json"` for standalone/CI). Extra fields land under `extra`; opt into `truncate_native_strings=True` to clip long string values.
 
-→ [Usage: JSON output](https://yeongseon.github.io/azure-functions-logging-python/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.github.io/azure-functions-logging-python/api/#jsonformatter)
+→ [Usage: JSON output](https://yeongseon.dev/azure-functions-python/logging/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.dev/azure-functions-python/logging/api/#jsonformatter)
 
 ### host.json conflict detection
 
 At startup the library warns when your `host.json` — or `AzureFunctionsJobHost__logging__logLevel__...` app-setting overrides — suppresses levels your app emits. `host.json` is auto-discovered by walking up from the working directory (or `AzureWebJobsScriptRoot`); pass `host_json_path=` to override.
 
-→ [Configuration: host.json conflict](https://yeongseon.github.io/azure-functions-logging-python/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/#hostjson-conflict-warning-appears)
+→ [Configuration: host.json conflict](https://yeongseon.dev/azure-functions-python/logging/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/#hostjson-conflict-warning-appears)
 
 ### Noise control & PII redaction
 
 `SamplingFilter` rate-limits chatty third-party loggers (e.g. `azure-core`, `urllib3`); `RedactionFilter` masks sensitive keys (passwords, tokens, secrets, connection strings, and more — case-insensitive, recursive) before logs reach aggregation. Attach either to your root handlers, and pass `sensitive_keys=[...]` to customize redaction.
 
-→ [API: `SamplingFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#redactionfilter)
+→ [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### Context binding
 
 `logger.bind(key=value)` returns a logger that attaches request-scoped metadata to every subsequent log without threading it through each call. Create bound loggers per-invocation; don't cache them at module level.
 
-→ [Usage: context binding](https://yeongseon.github.io/azure-functions-logging-python/usage/#4-context-binding-with-functionloggerbind)
+→ [Usage: context binding](https://yeongseon.dev/azure-functions-python/logging/usage/#4-context-binding-with-functionloggerbind)
 
 ### Global LogRecordFactory (opt-in)
 
 `setup_logging(use_record_factory=True)` installs a global `LogRecordFactory` that injects context at record-creation time so **every** `LogRecord` carries it regardless of handler/filter wiring — useful when handlers are added after `setup_logging()` or loggers bypass the filter chain. It is mutually exclusive with the default `ContextFilter` mode.
 
-→ [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory)
+→ [Configuration: `use_record_factory`](https://yeongseon.dev/azure-functions-python/logging/configuration/#parameter-use_record_factory)
 
 ### Local vs cloud
 
 `setup_logging()` detects `FUNCTIONS_WORKER_RUNTIME`: colorized human-readable output locally, host-managed NDJSON in Azure / Core Tools (context filters only — no duplicate handlers), and machine-parseable JSON in CI.
 
-→ [Configuration: environment detection](https://yeongseon.github.io/azure-functions-logging-python/configuration/#environment-detection)
+→ [Configuration: environment detection](https://yeongseon.dev/azure-functions-python/logging/configuration/#environment-detection)
 
 ## When to use
 
@@ -359,10 +359,10 @@ At startup the library warns when your `host.json` — or `AzureFunctionsJobHost
 
 ## Documentation
 
-- Full docs: [yeongseon.github.io/azure-functions-logging-python](https://yeongseon.github.io/azure-functions-logging-python/)
-- [Configuration reference](https://yeongseon.github.io/azure-functions-logging-python/configuration/)
-- [Troubleshooting guide](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/)
-- [API reference](https://yeongseon.github.io/azure-functions-logging-python/api/)
+- Full docs: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
+- [Configuration reference](https://yeongseon.dev/azure-functions-python/logging/configuration/)
+- [Troubleshooting guide](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/)
+- [API reference](https://yeongseon.dev/azure-functions-python/logging/api/)
 
 ## Ecosystem
 

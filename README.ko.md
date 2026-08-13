@@ -10,7 +10,7 @@
 [![Security Scans](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml)
 [![codecov](https://codecov.io/gh/yeongseon/azure-functions-logging-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-logging-python)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
-[![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-logging-python/)
+[![Docs](https://img.shields.io/badge/docs-yeongseon.dev-blue)](https://yeongseon.dev/azure-functions-python/logging/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 다른 언어로 보기: [English](README.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
@@ -65,7 +65,7 @@ with logging_context(context):
     logger.info("processing")  # OpenTelemetry 레코드가 호출의 trace_id / span_id를 상속
 ```
 
-이는 **상관관계이지 트레이싱이 아닙니다** — 라이브러리는 결코 span을 생성, 기록, 내보내지 않습니다. OpenTelemetry나 Application Insights SDK를 대체하지 않고 보완하며, span 생성은 여전히 그들의 책임입니다. [OpenTelemetry 트레이스 상관관계 가이드](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)를 참고하세요.
+이는 **상관관계이지 트레이싱이 아닙니다** — 라이브러리는 결코 span을 생성, 기록, 내보내지 않습니다. OpenTelemetry나 Application Insights SDK를 대체하지 않고 보완하며, span 생성은 여전히 그들의 책임입니다. [OpenTelemetry 트레이스 상관관계 가이드](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/)를 참고하세요.
 
 호출단위 활성화를 선호하시나요? 프로세스 전역 기본값 대신 인자로 직접 전달하세요: `with logging_context(context, activate_trace_context=True):`.
 
@@ -200,7 +200,7 @@ traces
 이 패키지는 다음을 책임지지 않습니다:
 
 - **stdlib logging 대체** — Python 표준 `logging`을 감싸고 보강할 뿐, 절대 대체하지 않습니다
-- **분산 트레이싱** — Azure Functions 호스트의 W3C trace context를 **바인딩**하여 기존 OpenTelemetry 로그 레코드가 호출 span의 `trace_id` / `span_id`를 상속하도록 하지만, 이 라이브러리가 직접 span을 생성·기록·내보내지는 않습니다 — 트레이싱이 아니라 상관(correlation)입니다. span 생성에는 OpenTelemetry나 Application Insights SDK를 사용하세요. [OpenTelemetry trace 상관](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/) 참고
+- **분산 트레이싱** — Azure Functions 호스트의 W3C trace context를 **바인딩**하여 기존 OpenTelemetry 로그 레코드가 호출 span의 `trace_id` / `span_id`를 상속하도록 하지만, 이 라이브러리가 직접 span을 생성·기록·내보내지는 않습니다 — 트레이싱이 아니라 상관(correlation)입니다. span 생성에는 OpenTelemetry나 Application Insights SDK를 사용하세요. [OpenTelemetry trace 상관](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/) 참고
 - **API 문서** — API 문서 및 spec 생성에는 [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python)를 사용하세요
 
 ## 설치
@@ -280,7 +280,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## 핵심 기능
 
-아래 모든 기능은 [문서 사이트](https://yeongseon.github.io/azure-functions-logging-python/)에 전체 사용법이 있습니다. 이 섹션은 각 기능이 무엇을 하는지 요약하고 단일 출처로 링크하여, README가 문서의 사본이 아니라 빠른 개요로 유지되도록 합니다.
+아래 모든 기능은 [문서 사이트](https://yeongseon.dev/azure-functions-python/logging/)에 전체 사용법이 있습니다. 이 섹션은 각 기능이 무엇을 하는지 요약하고 단일 출처로 링크하여, README가 문서의 사본이 아니라 빠른 개요로 유지되도록 합니다.
 
 ### 호출 컨텍스트
 
@@ -290,44 +290,44 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 > **워커 인스턴스.** 모든 레코드는 로그를 생성한 워커 인스턴스를 나타내는 베스트 에포트 식별자인 `host_instance_id`도 함께 담습니다(`WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` 순으로 해석). 이는 Application Insights의 `cloud_RoleInstance`를 보완하지만 항상 동일하다고 보장하지는 않습니다.
 
-→ [사용법: 컨텍스트 주입](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
+→ [사용법: 컨텍스트 주입](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
 ### 구조화된 JSON 출력
 
 `setup_logging(functions_formatter=JsonFormatter())`를 전달하면 호스트 관리 핸들러에서 Application Insights용 NDJSON을 출력합니다(독립 실행/CI에서는 `format="json"`). 추가 필드는 `extra` 아래에 들어가며, `truncate_native_strings=True`로 긴 문자열 값을 자를 수 있습니다.
 
-→ [사용법: JSON 출력](https://yeongseon.github.io/azure-functions-logging-python/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.github.io/azure-functions-logging-python/api/#jsonformatter)
+→ [사용법: JSON 출력](https://yeongseon.dev/azure-functions-python/logging/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.dev/azure-functions-python/logging/api/#jsonformatter)
 
 ### host.json 충돌 감지
 
 시작 시 `host.json`(또는 `AzureFunctionsJobHost__logging__logLevel__...` 앱 설정 오버라이드)이 앱이 방출하는 레벨을 억제하면 경고합니다. `host.json`은 작업 디렉터리(또는 `AzureWebJobsScriptRoot`)에서 상위로 탐색하여 자동 발견되며, `host_json_path=`로 재정의할 수 있습니다.
 
-→ [구성: host.json 충돌](https://yeongseon.github.io/azure-functions-logging-python/configuration/#hostjson-level-conflict-warning) · [문제 해결](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/#hostjson-conflict-warning-appears)
+→ [구성: host.json 충돌](https://yeongseon.dev/azure-functions-python/logging/configuration/#hostjson-level-conflict-warning) · [문제 해결](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/#hostjson-conflict-warning-appears)
 
 ### 노이즈 제어 및 PII Redaction
 
 `SamplingFilter`는 시끄러운 서드파티 로거(`azure-core`, `urllib3` 등)의 속도를 제한하고, `RedactionFilter`는 민감한 키(비밀번호, 토큰, 시크릿, 연결 문자열 등 — 대소문자 무시, 재귀적)를 로그 집계 전에 마스킹합니다. 둘 다 루트 핸들러에 연결하며, `sensitive_keys=[...]`로 사용자 지정할 수 있습니다.
 
-→ [API: `SamplingFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#redactionfilter)
+→ [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### 컨텍스트 바인딩
 
 `logger.bind(key=value)`는 이후 모든 로그에 요청 범위 메타데이터를 첨부하는 로거를 반환합니다. 호출당 바운드 로거를 생성하고 모듈 레벨에서 캐싱하지 마세요.
 
-→ [사용법: 컨텍스트 바인딩](https://yeongseon.github.io/azure-functions-logging-python/usage/#4-context-binding-with-functionloggerbind)
+→ [사용법: 컨텍스트 바인딩](https://yeongseon.dev/azure-functions-python/logging/usage/#4-context-binding-with-functionloggerbind)
 
 ### 글로벌 LogRecordFactory (opt-in)
 
 
 `setup_logging(use_record_factory=True)`는 전역 `LogRecordFactory`를 설치하여 레코드 생성 시점에 컨텍스트를 주입하므로, 핸들러/필터 구성과 무관하게 **모든** `LogRecord`가 컨텍스트를 갖도록 합니다. `setup_logging()` 이후 핸들러가 추가되거나 로거가 필터 체인을 우회할 때 유용합니다. 기본 `ContextFilter` 모드와는 상호 배타적입니다.
 
-→ [구성: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory)
+→ [구성: `use_record_factory`](https://yeongseon.dev/azure-functions-python/logging/configuration/#parameter-use_record_factory)
 
 ### 로컬 vs 클라우드
 
 `setup_logging()`은 `FUNCTIONS_WORKER_RUNTIME`을 감지합니다: 로컬에서는 색상이 있는 사람이 읽기 쉬운 출력, Azure / Core Tools에서는 호스트 관리 NDJSON(컨텍스트 필터만 — 핸들러 중복 없음), CI에서는 기계가 파싱 가능한 JSON.
 
-→ [구성: 환경 감지](https://yeongseon.github.io/azure-functions-logging-python/configuration/#environment-detection)
+→ [구성: 환경 감지](https://yeongseon.dev/azure-functions-python/logging/configuration/#environment-detection)
 
 ## 언제 사용하는가
 
@@ -339,10 +339,10 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## 문서
 
-- 전체 문서: [yeongseon.github.io/azure-functions-logging-python](https://yeongseon.github.io/azure-functions-logging-python/)
-- [Configuration reference](https://yeongseon.github.io/azure-functions-logging-python/configuration/)
-- [Troubleshooting guide](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/)
-- [API reference](https://yeongseon.github.io/azure-functions-logging-python/api/)
+- 전체 문서: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
+- [Configuration reference](https://yeongseon.dev/azure-functions-python/logging/configuration/)
+- [Troubleshooting guide](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/)
+- [API reference](https://yeongseon.dev/azure-functions-python/logging/api/)
 
 ## 생태계 (Ecosystem)
 

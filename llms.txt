@@ -8,7 +8,7 @@
 - Version: 0.7.1
 - Python: >=3.10, <3.15
 - License: MIT
-- Docs: https://yeongseon.github.io/azure-functions-logging-python/
+- Docs: https://yeongseon.dev/azure-functions-python/logging/
 - Repository: https://github.com/yeongseon/azure-functions-logging-python
 
 ## What It Does
@@ -75,11 +75,11 @@ def handler(req, context):
 
 ## Documentation
 
-- [Getting Started](https://yeongseon.github.io/azure-functions-logging-python/getting-started/)
-- [API Reference](https://yeongseon.github.io/azure-functions-logging-python/api/)
-- [Configuration](https://yeongseon.github.io/azure-functions-logging-python/configuration/)
-- [Examples](https://yeongseon.github.io/azure-functions-logging-python/examples/)
-- [Troubleshooting](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/)
+- [Getting Started](https://yeongseon.dev/azure-functions-python/logging/getting-started/)
+- [API Reference](https://yeongseon.dev/azure-functions-python/logging/api/)
+- [Configuration](https://yeongseon.dev/azure-functions-python/logging/configuration/)
+- [Examples](https://yeongseon.dev/azure-functions-python/logging/examples/basic_setup/)
+- [Troubleshooting](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/)
 
 ## Ecosystem
 
