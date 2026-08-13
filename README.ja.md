@@ -15,6 +15,8 @@
 
 他の言語で読む: [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md)
 
+> ℹ️ この翻訳はコミュニティによる参考用であり、最新の [English README](README.md) より古い場合があります。正確な最新情報は英語版を参照してください。
+
 **Azure Functions Python v2 のための、呼び出し（invocation）認識可能なオブザーバビリティ。**
 `invocation_id` を表面化し、コールドスタートを検出し、`host.json` の設定不備を警告し、Application Insights にすぐに使える構造化ログを出力します — Python 標準の `logging` を置き換えることなく。
 
