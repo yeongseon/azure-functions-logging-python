@@ -265,7 +265,7 @@ curl -s "$BASE_URL/api/logme?correlation_id=stream-check-001"
 You should see host lines plus an NDJSON line similar to:
 
 ```text
-{"timestamp":"2025-01-15T10:35:00.123456+00:00","level":"INFO","logger":"function_app","message":"e2e log entry","invocation_id":"ab2a5eb3-1f80-46ea-a818-601ca6ed1111","function_name":"logme","trace_id":null,"span_id":null,"cold_start":null,"host_instance_id":null,"exception":null,"extra":{"correlation_id":"stream-check-001"}}
+{"timestamp":"2025-01-15T10:35:00.123456+00:00","level":"INFO","logger":"function_app","message":"e2e log entry","invocation_id":"ab2a5eb3-1f80-46ea-a818-601ca6ed1111","function_name":"logme","trace_id":null,"span_id":null,"cold_start":null,"host_instance_id":"0d1f2a3b4c5d","exception":null,"extra":{"correlation_id":"stream-check-001"}}
 ```
 
 If this line is not JSON, re-check Step 4 (`afl.JsonFormatter()`).
@@ -331,7 +331,7 @@ The `correlation_id` is embedded in the message string; it is searchable via
 ![App Insights Logs — before azure-functions-logging](assets/portal-before.png)
 
 **After** (`log_after` — `azure-functions-logging` with `inject_context(context)`):
-Every record carries `invocation_id`, `function_name`, and `cold_start` from `inject_context()`.
+Every record carries `invocation_id`, `function_name`, `trace_id`, `span_id`, and `cold_start` from `inject_context()`; `host_instance_id` is resolved separately by the formatter/filter.
 `correlation_id` is a structured key in `extra`, enabling KQL filters like
 `| where parse_json(message).extra.correlation_id == "demo-123"`.
 

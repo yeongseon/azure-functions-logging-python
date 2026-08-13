@@ -91,7 +91,7 @@ Tests for `JsonFormatter`:
 
 - Output is valid JSON (single line per record)
 - All required fields present: timestamp, level, logger, message
-- Context fields included when set: invocation_id, function_name, trace_id, cold_start
+- Context fields included when set: invocation_id, function_name, trace_id, span_id, cold_start, host_instance_id
 - Extra fields from `bind()` and keyword arguments included in `extra` object
 - Exception traceback included in `exception` field
 - Timestamp format is ISO 8601
@@ -102,8 +102,8 @@ Tests for context injection, binding, and the ContextFilter:
 
 **inject_context tests**:
 
-- Extracts invocation_id, function_name, trace_id from context object
-- Trace ID extracted from W3C traceparent header (second field of `trace_parent`)
+- Extracts invocation_id, function_name, trace_id, span_id from context object
+- Trace ID and span ID extracted from W3C traceparent header (second and third fields of `trace_parent`)
 - Cold start detection (first call returns True, subsequent calls return False)
 - Handles missing attributes gracefully (defaults to None)
 - Handles None context without raising
