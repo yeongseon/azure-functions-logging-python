@@ -1,7 +1,7 @@
 site_name: Azure Functions Logging
 site_description: Developer-friendly logging helpers for Azure Functions Python
 site_author: Yeongseon Choe
-site_url: https://yeongseon.github.io/azure-functions-logging-python/
+site_url: https://yeongseon.dev/azure-functions-python/logging/
 repo_url: https://github.com/yeongseon/azure-functions-logging-python
 edit_uri: edit/main/docs/
 

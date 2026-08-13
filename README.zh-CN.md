@@ -10,7 +10,7 @@
 [![Security Scans](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-logging-python/actions/workflows/security.yml)
 [![codecov](https://codecov.io/gh/yeongseon/azure-functions-logging-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-logging-python)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
-[![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-logging-python/)
+[![Docs](https://img.shields.io/badge/docs-yeongseon.dev-blue)](https://yeongseon.dev/azure-functions-python/logging/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 阅读其他语言版本: [English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md)
@@ -65,7 +65,7 @@ with logging_context(context):
     logger.info("processing")  # OpenTelemetry 记录继承调用的 trace_id / span_id
 ```
 
-这是 **关联，而非追踪** — 库从不创建、记录或导出 span。它补充而非替代 OpenTelemetry 或 Application Insights SDK，后者仍负责产生 span。参见 [OpenTelemetry 追踪关联指南](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)。
+这是 **关联，而非追踪** — 库从不创建、记录或导出 span。它补充而非替代 OpenTelemetry 或 Application Insights SDK，后者仍负责产生 span。参见 [OpenTelemetry 追踪关联指南](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/)。
 
 更倾向于按调用激活？跳过进程级默认设置，直接传入：`with logging_context(context, activate_trace_context=True):`。
 
@@ -200,7 +200,7 @@ traces
 本包不拥有:
 
 - **替换 stdlib logging** — 它包装并丰富 Python 标准 `logging`，从不替换它
-- **分布式追踪** — 它会**绑定** Azure Functions 主机的 W3C 追踪上下文，使你已有的 OpenTelemetry 日志记录继承调用 span 的 `trace_id` / `span_id`，但它自身绝不创建、记录或导出 span —— 是关联（correlation）而非追踪。请使用 OpenTelemetry 或 Application Insights SDK 来生成 span。参见 [OpenTelemetry 追踪关联](https://yeongseon.github.io/azure-functions-logging-python/opentelemetry/)
+- **分布式追踪** — 它会**绑定** Azure Functions 主机的 W3C 追踪上下文，使你已有的 OpenTelemetry 日志记录继承调用 span 的 `trace_id` / `span_id`，但它自身绝不创建、记录或导出 span —— 是关联（correlation）而非追踪。请使用 OpenTelemetry 或 Application Insights SDK 来生成 span。参见 [OpenTelemetry 追踪关联](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/)
 - **API 文档** — API 文档和 spec 生成请使用 [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python)
 
 ## 安装
@@ -280,7 +280,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## 核心功能
 
-下面每一项能力在[文档站点](https://yeongseon.github.io/azure-functions-logging-python/)上都有完整的操作指南 —— 本节只概述每项能力的作用并链接到唯一来源，从而让 README 保持为快速概览，而不是文档的第二份副本。
+下面每一项能力在[文档站点](https://yeongseon.dev/azure-functions-python/logging/)上都有完整的操作指南 —— 本节只概述每项能力的作用并链接到唯一来源，从而让 README 保持为快速概览，而不是文档的第二份副本。
 
 ### 调用上下文
 
@@ -290,44 +290,44 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 > **工作实例。** 每条记录还携带 `host_instance_id`，这是产生该日志的工作实例的尽力而为的标识符（按 `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` 的顺序解析）。它是 Application Insights 的 `cloud_RoleInstance` 的补充，但不保证与其完全一致。
 
-→ [Usage: context injection](https://yeongseon.github.io/azure-functions-logging-python/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.github.io/azure-functions-logging-python/api/#with_context)
+→ [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
 ### 结构化 JSON 输出
 
 传入 `setup_logging(functions_formatter=JsonFormatter())`，即可在宿主托管的 handler 上输出可直接用于 Application Insights 的 NDJSON（或用 `format="json"` 用于独立/CI 场景）。额外字段会归入 `extra`；可选择开启 `truncate_native_strings=True` 以裁剪过长的字符串值。
 
-→ [Usage: JSON output](https://yeongseon.github.io/azure-functions-logging-python/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.github.io/azure-functions-logging-python/api/#jsonformatter)
+→ [Usage: JSON output](https://yeongseon.dev/azure-functions-python/logging/usage/#2-json-output-for-production) · [API: `JsonFormatter`](https://yeongseon.dev/azure-functions-python/logging/api/#jsonformatter)
 
 ### host.json 冲突检测
 
 启动时，当你的 `host.json` —— 或 `AzureFunctionsJobHost__logging__logLevel__...` 应用设置覆盖 —— 抑制了应用实际发出的日志级别时，本库会发出警告。`host.json` 会从工作目录（或 `AzureWebJobsScriptRoot`）向上遍历自动发现；可传入 `host_json_path=` 覆盖。
 
-→ [Configuration: host.json conflict](https://yeongseon.github.io/azure-functions-logging-python/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/#hostjson-conflict-warning-appears)
+→ [Configuration: host.json conflict](https://yeongseon.dev/azure-functions-python/logging/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/#hostjson-conflict-warning-appears)
 
 ### 噪声控制与 PII 脱敏
 
 `SamplingFilter` 对话痨式的第三方 logger（如 `azure-core`、`urllib3`）进行限流；`RedactionFilter` 在日志到达聚合之前对敏感键（密码、令牌、密钥、连接字符串等 —— 不区分大小写、递归）进行掩码。将两者中的任意一个附加到根 handler，并可传入 `sensitive_keys=[...]` 自定义脱敏。
 
-→ [API: `SamplingFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.github.io/azure-functions-logging-python/api/#redactionfilter)
+→ [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### 上下文绑定
 
 `logger.bind(key=value)` 返回一个 logger，它会把请求作用域的元数据附加到之后的每一条日志上，而无需逐次调用传递。请按调用创建绑定的 logger；不要在模块级别缓存它们。
 
-→ [Usage: context binding](https://yeongseon.github.io/azure-functions-logging-python/usage/#4-context-binding-with-functionloggerbind)
+→ [Usage: context binding](https://yeongseon.dev/azure-functions-python/logging/usage/#4-context-binding-with-functionloggerbind)
 
 ### 全局 LogRecordFactory（可选启用）
 
 
 `setup_logging(use_record_factory=True)` 会安装一个全局 `LogRecordFactory`，在记录创建时注入上下文，因此**每一条** `LogRecord` 都会携带上下文，而不受 handler/filter 接线方式的影响 —— 当 handler 在 `setup_logging()` 之后才添加，或 logger 绕过 filter 链时尤其有用。它与默认的 `ContextFilter` 模式互斥。
 
-→ [Configuration: `use_record_factory`](https://yeongseon.github.io/azure-functions-logging-python/configuration/#parameter-use_record_factory)
+→ [Configuration: `use_record_factory`](https://yeongseon.dev/azure-functions-python/logging/configuration/#parameter-use_record_factory)
 
 ### 本地 vs 云端
 
 `setup_logging()` 会检测 `FUNCTIONS_WORKER_RUNTIME`：本地输出彩色可读格式，在 Azure / Core Tools 中输出宿主托管的 NDJSON（仅 context filter —— 不添加重复 handler），在 CI 中输出机器可解析的 JSON。
 
-→ [Configuration: environment detection](https://yeongseon.github.io/azure-functions-logging-python/configuration/#environment-detection)
+→ [Configuration: environment detection](https://yeongseon.dev/azure-functions-python/logging/configuration/#environment-detection)
 ## 何时使用
 
 - 您需要在 Application Insights 中获得结构化、可查询的日志时
@@ -338,10 +338,10 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 
 ## 文档
 
-- 完整文档: [yeongseon.github.io/azure-functions-logging-python](https://yeongseon.github.io/azure-functions-logging-python/)
-- [Configuration reference](https://yeongseon.github.io/azure-functions-logging-python/configuration/)
-- [Troubleshooting guide](https://yeongseon.github.io/azure-functions-logging-python/troubleshooting/)
-- [API reference](https://yeongseon.github.io/azure-functions-logging-python/api/)
+- 完整文档: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
+- [Configuration reference](https://yeongseon.dev/azure-functions-python/logging/configuration/)
+- [Troubleshooting guide](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/)
+- [API reference](https://yeongseon.dev/azure-functions-python/logging/api/)
 
 ## 生态系统
 
