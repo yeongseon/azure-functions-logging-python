@@ -81,7 +81,10 @@ Log output goes to the standard Python logging handlers, which in Azure Function
 
 - `invocation_id` -- Azure-generated UUID for the invocation
 - `function_name` -- name of the Azure Function
-- `trace_id` -- distributed tracing identifier
+- `trace_id` -- distributed tracing identifier (from the W3C `traceparent` header)
+- `span_id` -- parent span identifier (from the W3C `traceparent` header)
+
+Additionally, `host_instance_id` is resolved separately by the formatter/filter (not from the context object) and attached to log records.
 
 These fields are attached to log records. They do not contain user data or secrets, but they are included in log output. Ensure your log sinks handle these fields according to your data retention policies.
 
@@ -112,7 +115,7 @@ Development dependencies (not installed at runtime):
 - **Log sanitization**: Do not log sensitive data (passwords, API keys, tokens) directly. The library does not filter or redact log content.
 - **host.json**: Configure `host.json` log levels appropriately for your environment. The library warns about conflicts but cannot override Azure's host-level configuration.
 - **Version pinning**: Pin the package version in your `requirements.txt` or `pyproject.toml` to avoid unexpected behavior from new releases.
-- **Context data**: Be aware that `inject_context()` fields (invocation_id, function_name, trace_id) are included in log output. Configure log sinks and retention policies accordingly.
+- **Context data**: Be aware that `inject_context()` fields (invocation_id, function_name, trace_id, span_id) plus the separately-resolved host_instance_id are included in log output. Configure log sinks and retention policies accordingly.
 
 ### For contributors
 

@@ -121,6 +121,7 @@ This combines invocation metadata (context injection) with request metadata (bin
 - `invocation_id` present for every event in invocation.
 - `function_name` matches actual function.
 - `trace_id` consistent across related events.
+- `span_id` consistent with the W3C parent/span portion when trace context is present.
 - `cold_start` true only on first invocation per process.
 
 ## Common Mistakes
