@@ -99,6 +99,27 @@ def create_order(req: func.HttpRequest, context: func.Context) -> func.HttpRespo
 
 With context injection, invocation fields are populated for every event in this request context.
 
+## In Application Insights
+
+After deploying and requesting `/api/orders`, query the `traces` table. Top-level fields and `extra.*` keys land under `customDimensions` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.function_name == "create_order"
+| project timestamp, message, customDimensions.invocation_id, customDimensions.method, customDimensions.route
+| order by timestamp asc
+```
+
+Expected result:
+
+| timestamp | message | invocation_id | method | route |
+| --- | --- | --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | request received | `abc-123-def` | `GET` | `/orders` |
+
+Application-specific dimensions passed as keyword arguments (e.g. `order_id`, `tenant_id`) surface the same way, so you can slice on `customDimensions.tenant_id` for multi-tenant analysis.
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.method` / `payload.route`.
+
 ## Production Query Patterns
 
 Typical query dimensions from JSON output:

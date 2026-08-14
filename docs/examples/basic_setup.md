@@ -123,6 +123,27 @@ def ping(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 
 This adds invocation context fields automatically when available.
 
+## In Application Insights
+
+After deploying this handler and sending a request to `/api/ping`, query the `traces` table in Application Insights Logs. The exact schema depends on your ingestion pipeline — the `customDimensions`-parsed shape is shown here (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.function_name == "ping"
+| project timestamp, message, customDimensions.invocation_id, customDimensions.function_name, customDimensions.cold_start
+| order by timestamp asc
+```
+
+Expected result (first request on a fresh worker):
+
+| timestamp | message | invocation_id | function_name | cold_start |
+| --- | --- | --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | ping received | `abc-123-def` | `ping` | `true` |
+
+The same `logger.info("ping received")` call is now correlated by `invocation_id` and carries a `cold_start` signal — no change to your logging calls.
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.invocation_id` / `payload.cold_start`.
+
 ## Troubleshooting Quick Checks
 
 - No logs: confirm `setup_logging()` executed before first log call.

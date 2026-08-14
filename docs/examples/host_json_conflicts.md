@@ -94,6 +94,34 @@ def orders(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 
 If `INFO` does not appear, inspect `host.json` first.
 
+## In Application Insights
+
+`host.json` conflicts are visible as *missing rows*, not error messages. After deploying and requesting `/api/orders`, query the `traces` table by severity level (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.function_name == "orders"
+| project timestamp, message, severityLevel, customDimensions.invocation_id
+| order by timestamp asc
+```
+
+With a **conflicting** `host.json` (`"default": "Warning"`), the `INFO` line never reaches Application Insights — only the warning is ingested:
+
+| timestamp | message | severityLevel |
+| --- | --- | --- |
+| 2026-03-14T10:20:30.34Z | orders validation warning | 2 |
+
+With the **corrected** `host.json` (`"default": "Information"`), both events appear:
+
+| timestamp | message | severityLevel |
+| --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | orders request started | 1 |
+| 2026-03-14T10:20:30.34Z | orders validation warning | 2 |
+
+The library's startup conflict warning tells you *before* you go hunting for these missing rows.
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.message`.
+
 ## Validation Checklist
 
 1. Verify app setup level.

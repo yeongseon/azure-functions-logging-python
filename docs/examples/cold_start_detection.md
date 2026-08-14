@@ -46,6 +46,41 @@ After starting a new process:
 
 The first invocation after startup is your cold start marker.
 
+## In Application Insights
+
+After deploying and sending a few requests to `/api/status`, query the `traces` table. The `customDimensions`-parsed shape is shown here (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.function_name == "status"
+| where message == "status endpoint hit"
+| project timestamp, customDimensions.invocation_id, customDimensions.cold_start
+| order by timestamp asc
+```
+
+Expected result — only the first row of a fresh worker is flagged:
+
+| timestamp | invocation_id | cold_start |
+| --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | `abc-123-def` | `true` |
+| 2026-03-14T10:20:41.55Z | `def-456-ghi` | `false` |
+| 2026-03-14T10:20:52.09Z | `ghi-789-jkl` | `false` |
+
+Cold start ratio over the last hour (matches the [metrics pattern](#metrics-pattern-cold-start-ratio) above):
+
+```kql
+traces
+| where timestamp > ago(1h)
+| summarize cold = countif(customDimensions.cold_start == "true"), total = count()
+| extend cold_start_ratio = todouble(cold) / total
+```
+
+| cold | total | cold_start_ratio |
+| --- | --- | --- |
+| 3 | 420 | 0.0071 |
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.cold_start`.
+
 ## Local Verification Steps
 
 1. Start local function host.

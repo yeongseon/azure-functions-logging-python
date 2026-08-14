@@ -35,6 +35,27 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 | `span_id` | `context.trace_context.trace_parent` (span ID portion) | `b7ad...` |
 | `cold_start` | internal first-call detection | `true` or `false` |
 
+## In Application Insights
+
+After deploying the baseline handler and requesting `/api/hello`, query the `traces` table. The `customDimensions`-parsed shape is shown here (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.function_name == "hello"
+| project timestamp, message, customDimensions.invocation_id, customDimensions.trace_id, customDimensions.span_id, customDimensions.cold_start
+| order by timestamp asc
+```
+
+Expected result:
+
+| timestamp | message | invocation_id | trace_id | span_id | cold_start |
+| --- | --- | --- | --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | request started | `9f87...` | `7ed7...` | `b7ad...` | `true` |
+
+`trace_id` and `span_id` are populated only when the host supplies W3C trace context; otherwise they appear as `null`. All events emitted inside the same `with logging_context(context):` block share the same `invocation_id`.
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.invocation_id` / `payload.trace_id`.
+
 ## Why Open the Context Block Early
 
 Open `with logging_context(context):` at the very top of each handler, before business logic:
