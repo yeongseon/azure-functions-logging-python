@@ -168,3 +168,78 @@ root context yourself before starting it.
 
 A minimal Function App wiring `azure-monitor-opentelemetry` together with this
 package lives in [`examples/otel_app`](https://github.com/yeongseon/azure-functions-logging-python/tree/main/examples/otel_app).
+
+## Verified in Azure Application Insights
+
+The [`examples/otel_app`](https://github.com/yeongseon/azure-functions-logging-python/tree/main/examples/otel_app)
+app was deployed to a real Azure Function App (Flex Consumption, Python 3.11) with a
+workspace-based Application Insights resource, then driven with live traffic. The
+screenshots below are the actual query results.
+
+> **Querying a workspace-based Application Insights resource.** When Application
+> Insights is workspace-based, telemetry lands in the backing Log Analytics
+> workspace under the `App*` tables (`AppTraces`, `AppRequests`,
+> `AppDependencies`, `AppExceptions`) — not the classic `traces` / `requests`
+> tables. Query the workspace directly (Logs blade, or
+> `az monitor log-analytics query -w <workspace-id> --analytics-query "..."`).
+
+**Telemetry is flowing.** A single `union` over the `App*` tables confirms the
+exporter is delivering traces, requests, dependencies, and exceptions:
+
+![Application Insights — telemetry record counts by table](assets/otel-verify-overview.png)
+
+**PII redaction works end to end.** The app logs
+`extra={"order_id": ..., "password": "should-be-masked"}`. `RedactionFilter`,
+attached to the OTel `LoggingHandler`, masks `password` to `***` **before** it
+becomes an exported attribute — so the raw value never reaches Application
+Insights. Every returned row shows the mask:
+
+![Application Insights — password redacted to \*\*\* in AppTraces](assets/otel-verify-redaction.png)
+
+**Logs correlate with their invocation.** Joining `AppRequests` to `AppTraces`
+on `OperationId` shows that each `Processing order` log carries the **same
+`trace_id` as the host invocation span** for its HTTP request — the end-to-end
+correlation `activate_trace_context=True` provides, without this package ever
+creating a span:
+
+![Application Insights — request/trace correlation on OperationId](assets/otel-verify-correlation.png)
+
+## The same correlation in the Application Insights portal
+
+The KQL results above prove the correlation at the query layer. The portal views
+below show the *same* deployed app the way you would actually explore it —
+without writing a single query.
+
+**Application map.** The Function App node (`func-aflog-otel-5597`) and its
+downstream HTTP dependency are stitched together from the exported
+request/dependency telemetry:
+
+![Application Insights — Application map for the OpenTelemetry example app](assets/otel-application-map.png)
+
+**End-to-end correlation, before and after.** The clearest proof is the same
+`process_order` invocation queried the same way, with `activate_trace_context`
+off versus on. The projection surfaces Application Insights' own correlation keys
+(`operation_Id`, `operation_ParentId`) next to the `trace_id` / `span_id` this
+package writes as custom dimensions.
+
+*Without* activation, every worker log record lands with `operation_Id` and
+`operation_ParentId` **all zeros** — orphaned from the host invocation at the
+correlation layer, even though the custom-dimension `trace_id` / `span_id` are
+present:
+
+![Application Insights — worker logs orphaned with all-zero Operation ID](assets/otel-e2e-transaction-before.png)
+
+*With* `activate_trace_context=True`, the four records of the invocation share a
+**real** `operation_Id` / `operation_ParentId`, and `operation_Id` now equals the
+package's custom-dimension `trace_id` — the log records are bound to the host
+invocation span, without this package ever creating one:
+
+![Application Insights — worker logs correlated under a real Operation ID](assets/otel-e2e-transaction.png)
+
+**Correlated log records.** Expanding **Traces & events** lists the worker's own
+`Processing order` log records under the **same Operation ID** as the host
+invocation span — the correlation `activate_trace_context=True` provides. Each
+trace carries the invocation's `InvocationId` / `functionName` in its custom
+properties, so the worker logs are no longer orphaned from the invocation:
+
+![Application Insights — worker log records correlated under one Operation ID](assets/otel-trace-correlation.png)
