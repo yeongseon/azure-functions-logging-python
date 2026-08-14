@@ -3,7 +3,7 @@
 Provides ``with_context`` — a decorator that calls ``inject_context()``
 before the handler runs and restores previous context variables after it completes.
 
-Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
+Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/22
 """
 
 from __future__ import annotations

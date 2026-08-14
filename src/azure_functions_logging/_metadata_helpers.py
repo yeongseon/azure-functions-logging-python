@@ -11,7 +11,7 @@ The primitive is intentionally kept as a small, dependency-free unit so the
 packages are independent PyPI distributions with no shared base dependency, so
 "shared" here means a canonical, synced definition rather than a common import.
 
-Ref: https://github.com/yeongseon/azure-functions-logging/issues/216
+Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/216
 """
 
 from __future__ import annotations
