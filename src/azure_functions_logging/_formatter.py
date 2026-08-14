@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from typing import Iterable
 
@@ -65,9 +66,10 @@ class ColorFormatter(logging.Formatter):
         # Time
         time_str = self.formatTime(record, "%H:%M:%S")
 
-        # Level with color
-        color = _COLORS.get(record.levelno, "")
-        level_str = f"{color}{record.levelname:<8}{_RESET}"
+        # Level with color (only on an interactive TTY and when NO_COLOR is unset)
+        color = _COLORS.get(record.levelno, "") if self._should_use_color() else ""
+        reset = _RESET if color else ""
+        level_str = f"{color}{record.levelname:<8}{reset}"
 
         # Logger name
         name_str = record.name
@@ -111,6 +113,12 @@ class ColorFormatter(logging.Formatter):
             base += f"\n{record.stack_info}"
 
         return base
+
+    @staticmethod
+    def _should_use_color() -> bool:
+        if os.environ.get("NO_COLOR") is not None:
+            return False
+        return ColorFormatter.is_tty()
 
     @staticmethod
     def is_tty() -> bool:
