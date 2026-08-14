@@ -75,6 +75,27 @@ def payments(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
         return func.HttpResponse("ok")
 ```
 
+## In Application Insights
+
+After deploying and requesting `/api/payments`, query the `traces` table filtered by logger name. The named-logger identity is preserved in `customDimensions.logger` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.logger == "payments.http"
+| project timestamp, message, customDimensions.logger, customDimensions.invocation_id, customDimensions.route
+| order by timestamp asc
+```
+
+Expected result — only the targeted `payments.*` hierarchy appears:
+
+| timestamp | message | logger | invocation_id | route |
+| --- | --- | --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | payments request | `payments.http` | `abc-123-def` | `/payments` |
+
+Filtering on `customDimensions.logger` lets you build a dashboard scoped to one subsystem while other hierarchies (e.g. `inventory`) stay out of view.
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.logger`.
+
 ## Common Pitfalls
 
 - Mixing unrelated logger names and expecting same behavior.

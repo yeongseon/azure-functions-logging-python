@@ -59,6 +59,37 @@ def orders(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 
 With noise controls, these app events remain visible and query-friendly.
 
+## In Application Insights
+
+Noise control changes *what does not arrive*. After deploying and requesting `/api/orders`, your application events surface cleanly instead of being buried under dependency chatter (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+
+```kql
+traces
+| where customDimensions.logger == "orders"
+| project timestamp, message, customDimensions.invocation_id, customDimensions.route
+| order by timestamp asc
+```
+
+Expected result — clean application lifecycle events, undiluted by `urllib3` / `azure.core` info logs:
+
+| timestamp | message | invocation_id | route |
+| --- | --- | --- | --- |
+| 2026-03-14T10:20:30.12Z | request started | `abc-123-def` | `/orders` |
+| 2026-03-14T10:20:30.28Z | request completed | `abc-123-def` | `/orders` |
+
+To confirm the suppression worked, compare dependency volume before and after tuning:
+
+```kql
+traces
+| where timestamp > ago(1h)
+| summarize count() by tostring(customDimensions.logger)
+| order by count_ desc
+```
+
+Suppressed namespaces (`urllib3`, `azure`, `azure.core.pipeline.policies.http_logging_policy`) should drop to warnings-and-above volume, while `orders` keeps full `INFO` visibility.
+
+> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.logger`.
+
 ## Suggested Namespace Policies
 
 | Namespace | Suggested Level | Reason |
