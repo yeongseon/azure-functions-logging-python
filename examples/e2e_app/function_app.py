@@ -10,6 +10,7 @@ Exposes four endpoints:
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import logging
 
@@ -31,6 +32,18 @@ app = func.FunctionApp()
 def health(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(json.dumps({"status": "ok"}), mimetype="application/json")
 
+
+@app.route(route="version", auth_level=func.AuthLevel.ANONYMOUS)
+def version(req: func.HttpRequest) -> func.HttpResponse:
+    """Report the installed package version so e2e can certify the candidate.
+
+    Proves the deployed host is running the exact wheel bundled by CI rather
+    than whatever is currently published on PyPI.
+    """
+    installed = importlib.metadata.version("azure-functions-logging")
+    return func.HttpResponse(
+        json.dumps({"version": installed}), mimetype="application/json"
+    )
 
 # ── BEFORE: plain Python logging, no library context ─────────────────────
 #

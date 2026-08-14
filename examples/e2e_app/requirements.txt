@@ -1,2 +1,4 @@
 azure-functions
-azure-functions-logging
+# azure-functions-logging is injected as a locally-built candidate wheel by
+# .github/workflows/e2e-azure.yml (see the "Build candidate wheel" step) so the
+# remote Oryx build certifies the release candidate, not the published PyPI build.
