@@ -1,4 +1,4 @@
-name: Deploy MkDocs to GitHub Pages
+name: Docs (strict build check)
 
 on:
   push:
@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy:
+  docs-check:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,8 +27,5 @@ jobs:
           pip install hatch
           make install
 
-      - name: Build docs (verify build before deploy)
+      - name: Build docs (strict)
         run: hatch run mkdocs build --strict
-
-      - name: Deploy to GitHub Pages
-        run: hatch run mkdocs gh-deploy --force
