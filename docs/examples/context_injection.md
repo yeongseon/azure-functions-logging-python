@@ -1,6 +1,6 @@
 # Example: Context Injection
 
-`inject_context(context)` enriches log records with invocation metadata from Azure Functions context.
+`logging_context(context)` enriches log records with invocation metadata from Azure Functions context. It is the recommended scoped API; `inject_context()` / `restore_context()` is the lower-level manual-token form of the same behavior.
 
 ## Goal
 
@@ -25,7 +25,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
         return func.HttpResponse("hello")
 ```
 
-## Fields Added by `inject_context()`
+## Fields Added by `logging_context()`
 
 | Field | Source | Example |
 | --- | --- | --- |

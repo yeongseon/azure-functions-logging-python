@@ -104,7 +104,7 @@ Bare `inject_context(context)` without a paired `restore_context()` can leak con
 With default `format="color"`, you should see lines shaped like:
 
 ```text
-14:32:10 INFO     my_module  Logging is ready
+14:32:10 INFO     my_module  logging initialized
 14:32:12 INFO     function_app  Health check called  [invocation_id=..., function_name=health, trace_id=..., cold_start=true]
 ```
 
