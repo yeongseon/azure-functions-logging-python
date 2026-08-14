@@ -43,6 +43,7 @@ This library addresses those gaps with a small API surface.
 - `FunctionLogger.bind()` for immutable request-scoped context binding.
 - `FunctionLogger.log()` and `FunctionLogger.hasHandlers()` for stdlib parity.
 - Host-level `host.json` conflict warnings, with `host_json_path=` override and bounded parent-walk discovery.
+- `setup_logging(activate_trace_context=True)` binds the host's W3C trace context so OpenTelemetry log records inherit the invocation's `trace_id` / `span_id` — see [OpenTelemetry trace correlation](opentelemetry.md), verified with real Application Insights portal captures.
 - Idempotent setup to avoid duplicate reconfiguration.
 
 ## What Gets Logged
@@ -107,6 +108,7 @@ Start here, then branch by need:
 - [Examples](examples/basic_setup.md) for scenario-focused snippets.
 - [API Reference](api.md) for signatures and typed docs.
 - [Troubleshooting](troubleshooting.md) for production incident cases.
+- [OpenTelemetry trace correlation](opentelemetry.md) for binding the host invocation's trace context to your logs.
 - [FAQ](faq.md) for direct operational questions.
 
 ## Design Goals
