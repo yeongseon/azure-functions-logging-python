@@ -395,3 +395,118 @@ def test_stdlib_record_keys_are_immune_to_custom_logrecord_factory() -> None:
         )
     finally:
         logging.setLogRecordFactory(original_factory)
+
+
+# ---------------------------------------------------------------------------
+# Caller source-location contract (issue #347)
+#
+# The emitted LogRecord must report the *user's* call site, not a frame inside
+# FunctionLogger. These use a real logging.Logger + capturing handler because
+# pathname/lineno/funcName are computed by logging.Logger.findCaller, which a
+# MagicMock underlying logger bypasses entirely.
+# ---------------------------------------------------------------------------
+
+
+class _RecordCapture(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def _capturing_logger(name: str) -> tuple[FunctionLogger, _RecordCapture]:
+    base = logging.getLogger(name)
+    base.handlers.clear()
+    base.setLevel(logging.DEBUG)
+    base.propagate = False
+    capture = _RecordCapture()
+    base.addHandler(capture)
+    return FunctionLogger(base), capture
+
+
+@pytest.mark.parametrize("method", ["debug", "info", "warning", "error", "critical"])
+def test_public_methods_report_caller_source_location(method: str) -> None:
+    logger, capture = _capturing_logger(f"test.stacklevel.{method}")
+
+    getattr(logger, method)("msg")
+
+    record = capture.records[-1]
+    assert record.filename == "test_logger.py"
+    assert record.funcName == "test_public_methods_report_caller_source_location"
+
+
+def test_exception_reports_caller_source_location() -> None:
+    logger, capture = _capturing_logger("test.stacklevel.exception")
+
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        logger.exception("failed")
+
+    record = capture.records[-1]
+    assert record.filename == "test_logger.py"
+    assert record.funcName == "test_exception_reports_caller_source_location"
+    assert record.exc_info is not None
+
+
+def test_log_reports_caller_source_location() -> None:
+    logger, capture = _capturing_logger("test.stacklevel.logmethod")
+
+    logger.log(logging.INFO, "msg")
+
+    record = capture.records[-1]
+    assert record.filename == "test_logger.py"
+    assert record.funcName == "test_log_reports_caller_source_location"
+
+
+def test_caller_resolution_matches_stdlib_exactly() -> None:
+    """FunctionLogger resolves the identical call site stdlib does.
+
+    Both loggers emit through the *same* helper function, so a correct
+    implementation must agree with the standard library on filename, funcName
+    and lineno across the supported Python matrix — no brittle line arithmetic.
+    """
+    fl, fl_cap = _capturing_logger("test.stacklevel.parity.fl")
+    std = logging.getLogger("test.stacklevel.parity.std")
+    std.handlers.clear()
+    std.setLevel(logging.DEBUG)
+    std.propagate = False
+    std_cap = _RecordCapture()
+    std.addHandler(std_cap)
+
+    def _emit(lg: object) -> None:
+        lg.info("x")  # type: ignore[attr-defined]
+
+    _emit(fl)
+    _emit(std)
+
+    fl_record, std_record = fl_cap.records[-1], std_cap.records[-1]
+    assert fl_record.funcName == std_record.funcName == "_emit"
+    assert fl_record.filename == std_record.filename == "test_logger.py"
+    assert fl_record.lineno == std_record.lineno
+
+
+def test_explicit_stacklevel_walks_further_up_like_stdlib() -> None:
+    """User-facing stacklevel keeps stdlib semantics: 2 == the caller's caller."""
+    fl, fl_cap = _capturing_logger("test.stacklevel.explicit.fl")
+    std = logging.getLogger("test.stacklevel.explicit.std")
+    std.handlers.clear()
+    std.setLevel(logging.DEBUG)
+    std.propagate = False
+    std_cap = _RecordCapture()
+    std.addHandler(std_cap)
+
+    def _emit(lg: object) -> None:
+        lg.info("msg", stacklevel=2)  # type: ignore[attr-defined]
+
+    def _caller(lg: object) -> None:
+        _emit(lg)
+
+    _caller(fl)
+    _caller(std)
+
+    fl_record, std_record = fl_cap.records[-1], std_cap.records[-1]
+    assert fl_record.funcName == std_record.funcName == "_caller"
+    assert fl_record.lineno == std_record.lineno

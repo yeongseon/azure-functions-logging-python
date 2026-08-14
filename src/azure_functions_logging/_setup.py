@@ -72,10 +72,13 @@ def setup_logging(
 
     - **Azure / Core Tools** (``use_record_factory=False``, default): Installs
       ``ContextFilter`` on the root logger's existing handlers **and** on the
-      root logger itself (so handlers attached later also receive context
-      fields). Does NOT add new handlers or modify the root logger level
-      (respects ``host.json`` configuration). If ``functions_formatter`` is
-      provided, it is applied to every root handler before the filter is added.
+      root logger itself (so records emitted directly on the root logger also
+      carry context fields; note this does not cover records that merely
+      propagate up from named child loggers — those are filtered only by the
+      handler-level filters). Does NOT add new handlers or modify the root
+      logger level (respects ``host.json`` configuration). If
+      ``functions_formatter`` is provided, it is applied to every root handler
+      before the filter is added.
       When ``use_record_factory=True``, no ``ContextFilter`` is attached;
       context injection happens via the global ``LogRecordFactory`` instead.
     - **Standalone local development**: Adds a ``StreamHandler`` with
@@ -198,8 +201,10 @@ def setup_logging(
                 if context_filter is not None:
                     handler.addFilter(context_filter)
                 configured_handlers.add(handler)
-            # Install filter on root logger itself so handlers attached later
-            # (before the next setup_logging() call) also inherit it.
+            # Install the filter on the root logger itself so records emitted
+            # directly on the root logger also carry context. This does NOT
+            # apply to records propagating up from named child loggers, which
+            # are only seen by the handler-level filters added above.
             if context_filter is not None and context_filter not in root.filters:
                 root.addFilter(context_filter)
 

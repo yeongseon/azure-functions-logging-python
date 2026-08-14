@@ -10,6 +10,12 @@ from ._constants import _LIBRARY_RESERVED_KEYS as _LIBRARY_RESERVED_KEYS
 from ._constants import _RESERVED_LOG_RECORD_KEYS as _RESERVED_LOG_RECORD_KEYS
 from ._constants import _STDLIB_RECORD_KEYS as _STDLIB_RECORD_KEYS
 
+# Wrapper frames between a user call and ``self._logger.log(...)``: the public
+# method (e.g. ``info``) and ``_log``. User-facing ``stacklevel`` keeps stdlib
+# semantics (``1`` == caller of the public method); this offset is added
+# internally so records report the user's call site, not a FunctionLogger frame.
+_WRAPPER_STACKLEVEL_OFFSET = 2
+
 
 def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
     """Rename keys that collide with reserved ``LogRecord`` attributes.
@@ -93,7 +99,7 @@ class FunctionLogger:
         args: tuple[Any, ...],
         exc_info: Any = None,
         stack_info: bool = False,
-        stacklevel: int = 2,
+        stacklevel: int = 1,
         **kwargs: Any,
     ) -> None:
         """Internal log dispatch with context injection."""
@@ -108,7 +114,7 @@ class FunctionLogger:
             *args,
             exc_info=exc_info,
             stack_info=stack_info,
-            stacklevel=stacklevel,
+            stacklevel=stacklevel + _WRAPPER_STACKLEVEL_OFFSET,
             extra=extra,
         )
 
