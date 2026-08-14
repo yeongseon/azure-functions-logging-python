@@ -210,19 +210,31 @@ The KQL results above prove the correlation at the query layer. The portal views
 below show the *same* deployed app the way you would actually explore it —
 without writing a single query.
 
-**Application map.** The Function App nodes (`func-aflog-otel-95440`,
-`func-aflog-otel-9077`) and their downstream HTTP dependency are stitched
-together from the exported request/dependency telemetry:
+**Application map.** The Function App node (`func-aflog-otel-5597`) and its
+downstream HTTP dependency are stitched together from the exported
+request/dependency telemetry:
 
 ![Application Insights — Application map for the OpenTelemetry example app](assets/otel-application-map.png)
 
-**End-to-end transaction.** Drilling into a single `process_order` invocation
-shows the incoming request with its correlated **Traces & events**, and the
-request's custom properties carry the invocation identity this package injects
-(`InvocationId`, `HostInstanceId`, `LogLevel`). Note `url.query` is already
-`Redacted` — the `RedactionFilter` masked it before export:
+**End-to-end correlation, before and after.** The clearest proof is the same
+`process_order` invocation queried the same way, with `activate_trace_context`
+off versus on. The projection surfaces Application Insights' own correlation keys
+(`operation_Id`, `operation_ParentId`) next to the `trace_id` / `span_id` this
+package writes as custom dimensions.
 
-![Application Insights — end-to-end transaction details for process_order](assets/otel-e2e-transaction.png)
+*Without* activation, every worker log record lands with `operation_Id` and
+`operation_ParentId` **all zeros** — orphaned from the host invocation at the
+correlation layer, even though the custom-dimension `trace_id` / `span_id` are
+present:
+
+![Application Insights — worker logs orphaned with all-zero Operation ID](assets/otel-e2e-transaction-before.png)
+
+*With* `activate_trace_context=True`, the four records of the invocation share a
+**real** `operation_Id` / `operation_ParentId`, and `operation_Id` now equals the
+package's custom-dimension `trace_id` — the log records are bound to the host
+invocation span, without this package ever creating one:
+
+![Application Insights — worker logs correlated under a real Operation ID](assets/otel-e2e-transaction.png)
 
 **Correlated log records.** Expanding **Traces & events** lists the worker's own
 `Processing order` log records under the **same Operation ID** as the host

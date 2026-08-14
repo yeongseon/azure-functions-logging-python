@@ -53,12 +53,23 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
     order_id = req.params.get("order_id", "o-demo")
 
     with logging_context(context):
-        # trace_id / span_id are inherited from the host invocation span.
+        # Every record below shares one invocation_id (and the host trace when
+        # activate_trace_context=True), so the sequence stays correlated.
+        logger.info("Request received", extra={"order_id": order_id})
+        logger.info("Validating order", extra={"order_id": order_id})
+
+        if order_id == "o-demo":
+            logger.warning(
+                "Missing order_id, using demo fallback",
+                extra={"order_id": order_id},
+            )
+
         # `password` is masked by RedactionFilter before it becomes an attribute.
         logger.info(
             "Processing order",
             extra={"order_id": order_id, "password": "should-be-masked"},
         )
+        logger.info("Order processed", extra={"order_id": order_id})
         return func.HttpResponse(
             json.dumps({"processed": True, "order_id": order_id}),
             mimetype="application/json",

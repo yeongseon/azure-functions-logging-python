@@ -90,31 +90,33 @@ flowchart TD
 
 ## Before / After
 
-**Without** `azure-functions-logging` — plain `print()` output, no context, no structure:
+**Without** `azure-functions-logging` — you already use Python's standard `logging`, done correctly:
 
 ```python
+import logging
+
 import azure.functions as func
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 app = func.FunctionApp()
 
 
 @app.route(route="orders")
 def process_order(req: func.HttpRequest) -> func.HttpResponse:
-    print("Processing order")        # no invocation_id, no structure
-    print(f"Order: {req.get_json()}")  # PII may leak, no log level
+    logger.info("Processing order")  # correct logging — but no invocation context
     return func.HttpResponse("OK")
 ```
 
 Terminal output:
 
 ```
-Processing order
-Order: {'customer': 'Alice', 'total': 99.99}
+INFO:function_app:Processing order
 ```
 
 ![Local terminal — without azure-functions-logging](docs/assets/demo-before.png)
 
-> No invocation ID. No log level. Hard to correlate in Application Insights.
+> Your logging is fine. But there's no `invocation_id` to correlate concurrent executions, no `cold_start` signal, and on Azure your `host.json` level can silently drop this line — none of which standard `logging` knows about on Azure Functions.
 
 **With** `azure-functions-logging` — structured, queryable, production-ready:
 
@@ -152,7 +154,7 @@ Production output under `func start` / Azure (Application Insights NDJSON, appli
 
 ![Local terminal — with azure-functions-logging](docs/assets/demo-after.png)
 
-> Every log carries `invocation_id` and `cold_start`. Queryable in Application Insights. Zero `print()` statements.
+> Every log carries `invocation_id` and `cold_start`. Same standard `logging` calls — now correlated and queryable in Application Insights.
 
 > **Note:** The exact Application Insights schema depends on your ingestion pipeline. In some deployments JSON fields are parsed into `customDimensions`; in others the JSON stays inside the `message` column. Examples for both shapes are below.
 
