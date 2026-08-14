@@ -1,18 +1,18 @@
 # Example: Context Injection
 
-`inject_context(context)` enriches log records with invocation metadata from Azure Functions context.
+`logging_context(context)` enriches log records with invocation metadata from Azure Functions context. It is the recommended scoped API; `inject_context()` / `restore_context()` is the lower-level manual-token form of the same behavior.
 
 ## Goal
 
-Call `inject_context(context)` once per invocation and observe `invocation_id`, `function_name`, `trace_id`, `span_id`, and `cold_start` in logs.
+Wrap the handler body in `with logging_context(context):` and observe `invocation_id`, `function_name`, `trace_id`, `span_id`, and `cold_start` in logs.
 
 ## Baseline Handler
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 
 app = func.FunctionApp()
@@ -20,12 +20,12 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("request started")
-    return func.HttpResponse("hello")
+    with logging_context(context):
+        logger.info("request started")
+        return func.HttpResponse("hello")
 ```
 
-## Fields Added by `inject_context()`
+## Fields Added by `logging_context()`
 
 | Field | Source | Example |
 | --- | --- | --- |
@@ -35,9 +35,9 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 | `span_id` | `context.trace_context.trace_parent` (span ID portion) | `b7ad...` |
 | `cold_start` | internal first-call detection | `true` or `false` |
 
-## Why Call It Early
+## Why Open the Context Block Early
 
-Call it at the top of each handler before business logic:
+Open `with logging_context(context):` at the very top of each handler, before business logic:
 
 - Every subsequent log call includes invocation metadata.
 - Errors logged later in the pipeline still carry correlation fields.
@@ -48,9 +48,9 @@ Call it at the top of each handler before business logic:
 ```python
 import json
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger("payments.handler")
 
 app = func.FunctionApp()
@@ -58,23 +58,23 @@ app = func.FunctionApp()
 
 @app.route(route="payments")
 def payments(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("payments request received", method=req.method)
+    with logging_context(context):
+        logger.info("payments request received", method=req.method)
 
-    try:
-        body = req.get_json()
-        amount = body.get("amount")
-        logger.info("validating payload", amount=amount)
+        try:
+            body = req.get_json()
+            amount = body.get("amount")
+            logger.info("validating payload", amount=amount)
 
-        if amount is None:
-            logger.warning("missing amount field")
-            return func.HttpResponse("invalid payload", status_code=400)
+            if amount is None:
+                logger.warning("missing amount field")
+                return func.HttpResponse("invalid payload", status_code=400)
 
-        logger.info("payment accepted", amount=amount)
-        return func.HttpResponse(json.dumps({"status": "ok"}), mimetype="application/json")
-    except Exception:
-        logger.exception("payments handler failed")
-        return func.HttpResponse("internal error", status_code=500)
+            logger.info("payment accepted", amount=amount)
+            return func.HttpResponse(json.dumps({"status": "ok"}), mimetype="application/json")
+        except Exception:
+            logger.exception("payments handler failed")
+            return func.HttpResponse("internal error", status_code=500)
 ```
 
 ## Behavior Outside Azure
@@ -102,7 +102,7 @@ logger.info("local simulation")
 
 For each invocation:
 
-1. `inject_context(context)` immediately.
+1. Open `with logging_context(context):` at the top of the handler.
 2. Create optional bound logger for request metadata.
 3. Emit lifecycle logs for start, decision points, and completion.
 4. Use `logger.exception()` in failure paths.
@@ -126,12 +126,12 @@ This combines invocation metadata (context injection) with request metadata (bin
 
 ## Common Mistakes
 
-- Injecting context after first logs are already emitted.
+- Opening `with logging_context(context):` after first logs are already emitted.
 - Assuming `trace_id` is present when trace context is absent.
-- Forgetting injection in some handlers, causing partial correlation.
+- Forgetting the `with logging_context(context):` wrapper in some handlers, causing partial correlation.
 
 !!! tip
-    If you use decorators or middleware-like wrappers, place `inject_context(context)` in the outermost request entrypoint to guarantee consistency.
+    If you use decorators or middleware-like wrappers, open `with logging_context(context):` in the outermost request entrypoint to guarantee consistency.
 
 ## Related Examples
 

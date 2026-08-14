@@ -76,9 +76,9 @@ This is useful when one function needs richer diagnostics.
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger("orders")
 
 app = func.FunctionApp()
@@ -86,10 +86,10 @@ app = func.FunctionApp()
 
 @app.route(route="orders")
 def orders(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("orders request started")
-    logger.warning("orders validation warning")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        logger.info("orders request started")
+        logger.warning("orders validation warning")
+        return func.HttpResponse("ok")
 ```
 
 If `INFO` does not appear, inspect `host.json` first.

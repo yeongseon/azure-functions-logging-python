@@ -36,7 +36,7 @@ If you pin dependencies, add to `requirements.txt`:
 
 ```text
 azure-functions
-azure-functions-logging==0.2.1
+azure-functions-logging>=0.10,<1
 ```
 
 !!! note
@@ -52,7 +52,7 @@ from azure_functions_logging import get_logger, setup_logging
 setup_logging()
 logger = get_logger(__name__)
 
-logger.info("Logging is ready")
+logger.info("logging initialized")
 ```
 
 What this does:
@@ -67,7 +67,7 @@ Use this pattern for HTTP triggers:
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -77,23 +77,34 @@ app = func.FunctionApp()
 
 @app.route(route="health")
 def health(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("Health check called")
-    return func.HttpResponse("ok", status_code=200)
+    with logging_context(context):
+        logger.info("Health check called")
+        return func.HttpResponse("ok", status_code=200)
 ```
 
-Why `inject_context(context)` matters:
+Why `logging_context(context)` matters:
 
 - Adds invocation metadata to each log record.
 - Enables automatic `cold_start` flagging.
 - Keeps your handler code clean and explicit.
+- Always restores prior context on exit, even on exceptions.
+
+### Which context API do I use?
+
+Three ways to attach invocation context — pick one:
+
+- `with logging_context(context):` — **recommended.** Scoped, always restores prior context on exit (even on exceptions).
+- `@with_context` — decorator form of the same behavior; good when you want the whole handler wrapped implicitly.
+- `tokens = inject_context(context)` / `restore_context(tokens)` — manual token form for middleware or framework integrations where you cannot use a `with` block. You are responsible for calling `restore_context(tokens)` in a `finally`.
+
+Bare `inject_context(context)` without a paired `restore_context()` can leak context between invocations in a reused worker — prefer `logging_context`.
 
 ## Expected Local Output
 
 With default `format="color"`, you should see lines shaped like:
 
 ```text
-14:32:10 INFO     my_module  Logging is ready
+14:32:10 INFO     my_module  logging initialized
 14:32:12 INFO     function_app  Health check called  [invocation_id=..., function_name=health, trace_id=..., cold_start=true]
 ```
 
@@ -148,7 +159,7 @@ Important behavior in Core Tools and Azure environments:
 Avoid these early pitfalls:
 
 - Calling `setup_logging()` in multiple modules expecting different formats.
-- Forgetting `inject_context(context)` at the top of the handler.
+- Forgetting to wrap the handler body in `with logging_context(context):`.
 - Expecting app-level `level` to override restrictive `host.json` log level.
 
 ## Next Steps
@@ -168,7 +179,7 @@ Use this checklist before shipping:
 
 - `setup_logging()` called once during startup.
 - `get_logger(__name__)` used in modules.
-- `inject_context(context)` called per invocation.
+- Handler body wrapped in `with logging_context(context):`.
 - Chosen format is aligned with environment (`color` for local, `json` for production pipelines).
 - `host.json` logging level reviewed for conflicts.
 

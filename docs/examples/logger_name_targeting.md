@@ -59,9 +59,9 @@ If migrating a large app:
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json", logger_name="payments")
+setup_logging(functions_formatter=JsonFormatter(), logger_name="payments")
 logger = get_logger("payments.http")
 
 app = func.FunctionApp()
@@ -69,10 +69,10 @@ app = func.FunctionApp()
 
 @app.route(route="payments")
 def payments(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    request_logger = logger.bind(route="/payments", method=req.method)
-    request_logger.info("payments request")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        request_logger = logger.bind(route="/payments", method=req.method)
+        request_logger.info("payments request")
+        return func.HttpResponse("ok")
 ```
 
 ## Common Pitfalls
