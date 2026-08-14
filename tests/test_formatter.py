@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import sys
 
+import pytest
+
 from azure_functions_logging._formatter import ColorFormatter
 
 
@@ -156,3 +158,44 @@ def test_include_extra_with_allowlist_filters_keys() -> None:
 
     assert "user_id=u1" in output
     assert "request_id" not in output
+
+
+def test_non_tty_output_has_no_ansi_escape(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ColorFormatter, "is_tty", staticmethod(lambda: False))
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    formatter = ColorFormatter()
+
+    output = formatter.format(_make_record(msg="piped"))
+
+    assert "\033" not in output
+    assert "INFO" in output
+
+
+def test_no_color_env_suppresses_color_even_on_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ColorFormatter, "is_tty", staticmethod(lambda: True))
+    monkeypatch.setenv("NO_COLOR", "1")
+    formatter = ColorFormatter()
+
+    output = formatter.format(_make_record(msg="no color"))
+
+    assert "\033" not in output
+
+
+def test_interactive_tty_without_no_color_colorizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ColorFormatter, "is_tty", staticmethod(lambda: True))
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    formatter = ColorFormatter()
+
+    output = formatter.format(_make_record(msg="colored"))
+
+    assert "\033" in output
+
+
+def test_no_color_empty_string_still_suppresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ColorFormatter, "is_tty", staticmethod(lambda: True))
+    monkeypatch.setenv("NO_COLOR", "")
+    formatter = ColorFormatter()
+
+    output = formatter.format(_make_record(msg="empty no color"))
+
+    assert "\033" not in output
