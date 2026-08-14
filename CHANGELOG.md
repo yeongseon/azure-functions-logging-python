@@ -1,6 +1,31 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.2] - 2026-08-14
+
+### Documentation
+
+- Consolidate official documentation URL onto yeongseon.dev (#339) 
+- Sync context-field API in docs (span_id, host_instance_id, setup_logging params) (#331) 
+- *(i18n)* Adopt best-effort translation policy with staleness banners (#330) 
+- Sync context-field API in docs (span_id, host_instance_id, setup_logging params) (#321) 
+
+### Miscellaneous Tasks
+
+- Stop auto-deploying docs to GitHub Pages (#341) 
+- Adopt Renovate for GitHub Actions bumps (#337) 
+- *(ci)* Normalize action version-comment labels (#335) 
+- Add workflow pin-hygiene lint (#333) 
+- Add release-gate workflow drift lint (#328) 
+- Normalize release-gate action pins to canonical SHAs (#326) 
+- Add tiered pre-publish runtime gate with real-Azure certification (#319) 
+- Ignore agent orchestration state (.sisyphus/, .omc/) (#324) 
+- Bump ruff to 0.16.2 and repair pre-commit hooks (#318) 
+- Drop stale noqa on opentelemetry.context import (#317) 
+
+### Other
+
+- Bump version to 0.10.2 
 ## [0.10.1] - 2026-08-12
 
 ### Bug Fixes
@@ -9,6 +34,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Add Branch Hygiene section to AGENTS.md 
 
 ### Other
