@@ -1,6 +1,6 @@
 # Example: Cold Start Detection
 
-`azure-functions-logging` automatically flags cold starts through the `cold_start` field when `inject_context(context)` is called.
+`azure-functions-logging` automatically flags cold starts through the `cold_start` field when `logging_context(context)` is used.
 
 ## Goal
 
@@ -10,7 +10,7 @@ Track first-invocation behavior and build simple metrics patterns from logs.
 
 Cold start logic is process-scoped:
 
-- First call to `inject_context(context)` in a process sets `cold_start=True`.
+- First call within `logging_context(context)` in a process sets `cold_start=True`.
 - Subsequent calls set `cold_start=False`.
 
 No manual counters are required in your code.
@@ -19,9 +19,9 @@ No manual counters are required in your code.
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger("cold-start-demo")
 
 app = func.FunctionApp()
@@ -29,9 +29,9 @@ app = func.FunctionApp()
 
 @app.route(route="status")
 def status(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("status endpoint hit")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        logger.info("status endpoint hit")
+        return func.HttpResponse("ok")
 ```
 
 ## Expected Event Pattern
@@ -103,7 +103,7 @@ request_logger.info("request begin")
 
 Now each event includes:
 
-- Invocation metadata from `inject_context(context)`.
+- Invocation metadata from `logging_context(context)`.
 - Route/request metadata from `bind()`.
 
 ## Caveats

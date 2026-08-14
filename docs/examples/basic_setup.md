@@ -106,7 +106,7 @@ Inside `function_app.py`:
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -116,9 +116,9 @@ app = func.FunctionApp()
 
 @app.route(route="ping")
 def ping(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("ping received")
-    return func.HttpResponse("pong")
+    with logging_context(context):
+        logger.info("ping received")
+        return func.HttpResponse("pong")
 ```
 
 This adds invocation context fields automatically when available.
@@ -128,7 +128,7 @@ This adds invocation context fields automatically when available.
 - No logs: confirm `setup_logging()` executed before first log call.
 - Missing DEBUG: ensure `level=logging.DEBUG`.
 - Duplicate logs: ensure no extra root handlers were added elsewhere.
-- Missing context fields: ensure `inject_context(context)` runs per invocation.
+- Missing context fields: ensure handler body is wrapped in `with logging_context(context):`.
 
 ## Production Notes
 

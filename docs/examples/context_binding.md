@@ -71,9 +71,9 @@ After `clear_context()`, bound fields from that instance are removed.
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger("orders")
 
 app = func.FunctionApp()
@@ -81,19 +81,18 @@ app = func.FunctionApp()
 
 @app.route(route="orders/{order_id}")
 def get_order(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
+    with logging_context(context):
+        order_id = req.route_params.get("order_id")
+        request_logger = logger.bind(order_id=order_id, method=req.method)
 
-    order_id = req.route_params.get("order_id")
-    request_logger = logger.bind(order_id=order_id, method=req.method)
-
-    request_logger.info("lookup started")
-    request_logger.info("lookup completed")
-    return func.HttpResponse("ok")
+        request_logger.info("lookup started")
+        request_logger.info("lookup completed")
+        return func.HttpResponse("ok")
 ```
 
 This combines:
 
-- Global invocation fields from `inject_context(context)`.
+- Global invocation fields from `logging_context(context)`.
 - Per-request keys from `bind()`.
 
 ## Recommended Binding Dimensions

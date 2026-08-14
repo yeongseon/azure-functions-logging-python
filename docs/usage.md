@@ -86,15 +86,15 @@ JSON best practices:
 - Put event dimensions in structured keys.
 - Use stable key naming conventions (`tenant_id`, `request_id`, `operation`).
 
-## 3) Context Injection in Azure Functions
+## 3) Attaching Invocation Context in Azure Functions
 
-Call `inject_context(context)` once per invocation.
+Wrap each handler body in `with logging_context(context):`.
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 
 app = func.FunctionApp()
@@ -102,10 +102,13 @@ app = func.FunctionApp()
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("request started")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        logger.info("request started")
+        return func.HttpResponse("ok")
 ```
+
+!!! note
+    On Azure host-managed handlers, `setup_logging(format="json")` is ignored — you must pass `functions_formatter=JsonFormatter()`. `format="json"` applies only to local/standalone scripts.
 
 Fields populated from context:
 
@@ -270,9 +273,9 @@ This design prevents duplicate logs in runtime-managed environments.
 import json
 import logging
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(level=logging.INFO, format="json")
+setup_logging(level=logging.INFO, functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 
 app = func.FunctionApp()
@@ -280,24 +283,23 @@ app = func.FunctionApp()
 
 @app.route(route="process")
 def process(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
+    with logging_context(context):
+        request_logger = logger.bind(method=req.method, route="/process")
+        request_logger.info("request received")
 
-    request_logger = logger.bind(method=req.method, route="/process")
-    request_logger.info("request received")
+        try:
+            payload = req.get_json()
+            user_id = payload.get("user_id")
 
-    try:
-        payload = req.get_json()
-        user_id = payload.get("user_id")
+            user_logger = request_logger.bind(user_id=user_id)
+            user_logger.info("payload accepted")
 
-        user_logger = request_logger.bind(user_id=user_id)
-        user_logger.info("payload accepted")
-
-        result = {"status": "ok"}
-        user_logger.info("request completed", status="success")
-        return func.HttpResponse(json.dumps(result), mimetype="application/json")
-    except Exception:
-        request_logger.exception("request failed")
-        return func.HttpResponse("internal error", status_code=500)
+            result = {"status": "ok"}
+            user_logger.info("request completed", status="success")
+            return func.HttpResponse(json.dumps(result), mimetype="application/json")
+        except Exception:
+            request_logger.exception("request failed")
+            return func.HttpResponse("internal error", status_code=500)
 ```
 
 ## 9) Advanced Patterns
@@ -339,7 +341,7 @@ Before production rollout:
 
 - `setup_logging()` called once in startup path.
 - `format="json"` enabled where logs are machine-consumed.
-- `inject_context(context)` present in every handler.
+- Handler body wrapped in `with logging_context(context):`.
 - Request-level metadata attached through `bind()`.
 - `host.json` defaults reviewed against required visibility.
 - Dependency logger noise controlled with explicit levels.
@@ -347,7 +349,7 @@ Before production rollout:
 ## 11) Common Pitfalls
 
 - Multiple setup owners in the same process.
-- Missing context injection before first log event.
+- Missing `with logging_context(context):` wrapper before the first log event.
 - Expecting app-level level to override restrictive host policy.
 - Reusing one bound logger across unrelated invocations.
 - Emitting unstructured free-text fields that are hard to query.

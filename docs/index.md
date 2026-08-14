@@ -9,7 +9,7 @@ Production-oriented, developer-friendly logging for the Azure Functions Python v
 Copy this into your function module:
 
 ```python
-from azure_functions_logging import get_logger, logging_context, setup_logging
+from azure_functions_logging import get_logger, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)

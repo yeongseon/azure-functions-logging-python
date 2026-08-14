@@ -40,9 +40,9 @@ This suppresses low-value dependency info/debug chatter.
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger("orders")
 
 app = func.FunctionApp()
@@ -50,11 +50,11 @@ app = func.FunctionApp()
 
 @app.route(route="orders")
 def orders(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    request_logger = logger.bind(route="/orders", method=req.method)
-    request_logger.info("request started")
-    request_logger.info("request completed")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        request_logger = logger.bind(route="/orders", method=req.method)
+        request_logger.info("request started")
+        request_logger.info("request completed")
+        return func.HttpResponse("ok")
 ```
 
 With noise controls, these app events remain visible and query-friendly.
@@ -102,7 +102,7 @@ After configuration:
 
 Noise control is strongest when combined with structured app logs:
 
-- `inject_context(context)` for invocation correlation.
+- `with logging_context(context):` for invocation correlation.
 - `bind()` for request-level dimensions.
 - Namespace level controls for dependency suppression.
 

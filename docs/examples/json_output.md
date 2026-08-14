@@ -82,9 +82,9 @@ print(record["extra"].get("order_id"))
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import JsonFormatter, get_logger, logging_context, setup_logging
 
-setup_logging(format="json")
+setup_logging(functions_formatter=JsonFormatter())
 logger = get_logger(__name__)
 
 app = func.FunctionApp()
@@ -92,9 +92,9 @@ app = func.FunctionApp()
 
 @app.route(route="orders")
 def create_order(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("request received", method=req.method, route="/orders")
-    return func.HttpResponse("ok", status_code=200)
+    with logging_context(context):
+        logger.info("request received", method=req.method, route="/orders")
+        return func.HttpResponse("ok", status_code=200)
 ```
 
 With context injection, invocation fields are populated for every event in this request context.
