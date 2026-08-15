@@ -20,9 +20,6 @@ Surfaces `invocation_id`, detects cold starts, warns on `host.json` misconfig, a
 
 ---
 
-Part of the **Azure Functions Python DX Toolkit**
-→ Bring FastAPI-like developer experience to Azure Functions
-
 ## Why this exists
 
 Azure Functions Python logging has specific failure modes that generic logging libraries don't address:
@@ -35,7 +32,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 | Noisy third-party loggers | `azure-core`, `urllib3` flood your Application Insights | `SamplingFilter` / `RedactionFilter` |
 | Local vs cloud output mismatch | Colorized output breaks in production pipelines | Environment-aware formatter switching |
 | PII leaking into logs | Sensitive values accidentally logged as extra fields | `RedactionFilter` with key-based redaction |
-| Worker logs orphaned from the invocation trace | Python is the only Functions worker runtime without built-in OpenTelemetry invocation middleware, so worker log records are orphaned with `span_id=0` unless you activate a span in every handler yourself | Binds the host's W3C trace context so your OpenTelemetry logs inherit the invocation's `trace_id` / `span_id` |
+| Worker logs orphaned from the invocation trace | Worker log records fall back to `span_id=0`, detached from the host's invocation span | Binds the host's W3C trace context so your OpenTelemetry logs inherit the invocation's `trace_id` / `span_id` ([details](#opentelemetry-trace-correlation)) |
 
 ## What it does
 
@@ -228,7 +225,7 @@ traces
 This package does not own:
 
 - **Replacing stdlib logging** — it wraps and enriches Python's standard `logging`, never replaces it
-- **Distributed tracing** — it **binds** the Azure Functions host's W3C trace context so your existing OpenTelemetry log records inherit the invocation span's `trace_id` / `span_id`, but it never creates, records, or exports spans itself — correlation, not tracing. Use OpenTelemetry or the Application Insights SDK to produce spans. See [OpenTelemetry trace correlation](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/)
+- **Distributed tracing** — it correlates logs to the invocation span but never creates, records, or exports spans itself (see [OpenTelemetry trace correlation](#opentelemetry-trace-correlation)); use OpenTelemetry or the Application Insights SDK to produce spans
 - **API documentation** — use [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python) for API documentation and spec generation
 
 ## Installation
@@ -404,10 +401,7 @@ This package provides structured logging for Azure Functions with zero modificat
 1. **Preserves host configuration** — In Azure / Core Tools, no handlers are added and the root logger level is left to `host.json`; `ContextFilter` is installed on existing root handlers and on the root logger itself (so direct calls on the root logger carry context). For records that propagate from named child loggers to handlers attached later (e.g. by the host or third-party libraries), pass `use_record_factory=True` to `setup_logging()` to guarantee context coverage. In standalone local mode, `setup_logging(logger_name=None)` configures the root logger (sets level, adds a `StreamHandler` if none exist).
 2. **Context injection is contextvar-based** — Not thread-local, works with asyncio
 3. **Idempotent setup** — Calling setup_logging() multiple times is safe
-4. **Two environments, two behaviors**:
-   - Azure/Core Tools: install `ContextFilter` on existing root handlers and on the root logger itself; do not add handlers or change the root level (respects `host.json`).
-   - Standalone local: set the target/root logger level; add a `StreamHandler` (ColorFormatter or JsonFormatter) **only if no handlers exist**, otherwise just attach filters to existing handlers.
-5. **Test-friendly**:
+4. **Test-friendly**:
    - `inject_context()` accepts any object (no hard dependency on azure.functions.Context)
    - `with_context` decorator works with sync and async handlers
    - Use `reset_context()` in test teardown if needed
@@ -421,21 +415,7 @@ This package provides structured logging for Azure Functions with zero modificat
 - Call `get_logging_metadata(func)` to inspect `@with_context` metadata on a function (returns `dict[str, Any] | None`)
 - Apply `RedactionFilter` for PII fields, `SamplingFilter` for high-volume logs
 
-**Example Pattern:**
-```python
-from azure_functions_logging import get_logger, logging_context, setup_logging
-
-# Module level
-setup_logging()
-logger = get_logger(__name__)
-
-# Per handler
-def my_function(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    with logging_context(context):
-        req_logger = logger.bind(correlation_id=req.params.get("id"))
-        req_logger.info("Processing")
-        return func.HttpResponse("OK")
-```
+See [Quick Start](#quick-start) for the canonical handler pattern.
 
 ## Disclaimer
 
