@@ -9,19 +9,24 @@ from __future__ import annotations
 
 import logging
 
-# Custom keys this library injects via the logger context (factory). They must be
+# Custom keys this library injects via the logger context (factory). Defined once
+# here as an ordered tuple (the canonical injection order used by ``ContextFilter``
+# and the LogRecordFactory) and derived into a frozenset below. They must be
 # treated as reserved alongside stdlib LogRecord attributes so that user-supplied
 # `extra` does not silently overwrite Azure Functions runtime metadata.
-_LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(
-    {
-        "cold_start",
-        "function_name",
-        "host_instance_id",
-        "invocation_id",
-        "span_id",
-        "trace_id",
-    }
+#
+# Single source of truth: ``_context.ContextFilter.CONTEXT_FIELDS`` aliases this
+# tuple, so the field-name list never drifts between modules.
+_CONTEXT_FIELD_NAMES: tuple[str, ...] = (
+    "invocation_id",
+    "function_name",
+    "trace_id",
+    "span_id",
+    "cold_start",
+    "host_instance_id",
 )
+
+_LIBRARY_RESERVED_KEYS: frozenset[str] = frozenset(_CONTEXT_FIELD_NAMES)
 
 # `message` and `asctime` are computed lazily by formatters and absent from
 # `__dict__`; we add them explicitly to preserve the original guarantee.
