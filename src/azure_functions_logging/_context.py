@@ -9,6 +9,7 @@ import logging
 import threading
 from typing import Any, NamedTuple
 
+from ._constants import _CONTEXT_FIELD_NAMES
 from ._host_instance import get_host_instance_id
 
 # Type alias for the token mapping returned by inject_context()
@@ -59,14 +60,9 @@ class ContextFilter(logging.Filter):
     injection, prefer ``setup_logging(use_record_factory=True)``.
     """
 
-    CONTEXT_FIELDS: tuple[str, ...] = (
-        "invocation_id",
-        "function_name",
-        "trace_id",
-        "span_id",
-        "cold_start",
-        "host_instance_id",
-    )
+    #: Canonical context field names, aliased from the single source of truth in
+    #: ``_constants`` so the injection order never drifts between modules.
+    CONTEXT_FIELDS: tuple[str, ...] = _CONTEXT_FIELD_NAMES
 
     def __init__(
         self,
@@ -157,21 +153,6 @@ def _extract_trace_context(trace_parent: str | None) -> TraceContextParts | None
         )
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         return None
-
-
-def _extract_trace_id(trace_parent: str | None) -> str | None:
-    """Extract a W3C trace-id from a ``traceparent`` header.
-
-    Format (W3C Trace Context Level 1):
-        ``<version>-<trace-id>-<parent-id>-<flags>``
-
-    Returns the trace-id only when the header is structurally valid;
-    see :func:`_extract_trace_context` for the full validation ruleset.
-
-    Otherwise returns ``None`` so callers never log garbage trace IDs.
-    """
-    parts = _extract_trace_context(trace_parent)
-    return parts.trace_id if parts is not None else None
 
 
 def inject_context(context: Any) -> ContextTokens:
@@ -346,17 +327,6 @@ def logging_context(context: Any, *, activate_trace_context: bool | None = None)
 
 _CONTEXT_FACTORY_MARKER = "_azure_functions_logging_context_factory"
 _CONTEXT_FACTORY_PREVIOUS = "_azure_functions_logging_previous_factory"
-
-#: Field names injected by the factory. These become reserved LogRecord
-#: attributes when ``install_context_factory()`` is active.
-CONTEXT_RECORD_FIELDS: tuple[str, ...] = (
-    "invocation_id",
-    "function_name",
-    "trace_id",
-    "span_id",
-    "cold_start",
-    "host_instance_id",
-)
 
 
 def _install_context_factory() -> None:

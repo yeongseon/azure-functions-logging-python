@@ -49,35 +49,45 @@ def _build_logging_payload(param: str) -> LoggingMetadata:
     return {"version": 1, "context_param": param}
 
 
+def _resolve_positional_index(func: Callable[..., Any], param: str) -> int | None:
+    """Resolve the positional index of *param* once, at decoration time.
+
+    Returns the parameter's positional index in ``func``'s signature, or
+    ``None`` when the signature cannot be introspected or the parameter is
+    not present. Computing this once avoids calling ``inspect.signature`` on
+    every invocation.
+    """
+    try:
+        params = list(inspect.signature(func).parameters.keys())
+        return params.index(param)
+    except (TypeError, ValueError):
+        return None
+
+
 def _find_context_arg(
-    func: Callable[..., Any],
     param: str,
+    positional_index: int | None,
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> Any:
-    """Locate the context argument by parameter name."""
+    """Locate the context argument by keyword name or precomputed position."""
     # Check kwargs first
     if param in kwargs:
         return kwargs[param]
 
-    # Fall back to positional args
-    try:
-        sig = inspect.signature(func)
-        params = list(sig.parameters.keys())
-        idx = params.index(param)
-        if idx < len(args):
-            return args[idx]
-    except (ValueError, IndexError):
-        pass
+    # Fall back to positional args using the index resolved at decoration time.
+    if positional_index is not None and positional_index < len(args):
+        return args[positional_index]
 
     return None
 
 
 def _wrap_sync(func: _F, param: str, activate_trace_context: bool | None) -> _F:
     """Wrap a synchronous handler."""
+    context_index = _resolve_positional_index(func, param)
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = _find_context_arg(func, param, args, kwargs)
+        ctx = _find_context_arg(param, context_index, args, kwargs)
         if ctx is not None:
             with logging_context(ctx, activate_trace_context=activate_trace_context):
                 return func(*args, **kwargs)
@@ -90,9 +100,10 @@ def _wrap_sync(func: _F, param: str, activate_trace_context: bool | None) -> _F:
 
 def _wrap_async(func: _F, param: str, activate_trace_context: bool | None) -> _F:
     """Wrap an asynchronous handler."""
+    context_index = _resolve_positional_index(func, param)
 
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = _find_context_arg(func, param, args, kwargs)
+        ctx = _find_context_arg(param, context_index, args, kwargs)
         if ctx is not None:
             with logging_context(ctx, activate_trace_context=activate_trace_context):
                 return await func(*args, **kwargs)

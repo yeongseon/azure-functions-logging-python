@@ -13,7 +13,6 @@ from azure_functions_logging._context import (
     TraceContextParts,
     _check_cold_start,
     _extract_trace_context,
-    _extract_trace_id,
     _install_context_factory,
     _uninstall_context_factory,
     cold_start_var,
@@ -109,16 +108,6 @@ def test_inject_context_with_none_context() -> None:
     assert function_name_var.get() is None
     assert trace_id_var.get() is None
     assert cold_start_var.get() is True
-
-
-def test_extract_trace_id_valid_traceparent() -> None:
-    trace_parent = "00-1234567890abcdef1234567890abcdef-fedcba0987654321-01"
-    assert _extract_trace_id(trace_parent) == "1234567890abcdef1234567890abcdef"
-
-
-@pytest.mark.parametrize("trace_parent", [None, "", "bad", "00-only"])
-def test_extract_trace_id_invalid_or_empty(trace_parent: str | None) -> None:
-    assert _extract_trace_id(trace_parent) is None
 
 
 def test_cold_start_first_true_then_false() -> None:
@@ -547,24 +536,8 @@ _VALID_TRACE_ID = "1234567890abcdef1234567890abcdef"
         "00-1234567890abcdef1234567890abcdef-fedcba0987654321",
     ],
 )
-def test_extract_trace_id_rejects_malformed_headers(header: str) -> None:
-    assert _extract_trace_id(header) is None
-
-
-def test_extract_trace_id_normalizes_valid_uppercase_hex() -> None:
-    # Uppercase input is accepted but normalized to lowercase (issue #278).
-    upper = "00-1234567890ABCDEF1234567890ABCDEF-FEDCBA0987654321-01"
-    assert _extract_trace_id(upper) == "1234567890abcdef1234567890abcdef"
-
-
-def test_extract_trace_id_forward_compatible_future_version() -> None:
-    """Versions other than 00 may have trailing fields — still parsed."""
-    future = "01-1234567890abcdef1234567890abcdef-fedcba0987654321-01-future"
-    assert _extract_trace_id(future) == _VALID_TRACE_ID
-
-
-def test_extract_trace_id_baseline_valid_still_works() -> None:
-    assert _extract_trace_id(_VALID_TRACEPARENT) == _VALID_TRACE_ID
+def test_extract_trace_context_rejects_malformed_headers(header: str) -> None:
+    assert _extract_trace_context(header) is None
 
 
 def test_extract_trace_context_returns_all_parts() -> None:
@@ -609,13 +582,6 @@ def test_extract_trace_context_forward_compatible_future_version() -> None:
     assert parts.trace_id == _VALID_TRACE_ID
     assert parts.span_id == "fedcba0987654321"
     assert parts.trace_flags == 1
-
-
-def test_extract_trace_id_delegates_to_extract_trace_context() -> None:
-    # The thin wrapper must return exactly the trace_id component.
-    parts = _extract_trace_context(_VALID_TRACEPARENT)
-    assert parts is not None
-    assert _extract_trace_id(_VALID_TRACEPARENT) == parts.trace_id
 
 
 def test_context_filter_injects_extra_context_vars() -> None:
@@ -692,9 +658,7 @@ def test_context_filter_adds_span_id_to_record() -> None:
 
 
 def test_context_factory_injects_span_id() -> None:
-    from azure_functions_logging._context import CONTEXT_RECORD_FIELDS
-
-    assert "span_id" in CONTEXT_RECORD_FIELDS
+    assert "span_id" in ContextFilter.CONTEXT_FIELDS
     token = span_id_var.set("00f067aa0ba902b7")
     try:
         _install_context_factory()
