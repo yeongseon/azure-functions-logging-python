@@ -97,25 +97,25 @@ This combines:
 
 ## In Application Insights
 
-After deploying and requesting `/api/orders/o-42`, query the `traces` table. Bound keys land under `customDimensions` alongside the injected invocation fields (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+After deploying and requesting `/api/orders/o-42`, query the `traces` table. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` — bound keys land under `extra.*` alongside the injected invocation fields (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.order_id == "o-42"
-| project timestamp, message, customDimensions.invocation_id, customDimensions.order_id, customDimensions.method
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "get_order"
+| project timestamp, order_id=tostring(p.extra.order_id), method=tostring(p.extra.method), message=tostring(p.message)
+| order by timestamp desc
+| take 6
 ```
 
-Expected result — both lifecycle events share the same `invocation_id` and bound `order_id`/`method`:
+Result from a real deployed app — both lifecycle events share the same bound `order_id` / `method`:
 
-| timestamp | message | invocation_id | order_id | method |
-| --- | --- | --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | lookup started | `abc-123-def` | `o-42` | `GET` |
-| 2026-03-14T10:20:30.34Z | lookup completed | `abc-123-def` | `o-42` | `GET` |
+![App Insights Logs — context binding](../assets/portal-example-context-binding.png)
 
 The bound `order_id` lets you slice every log for one order in a single query, without threading it through each call.
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.order_id`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.order_id` directly.
 
 ## Recommended Binding Dimensions
 

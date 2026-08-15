@@ -180,25 +180,9 @@ The following screenshots are from a real deployed Azure Functions app queried i
 
 ### Query in Application Insights
 
-#### When JSON fields are parsed into `customDimensions`
-
-```kql
-traces
-| where customDimensions.invocation_id == "abc-123-def"
-| project timestamp, message, customDimensions.cold_start, customDimensions.function_name
-| order by timestamp asc
-```
-
-Find all cold starts in the last hour:
-
-```kql
-traces
-| where customDimensions.cold_start == "true"
-| where timestamp > ago(1h)
-| summarize count() by bin(timestamp, 5m)
-```
-
 #### When JSON remains in the `message` column
+
+This is the shape shown in the screenshots above — the structured JSON stays inside `message`, so parse it with `parse_json(message)`:
 
 ```kql
 traces
@@ -214,6 +198,26 @@ Find all cold starts in the last hour:
 traces
 | extend payload = parse_json(message)
 | where tostring(payload.cold_start) == "true"
+| where timestamp > ago(1h)
+| summarize count() by bin(timestamp, 5m)
+```
+
+#### When JSON fields are parsed into `customDimensions`
+
+If your pipeline promotes the JSON fields into `customDimensions`, read them directly:
+
+```kql
+traces
+| where customDimensions.invocation_id == "abc-123-def"
+| project timestamp, message, customDimensions.cold_start, customDimensions.function_name
+| order by timestamp asc
+```
+
+Find all cold starts in the last hour:
+
+```kql
+traces
+| where customDimensions.cold_start == "true"
 | where timestamp > ago(1h)
 | summarize count() by bin(timestamp, 5m)
 ```

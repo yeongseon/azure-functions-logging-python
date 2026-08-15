@@ -48,30 +48,30 @@ The first invocation after startup is your cold start marker.
 
 ## In Application Insights
 
-After deploying and sending a few requests to `/api/status`, query the `traces` table. The `customDimensions`-parsed shape is shown here (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+After deploying and sending a few requests to `/api/status`, query the `traces` table. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.function_name == "status"
-| where message == "status endpoint hit"
-| project timestamp, customDimensions.invocation_id, customDimensions.cold_start
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "status"
+| project timestamp, cold_start=tostring(p.cold_start), invocation_id=tostring(p.invocation_id), message=tostring(p.message)
 | order by timestamp asc
+| take 6
 ```
 
-Expected result — only the first row of a fresh worker is flagged:
+Result from a real deployed app — only the first invocation on a fresh worker is flagged `cold_start=true`:
 
-| timestamp | invocation_id | cold_start |
-| --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | `abc-123-def` | `true` |
-| 2026-03-14T10:20:41.55Z | `def-456-ghi` | `false` |
-| 2026-03-14T10:20:52.09Z | `ghi-789-jkl` | `false` |
+![App Insights Logs — cold start detection](../assets/portal-example-cold-start.png)
 
 Cold start ratio over the last hour (matches the [metrics pattern](#metrics-pattern-cold-start-ratio) above):
 
 ```kql
 traces
+| where message startswith "{"
+| extend p = parse_json(message)
 | where timestamp > ago(1h)
-| summarize cold = countif(customDimensions.cold_start == "true"), total = count()
+| summarize cold = countif(tostring(p.cold_start) == "true"), total = count()
 | extend cold_start_ratio = todouble(cold) / total
 ```
 
@@ -79,7 +79,7 @@ traces
 | --- | --- | --- |
 | 3 | 420 | 0.0071 |
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.cold_start`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.cold_start` directly.
 
 ## Local Verification Steps
 

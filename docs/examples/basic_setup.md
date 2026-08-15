@@ -125,24 +125,23 @@ This adds invocation context fields automatically when available.
 
 ## In Application Insights
 
-After deploying this handler and sending a request to `/api/ping`, query the `traces` table in Application Insights Logs. The exact schema depends on your ingestion pipeline — the `customDimensions`-parsed shape is shown here (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+After deploying this handler and sending a request to `/api/ping`, query the `traces` table in Application Insights Logs. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.function_name == "ping"
-| project timestamp, message, customDimensions.invocation_id, customDimensions.function_name, customDimensions.cold_start
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "ping"
+| project timestamp, function_name=tostring(p.function_name), invocation_id=tostring(p.invocation_id), message=tostring(p.message)
+| order by timestamp desc
+| take 5
 ```
 
-Expected result (first request on a fresh worker):
+Result from a real deployed app — every `logger.info("ping received")` call is correlated by `invocation_id`, with no change to your logging calls:
 
-| timestamp | message | invocation_id | function_name | cold_start |
-| --- | --- | --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | ping received | `abc-123-def` | `ping` | `true` |
+![App Insights Logs — basic setup](../assets/portal-example-basic-setup.png)
 
-The same `logger.info("ping received")` call is now correlated by `invocation_id` and carries a `cold_start` signal — no change to your logging calls.
-
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.invocation_id` / `payload.cold_start`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.invocation_id` / `customDimensions.function_name` directly.
 
 ## Troubleshooting Quick Checks
 

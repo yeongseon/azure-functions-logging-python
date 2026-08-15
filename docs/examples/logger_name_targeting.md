@@ -77,24 +77,25 @@ def payments(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 
 ## In Application Insights
 
-After deploying and requesting `/api/payments`, query the `traces` table filtered by logger name. The named-logger identity is preserved in `customDimensions.logger` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+After deploying and requesting `/api/payments`, query the `traces` table filtered by logger name. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` — the named-logger identity is preserved in `p.logger` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.logger == "payments.http"
-| project timestamp, message, customDimensions.logger, customDimensions.invocation_id, customDimensions.route
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.logger) == "payments.http"
+| project timestamp, logger=tostring(p.logger), route=tostring(p.extra.route), message=tostring(p.message)
+| order by timestamp desc
+| take 5
 ```
 
-Expected result — only the targeted `payments.*` hierarchy appears:
+Result from a real deployed app — only the targeted `payments.*` hierarchy appears:
 
-| timestamp | message | logger | invocation_id | route |
-| --- | --- | --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | payments request | `payments.http` | `abc-123-def` | `/payments` |
+![App Insights Logs — logger name targeting](../assets/portal-example-logger-name-targeting.png)
 
-Filtering on `customDimensions.logger` lets you build a dashboard scoped to one subsystem while other hierarchies (e.g. `inventory`) stay out of view.
+Filtering on `p.logger` lets you build a dashboard scoped to one subsystem while other hierarchies (e.g. `inventory`) stay out of view.
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.logger`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.logger` directly.
 
 ## Common Pitfalls
 
