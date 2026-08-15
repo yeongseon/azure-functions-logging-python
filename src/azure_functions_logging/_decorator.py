@@ -52,16 +52,29 @@ def _build_logging_payload(param: str) -> LoggingMetadata:
 def _resolve_positional_index(func: Callable[..., Any], param: str) -> int | None:
     """Resolve the positional index of *param* once, at decoration time.
 
-    Returns the parameter's positional index in ``func``'s signature, or
-    ``None`` when the signature cannot be introspected or the parameter is
-    not present. Computing this once avoids calling ``inspect.signature`` on
-    every invocation.
+    Returns the parameter's index **among positionally-passable parameters**
+    (``POSITIONAL_ONLY`` / ``POSITIONAL_OR_KEYWORD``) so the index lines up with
+    the runtime positional ``args`` tuple. Returns ``None`` when the signature
+    cannot be introspected, or when *param* is keyword-only or a ``*args`` /
+    ``**kwargs`` parameter (which can never be matched positionally). Computing
+    this once avoids calling ``inspect.signature`` on every invocation.
     """
     try:
-        params = list(inspect.signature(func).parameters.keys())
-        return params.index(param)
+        parameters = inspect.signature(func).parameters
     except (TypeError, ValueError):
         return None
+    positional_kinds = (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+    index = 0
+    for name, parameter in parameters.items():
+        if parameter.kind not in positional_kinds:
+            continue
+        if name == param:
+            return index
+        index += 1
+    return None
 
 
 def _find_context_arg(

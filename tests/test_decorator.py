@@ -201,6 +201,43 @@ class TestMissingContextParam:
 
 
 # ---------------------------------------------------------------------------
+# 4b. Positional-index resolution edge cases (PR #364 review)
+# ---------------------------------------------------------------------------
+
+
+class TestPositionalIndexEdgeCases:
+    """The context arg must be resolved against positionally-passable params only.
+
+    When the signature contains ``*args`` or keyword-only parameters, the
+    decoration-time index must not point at a stray runtime positional slot.
+    """
+
+    def test_keyword_only_context_after_varargs_uses_kwarg(self) -> None:
+        seen: dict[str, object] = {}
+
+        @with_context
+        def handler(req: object, *args: object, context: object) -> str:
+            seen["inv"] = invocation_id_var.get()
+            return "ok"
+
+        # A naive full-parameter-list index would be 2 and, applied to the
+        # positional args tuple ("req", "x", "y"), would grab "y" as the
+        # context — injecting nothing and leaving invocation_id unset.
+        result = handler("req", "x", "y", context=_MOCK_CONTEXT)
+        assert result == "ok"
+        assert seen["inv"] == "inv-dec"
+
+    def test_keyword_only_context_injects_via_kwarg(self) -> None:
+        @with_context
+        def handler(req: object, *, context: object) -> str:
+            assert invocation_id_var.get() == "inv-dec"
+            return "ok"
+
+        result = handler("req", context=_MOCK_CONTEXT)
+        assert result == "ok"
+
+
+# ---------------------------------------------------------------------------
 # 5. Decorator preserves function metadata
 # ---------------------------------------------------------------------------
 
