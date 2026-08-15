@@ -133,23 +133,24 @@ app = func.FunctionApp()
 @app.route(route="orders")
 def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     with logging_context(context):
-        logger.info("Processing order", order_id="o-999")
+        logger.info("Processing order", order_id="o-42")
         return func.HttpResponse("OK")
 ```
 
 Local terminal output when run standalone (e.g. `python app.py`, color formatter):
 
 ```
-10:30:00 INFO     function_app  Processing order  [invocation_id=abc-123-def, function_name=process_order, cold_start=true]
+10:47:06 INFO     function_app  Processing order  [invocation_id=706b8e5c-a630-4309-b815-6410526f237a, function_name=process_order, cold_start=true]
 ```
 
 Production output under `func start` / Azure (Application Insights NDJSON, applied because `functions_formatter` is set):
 
 ```json
-{"timestamp": "2024-01-15T10:30:00+00:00", "level": "INFO", "logger": "function_app",
- "message": "Processing order", "invocation_id": "abc-123-def",
- "function_name": "process_order", "trace_id": null, "cold_start": true,
- "exception": null, "extra": {"order_id": "o-999"}}
+{"timestamp": "2026-08-15T01:47:55.201145+00:00", "level": "INFO", "logger": "function_app",
+ "message": "Processing order", "invocation_id": "706b8e5c-a630-4309-b815-6410526f237a",
+ "function_name": "process_order", "trace_id": null, "span_id": null, "cold_start": true,
+ "host_instance_id": "3c9f1e7a8b2d4f6019a5c8e2b7d0a4f3", "exception": null,
+ "extra": {"order_id": "o-42"}}
 ```
 
 ![Local terminal — with azure-functions-logging](docs/assets/demo-after.png)
