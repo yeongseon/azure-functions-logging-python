@@ -129,6 +129,57 @@ def test_activated_trace_context_invalid_preserves_existing_context() -> None:
     assert not trace.get_current_span().get_span_context().is_valid
 
 
+def test_activated_trace_context_preserves_already_active_span() -> None:
+    # F1 (issue #358): when a valid *local* span is ALREADY active in the
+    # current context (e.g. auto-instrumentation or the user's own
+    # ``start_as_current_span``), the host's non-recording remote span must
+    # NOT overwrite it. Overwriting would strip the real ``span_id`` from log
+    # records and re-parent nested spans. The already-active local span wins.
+    pytest.importorskip("opentelemetry.sdk.trace")
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    tracer = TracerProvider().get_tracer("afl.otel.f1")
+    with tracer.start_as_current_span("active") as active_span:
+        active_sc = active_span.get_span_context()
+        assert active_sc.is_valid
+        # Activation must be a no-op: the real active span stays current, and
+        # the host's ``_PARENT_ID_HEX`` span_id never takes over.
+        with _otel.activated_trace_context(_TRACEPARENT):
+            current = trace.get_current_span().get_span_context()
+            assert current.span_id == active_sc.span_id
+            assert current.trace_id == active_sc.trace_id
+            assert format(current.span_id, "016x") != _PARENT_ID_HEX
+        # Still the real active span after the block (nothing detached).
+        assert trace.get_current_span().get_span_context().span_id == active_sc.span_id
+
+
+def test_activated_trace_context_nested_host_override() -> None:
+    # F1 boundary (issue #358): a currently-active *remote* span is only a
+    # previously-attached host traceparent, not a real worker span, so a nested
+    # host activation IS allowed to override it (mirrors the public-API spike
+    # test_spike_nested_contexts_restore_outer_span). The outer host span is
+    # restored on exit of the inner block.
+    pytest.importorskip("opentelemetry.context")
+    from opentelemetry import trace
+
+    _TRACE_ID_B = "0af7651916cd43dd8448eb211c80319c"
+    _PARENT_ID_B = "b7ad6b7169203331"
+    _TRACEPARENT_B = f"00-{_TRACE_ID_B}-{_PARENT_ID_B}-01"
+
+    with _otel.activated_trace_context(_TRACEPARENT):
+        outer = trace.get_current_span().get_span_context()
+        assert format(outer.span_id, "016x") == _PARENT_ID_HEX
+        with _otel.activated_trace_context(_TRACEPARENT_B):
+            inner = trace.get_current_span().get_span_context()
+            # The nested host context overrides the enclosing remote one.
+            assert format(inner.span_id, "016x") == _PARENT_ID_B
+            assert format(inner.trace_id, "032x") == _TRACE_ID_B
+        # Outer host span restored (LIFO detach).
+        assert format(trace.get_current_span().get_span_context().span_id, "016x") == _PARENT_ID_HEX
+    assert not trace.get_current_span().get_span_context().is_valid
+
+
 # ---------------------------------------------------------------------------
 # Integration: activation wired through the public entry points
 # ---------------------------------------------------------------------------

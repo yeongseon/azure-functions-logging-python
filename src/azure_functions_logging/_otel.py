@@ -81,6 +81,15 @@ def activated_trace_context(
     * OpenTelemetry is not installed (:func:`is_available` is ``False``);
     * the extracted span context is invalid (a no-op span) -- attaching it
       would break the trace tree, so the current context is left untouched;
+    * a valid **local** span is already active in the current context (e.g. the
+      OTel distro's auto-instrumentation or the user's
+      ``start_as_current_span``); overwriting it with the host's non-recording
+      remote span would strip the real ``span_id`` from log records and
+      re-parent nested spans, so the already-active local span is left in
+      place -- it already supplies correlation. A currently-active *remote*
+      span (i.e. a host traceparent attached by an enclosing activation) is
+      NOT protected: a nested activation may replace it with its own host
+      context;
     * extraction/attach fails for any reason (malformed header, etc.).
 
     Args:
@@ -106,12 +115,29 @@ def activated_trace_context(
     token = None
     try:
         extracted = otel_extract(carrier)
-        # Only attach a valid remote span context. An invalid/no-op span
-        # context (e.g. the host emitted no real trace) must not be attached,
-        # otherwise downstream log records get parented to an invalid context
-        # and the trace tree breaks. Leave the current context untouched.
+        # Attach the host's remote span context only when it is BOTH valid AND
+        # there is no already-active *real local* span in the current context.
+        #
+        # An invalid/no-op extracted context (e.g. the host emitted no real
+        # trace) must not be attached: downstream records would be parented to
+        # an invalid context and the trace tree would break.
+        #
+        # A currently-active *local* span (worker auto-instrumentation or the
+        # user's own ``start_as_current_span``) must win: this helper exists to
+        # rescue records orphaned (``span_id=0``) precisely BECAUSE no span is
+        # active. Overwriting a real local span with the host's non-recording
+        # remote span would break the very log<->span correlation the feature
+        # promises and flatten nested spans -- leave it untouched.
+        #
+        # A currently-active *remote* span is only a previously-attached host
+        # traceparent, not a real worker span, so a nested activation is allowed
+        # to replace it (see test_spike_nested_contexts_restore_outer_span).
         span_context = otel_trace.get_current_span(extracted).get_span_context()
-        if span_context.is_valid:
+        current_span_context = otel_trace.get_current_span().get_span_context()
+        current_is_real_local_span = (
+            current_span_context.is_valid and not current_span_context.is_remote
+        )
+        if span_context.is_valid and not current_is_real_local_span:
             token = otel_context.attach(extracted)
     except Exception:  # nosec B110 — Principle 3: context failures are silent
         token = None
