@@ -47,17 +47,19 @@ def _check_cold_start() -> bool:
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
-    For most new applications, prefer ``setup_logging(use_record_factory=True)``
-    because it injects context at LogRecord creation time and does not depend on
-    handler filter configuration.
+    ``ContextFilter`` is the default context-injection strategy: it is
+    installed on handlers (and the root logger) by ``setup_logging()`` unless
+    ``use_record_factory=True`` is passed. Because it runs at handler dispatch
+    time, it applies to any record that reaches those handlers, including
+    records from third-party loggers that propagate to them.
 
-    ``ContextFilter`` remains supported for compatibility and for users who do
-    not want to modify the global ``LogRecordFactory``.
-
-    This filter is intended to be installed on handlers, so it applies to any
-    record that reaches those handlers, including records from third-party
-    loggers that propagate to them. For guaranteed record-creation-time
-    injection, prefer ``setup_logging(use_record_factory=True)``.
+    The opt-in alternative, ``setup_logging(use_record_factory=True)``, injects
+    context at LogRecord creation time and does not depend on handler/filter
+    wiring, but it mutates the **global** ``logging.LogRecordFactory`` (affecting
+    every logger in the process) and turns the context field names into reserved
+    LogRecord attributes. Choose it when you need guaranteed record-creation-time
+    injection and accept those global side effects; otherwise this filter is the
+    safe default.
     """
 
     #: Canonical context field names, aliased from the single source of truth in
