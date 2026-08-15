@@ -84,7 +84,10 @@ def setup_logging(
     - **Standalone local development**: Adds a ``StreamHandler`` with
       ``ColorFormatter`` or ``JsonFormatter`` to the specified logger
       (or root logger if ``logger_name`` is None). Sets the level.
-      Pass an explicit ``logger_name`` to avoid modifying the root logger.
+      Pass an explicit ``logger_name`` to avoid modifying the root logger;
+      when a handler is added to a named logger this way, its
+      ``propagate`` flag is set to ``False`` so records are not also emitted
+      by an ancestor (e.g. root) handler, which would double-log.
 
     This function is idempotent per ``logger_name`` — calling it multiple times
     for the same logger has no additional effect.
@@ -232,6 +235,15 @@ def setup_logging(
                 if context_filter is not None:
                     handler.addFilter(context_filter)
                 target.addHandler(handler)
+                if logger_name is not None:
+                    # This named logger now owns its output via the handler we
+                    # just added. Stop propagation to ancestor loggers so a
+                    # handler already on the root logger (e.g. from
+                    # ``basicConfig``, pytest, or a framework) does not emit
+                    # every record a SECOND time. The root logger
+                    # (``logger_name=None``) has no ancestor to double-emit to,
+                    # so its propagation is left untouched.
+                    target.propagate = False
             elif context_filter is not None:
                 # Add filter to existing handlers
                 for handler in target.handlers:
