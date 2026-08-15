@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import contextvars
 import logging
 import os
 from types import SimpleNamespace
 from unittest.mock import patch
+import warnings
 
 import pytest
 
@@ -771,3 +773,43 @@ def test_setup_logging_root_logger_propagation_untouched() -> None:
         root.handlers = saved_root_handlers
         root.filters.clear()
         root.propagate = saved_propagate
+
+
+def test_extra_context_vars_with_record_factory_warns() -> None:
+    # Passing extra_context_vars while use_record_factory=True has no effect;
+    # setup_logging must warn rather than silently drop the argument (#366).
+    extra = {"tenant": contextvars.ContextVar("tenant", default=None)}
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.warns(UserWarning, match="extra_context_vars is ignored"):
+            setup_logging(
+                logger_name="afl.test.warn_extra_ctx",
+                use_record_factory=True,
+                extra_context_vars=extra,
+            )
+
+
+def test_extra_context_vars_without_record_factory_does_not_warn() -> None:
+    # In the default ContextFilter mode extra_context_vars is honored, so no
+    # warning should be emitted.
+    extra = {"tenant": contextvars.ContextVar("tenant2", default=None)}
+    with patch.dict(os.environ, {}, clear=True):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            setup_logging(
+                logger_name="afl.test.no_warn_extra_ctx",
+                use_record_factory=False,
+                extra_context_vars=extra,
+            )
+    assert not [w for w in caught if "extra_context_vars is ignored" in str(w.message)]
+
+
+def test_record_factory_without_extra_context_vars_does_not_warn() -> None:
+    # use_record_factory=True alone (no extra_context_vars) must not warn.
+    with patch.dict(os.environ, {}, clear=True):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            setup_logging(
+                logger_name="afl.test.factory_no_extra",
+                use_record_factory=True,
+            )
+    assert not [w for w in caught if "extra_context_vars is ignored" in str(w.message)]
