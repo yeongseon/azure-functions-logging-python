@@ -52,8 +52,15 @@ def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
 class FunctionLogger:
     """Wrapper around a standard ``logging.Logger`` with context binding.
 
-    ``FunctionLogger`` delegates all standard logging methods to the underlying
-    logger. The ``bind()`` method returns a new wrapper with additional context
+    ``FunctionLogger`` forwards the common logging methods (``debug``,
+    ``info``, ``warning``, ``error``, ``critical``, ``exception``, ``log``)
+    through :meth:`_log`, which merges bound context and sanitizes reserved
+    ``extra`` keys. Any other attribute of the underlying ``logging.Logger``
+    (``addHandler``, ``handlers``, ``propagate``, ``level``, ``getChild``,
+    ...) is delegated via :meth:`__getattr__`, so a ``FunctionLogger``
+    behaves like the stdlib ``Logger`` it wraps.
+
+    The ``bind()`` method returns a new wrapper with additional context
     fields that are merged into ``extra`` on each log call.
 
     Context from ``bind()`` is supplementary to the ``ContextFilter``-based
@@ -167,3 +174,34 @@ class FunctionLogger:
     def hasHandlers(self) -> bool:
         """Return whether the underlying logger has any handlers configured."""
         return self._logger.hasHandlers()
+
+    def warn(self, msg: object, *args: Any, **kwargs: Any) -> None:
+        """Deprecated alias for :meth:`warning` (mirrors ``logging.Logger.warn``).
+
+        Implemented explicitly rather than delegated so bound context and
+        reserved-key sanitization still apply.
+        """
+        self._log(logging.WARNING, msg, args, **kwargs)
+
+    def fatal(self, msg: object, *args: Any, **kwargs: Any) -> None:
+        """Alias for :meth:`critical` (mirrors ``logging.Logger.fatal``).
+
+        Implemented explicitly rather than delegated so bound context and
+        reserved-key sanitization still apply.
+        """
+        self._log(logging.CRITICAL, msg, args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to the wrapped ``logging.Logger``.
+
+        ``__getattr__`` only runs when normal lookup fails, so it never
+        shadows ``FunctionLogger``'s own slots or methods. It forwards the rest
+        of the stdlib ``Logger`` surface (``addHandler``, ``removeHandler``,
+        ``addFilter``, ``handlers``, ``propagate``, ``level``, ``disabled``,
+        ``parent``, ``manager``, ``getChild``, ...) to ``self._logger``.
+        """
+        # Guard the slot names so a missing ``_logger`` (e.g. before __init__)
+        # raises AttributeError instead of recursing infinitely.
+        if name in ("_logger", "_context"):
+            raise AttributeError(name)
+        return getattr(self._logger, name)

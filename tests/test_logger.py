@@ -510,3 +510,60 @@ def test_explicit_stacklevel_walks_further_up_like_stdlib() -> None:
     fl_record, std_record = fl_cap.records[-1], std_cap.records[-1]
     assert fl_record.funcName == std_record.funcName == "_caller"
     assert fl_record.lineno == std_record.lineno
+
+
+class TestAttributeDelegation:
+    """FunctionLogger forwards the rest of the stdlib Logger surface (#365)."""
+
+    def test_delegates_addhandler_to_underlying(self) -> None:
+        underlying = _mock_underlying_logger()
+        logger = FunctionLogger(underlying)
+        handler = logging.NullHandler()
+
+        logger.addHandler(handler)
+
+        underlying.addHandler.assert_called_once_with(handler)
+
+    def test_delegates_propagate_attribute(self) -> None:
+        real = logging.getLogger("test.delegate.propagate")
+        real.propagate = False
+        logger = FunctionLogger(real)
+
+        assert logger.propagate is False
+
+    def test_delegates_getchild(self) -> None:
+        real = logging.getLogger("test.delegate.parent")
+        logger = FunctionLogger(real)
+
+        child = logger.getChild("sub")
+
+        assert child.name == "test.delegate.parent.sub"
+
+    def test_missing_attribute_raises_attribute_error(self) -> None:
+        logger = FunctionLogger(_mock_underlying_logger())
+
+        with pytest.raises(AttributeError):
+            _ = logger.definitely_not_a_real_logger_attribute
+
+    def test_warn_alias_routes_through_sanitization(self) -> None:
+        underlying = _mock_underlying_logger()
+        logger = FunctionLogger(underlying)
+
+        # ``filename`` is a reserved LogRecord key; sanitization must rename
+        # it so the call does not raise and the value survives under
+        # ``extra_filename``.
+        logger.warn("deprecated path", filename="collides")
+
+        underlying.log.assert_called_once()
+        _, kwargs = underlying.log.call_args
+        assert kwargs["extra"] == {"extra_filename": "collides"}
+
+    def test_fatal_alias_logs_at_critical(self) -> None:
+        underlying = _mock_underlying_logger()
+        logger = FunctionLogger(underlying)
+
+        logger.fatal("boom")
+
+        underlying.log.assert_called_once()
+        args, _ = underlying.log.call_args
+        assert args[0] == logging.CRITICAL
