@@ -699,3 +699,75 @@ class TestInjectionModeParity:
         assert {k: factory_fields[k] for k in context_derived} == expected, factory_fields
         assert isinstance(filter_fields["cold_start"], bool)
         assert isinstance(factory_fields["cold_start"], bool)
+
+
+def test_setup_logging_named_logger_disables_propagation() -> None:
+    # F2 (issue #359): when setup_logging adds its own handler to a NAMED
+    # logger, propagation must be disabled so a handler already on the root
+    # logger does not emit every record a second time (double-logging).
+    logger_name = "afl.test.no_double_log"
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+    logger.propagate = True  # start from the stdlib default
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=logger_name)
+
+    assert logger.propagate is False
+    assert len(logger.handlers) == 1
+
+    logger.handlers.clear()
+    logger.filters.clear()
+    logger.propagate = True
+
+
+def test_setup_logging_named_logger_no_double_emit_when_root_has_handler(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # End-to-end proof of #359: with a handler on the root logger, a record on
+    # the configured named logger must be emitted exactly ONCE.
+    logger_name = "afl.test.no_double_log.e2e"
+    root = logging.getLogger()
+    saved_root_handlers = root.handlers[:]
+    root_handler = logging.StreamHandler()
+    root_handler.setFormatter(logging.Formatter("ROOT %(message)s"))
+    root.handlers = [root_handler]
+
+    logger = logging.getLogger(logger_name)
+    logger.handlers.clear()
+    logger.filters.clear()
+    logger.propagate = True
+    try:
+        with patch.dict(os.environ, {}, clear=True):
+            setup_logging(logger_name=logger_name, format="json")
+        logger.info("once")
+    finally:
+        root.handlers = saved_root_handlers
+        logger.handlers.clear()
+        logger.filters.clear()
+        logger.propagate = True
+
+    captured = capsys.readouterr()
+    # The root handler prefixes with 'ROOT '; propagation off means it never
+    # fires, so the message is emitted exactly once (by our own handler).
+    assert "ROOT once" not in captured.err
+    assert captured.out.count("once") + captured.err.count("once") == 1
+
+
+def test_setup_logging_root_logger_propagation_untouched() -> None:
+    # The root logger (logger_name=None) has no ancestor to double-emit to, so
+    # its propagate flag must be left as-is (never forced to False).
+    root = logging.getLogger()
+    saved_root_handlers = root.handlers[:]
+    saved_propagate = root.propagate
+    root.handlers = []
+    root.filters.clear()
+    try:
+        with patch.dict(os.environ, {}, clear=True):
+            setup_logging(logger_name=None)
+        assert root.propagate is saved_propagate
+    finally:
+        root.handlers = saved_root_handlers
+        root.filters.clear()
+        root.propagate = saved_propagate
