@@ -96,31 +96,27 @@ If `INFO` does not appear, inspect `host.json` first.
 
 ## In Application Insights
 
-`host.json` conflicts are visible as *missing rows*, not error messages. After deploying and requesting `/api/orders`, query the `traces` table by severity level (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+`host.json` conflicts are visible as *missing rows*, not error messages. After deploying and requesting `/api/orders`, query the `traces` table by log level. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.function_name == "orders"
-| project timestamp, message, severityLevel, customDimensions.invocation_id
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "orders"
+| project timestamp, level=tostring(p.level), invocation_id=tostring(p.invocation_id), message=tostring(p.message)
+| order by timestamp desc
+| take 6
 ```
 
-With a **conflicting** `host.json` (`"default": "Warning"`), the `INFO` line never reaches Application Insights — only the warning is ingested:
+With the **corrected** `host.json` (`"default": "Information"`), both the `INFO` and `WARNING` events appear — this is the real deployed result:
 
-| timestamp | message | severityLevel |
-| --- | --- | --- |
-| 2026-03-14T10:20:30.34Z | orders validation warning | 2 |
+![App Insights Logs — host.json conflicts](../assets/portal-example-host-json-conflicts.png)
 
-With the **corrected** `host.json` (`"default": "Information"`), both events appear:
-
-| timestamp | message | severityLevel |
-| --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | orders request started | 1 |
-| 2026-03-14T10:20:30.34Z | orders validation warning | 2 |
+With a **conflicting** `host.json` (`"default": "Warning"`), the `INFO` line never reaches Application Insights — only the `WARNING` row is ingested, and the `INFO` row silently disappears from the result above.
 
 The library's startup conflict warning tells you *before* you go hunting for these missing rows.
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.message`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.function_name` / `severityLevel` directly.
 
 ## Validation Checklist
 

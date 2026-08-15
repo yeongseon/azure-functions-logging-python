@@ -101,24 +101,25 @@ With context injection, invocation fields are populated for every event in this 
 
 ## In Application Insights
 
-After deploying and requesting `/api/orders`, query the `traces` table. Top-level fields and `extra.*` keys land under `customDimensions` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+After deploying and requesting `/api/orders`, query the `traces` table. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` — top-level fields and `extra.*` keys are read off the parsed payload (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.function_name == "create_order"
-| project timestamp, message, customDimensions.invocation_id, customDimensions.method, customDimensions.route
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "create_order"
+| project timestamp, method=tostring(p.extra.method), route=tostring(p.extra.route), message=tostring(p.message)
+| order by timestamp desc
+| take 5
 ```
 
-Expected result:
+Result from a real deployed app:
 
-| timestamp | message | invocation_id | method | route |
-| --- | --- | --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | request received | `abc-123-def` | `GET` | `/orders` |
+![App Insights Logs — JSON output](../assets/portal-example-json-output.png)
 
-Application-specific dimensions passed as keyword arguments (e.g. `order_id`, `tenant_id`) surface the same way, so you can slice on `customDimensions.tenant_id` for multi-tenant analysis.
+Application-specific dimensions passed as keyword arguments (e.g. `order_id`, `tenant_id`) surface the same way under `extra.*`, so you can slice on `p.extra.tenant_id` for multi-tenant analysis.
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.method` / `payload.route`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.method` / `customDimensions.route` directly.
 
 ## Production Query Patterns
 

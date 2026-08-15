@@ -37,24 +37,25 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 
 ## In Application Insights
 
-After deploying the baseline handler and requesting `/api/hello`, query the `traces` table. The `customDimensions`-parsed shape is shown here (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+After deploying the baseline handler and requesting `/api/hello`, query the `traces` table. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.function_name == "hello"
-| project timestamp, message, customDimensions.invocation_id, customDimensions.trace_id, customDimensions.span_id, customDimensions.cold_start
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "hello"
+| project timestamp, trace_id=tostring(p.trace_id), span_id=tostring(p.span_id), message=tostring(p.message)
+| order by timestamp desc
+| take 5
 ```
 
-Expected result:
+Result from a real deployed app:
 
-| timestamp | message | invocation_id | trace_id | span_id | cold_start |
-| --- | --- | --- | --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | request started | `9f87...` | `7ed7...` | `b7ad...` | `true` |
+![App Insights Logs — context injection](../assets/portal-example-context-injection.png)
 
 `trace_id` and `span_id` are populated only when the host supplies W3C trace context; otherwise they appear as `null`. All events emitted inside the same `with logging_context(context):` block share the same `invocation_id`.
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.invocation_id` / `payload.trace_id`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.invocation_id` / `customDimensions.trace_id` directly.
 
 ## Why Open the Context Block Early
 

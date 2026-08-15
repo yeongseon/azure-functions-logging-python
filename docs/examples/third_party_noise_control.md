@@ -61,34 +61,36 @@ With noise controls, these app events remain visible and query-friendly.
 
 ## In Application Insights
 
-Noise control changes *what does not arrive*. After deploying and requesting `/api/orders`, your application events surface cleanly instead of being buried under dependency chatter (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the raw-`message` variant).
+Noise control changes *what does not arrive*. After deploying and requesting `/api/orders`, your application events surface cleanly instead of being buried under dependency chatter. In this deployment the structured JSON stays inside the `message` column, so we parse it with `parse_json(message)` (see the [deployment query guide](../deployment.md#inspect-traces-and-requests) for the `customDimensions`-parsed variant).
 
 ```kql
 traces
-| where customDimensions.logger == "orders"
-| project timestamp, message, customDimensions.invocation_id, customDimensions.route
-| order by timestamp asc
+| where message startswith "{"
+| extend p = parse_json(message)
+| where tostring(p.function_name) == "orders_noise"
+| project timestamp, logger=tostring(p.logger), route=tostring(p.extra.route), message=tostring(p.message)
+| order by timestamp desc
+| take 6
 ```
 
-Expected result — clean application lifecycle events, undiluted by `urllib3` / `azure.core` info logs:
+Result from a real deployed app — clean application lifecycle events, undiluted by `urllib3` / `azure.core` info logs:
 
-| timestamp | message | invocation_id | route |
-| --- | --- | --- | --- |
-| 2026-03-14T10:20:30.12Z | request started | `abc-123-def` | `/orders` |
-| 2026-03-14T10:20:30.28Z | request completed | `abc-123-def` | `/orders` |
+![App Insights Logs — third-party noise control](../assets/portal-example-noise-control.png)
 
 To confirm the suppression worked, compare dependency volume before and after tuning:
 
 ```kql
 traces
+| where message startswith "{"
+| extend p = parse_json(message)
 | where timestamp > ago(1h)
-| summarize count() by tostring(customDimensions.logger)
+| summarize count() by tostring(p.logger)
 | order by count_ desc
 ```
 
 Suppressed namespaces (`urllib3`, `azure`, `azure.core.pipeline.policies.http_logging_policy`) should drop to warnings-and-above volume, while `orders` keeps full `INFO` visibility.
 
-> If your pipeline leaves the JSON inside the `message` column instead, use `extend payload = parse_json(message)` and read `payload.logger`.
+> If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.logger` directly.
 
 ## Suggested Namespace Policies
 
