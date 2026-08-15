@@ -120,7 +120,8 @@ def setup_logging(
             whose current values ``ContextFilter`` also copies onto each
             LogRecord, alongside the four built-in context fields. Field names
             must not collide with the built-in fields. Only applies to the
-            ``ContextFilter`` strategy (ignored when ``use_record_factory=True``).
+            ``ContextFilter`` strategy; a warning is emitted if it is provided
+            when ``use_record_factory=True``.
         activate_trace_context: Sets the process-wide default that
             ``logging_context`` and ``with_context`` consult to attach the
             host's W3C trace context (via OpenTelemetry) — making OTel log
@@ -144,6 +145,19 @@ def setup_logging(
     if format not in {"color", "json"}:
         msg = "format must be 'color' or 'json'"
         raise ValueError(msg)
+
+    # A caller-supplied extra_context_vars has no effect in record-factory
+    # mode (context is injected by the global LogRecordFactory, which does not
+    # read it). Silently dropping an explicit argument is a config footgun, so
+    # warn rather than ignore it. Only warn when the argument is actually set.
+    if use_record_factory and extra_context_vars:
+        warnings.warn(
+            "extra_context_vars is ignored when use_record_factory=True: context "
+            "is injected via the global LogRecordFactory, which does not read "
+            "extra_context_vars. Use the default ContextFilter mode "
+            "(use_record_factory=False) to apply them.",
+            stacklevel=2,
+        )
 
     # Install the global LogRecordFactory only after argument validation,
     # so an invalid call does not leave persistent global side effects.
