@@ -95,6 +95,12 @@ test: ensure-hatch
 	@echo "Running tests..."
 	@$(HATCH) run test
 
+.PHONY: bench
+bench: ensure-hatch
+	@echo "Running micro-benchmarks..."
+	@$(HATCH) run python benchmarks/bench.py
+
+
 .PHONY: cov
 cov: ensure-hatch
 	@$(HATCH) run cov
