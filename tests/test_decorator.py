@@ -428,6 +428,12 @@ class TestLifecycleLogging:
     def test_lifecycle_records_carry_invocation_context(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
+        from azure_functions_logging._context import ContextFilter
+
+        # Attach the same filter setup_logging() uses so the capture handler
+        # injects context fields, then assert the lifecycle records carry them.
+        caplog.handler.addFilter(ContextFilter())
+
         @with_context(lifecycle=True)
         def handler(req: object, context: object) -> str:
             return "ok"
@@ -436,9 +442,11 @@ class TestLifecycleLogging:
             handler("req", _MOCK_CONTEXT)
 
         events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
-        # Records are emitted inside the logging_context, so the module logger
-        # sees the bound invocation id via the standard injection path.
         assert events, "expected lifecycle records"
+        for record in events:
+            assert record.__dict__["invocation_id"] == "inv-dec"
+            assert record.__dict__["function_name"] == "fn-dec"
+            assert record.__dict__["cold_start"] is True
 
     def test_lifecycle_without_context_still_logs(self, caplog: pytest.LogCaptureFixture) -> None:
         @with_context(lifecycle=True)
@@ -448,7 +456,6 @@ class TestLifecycleLogging:
         with caplog.at_level(logging.INFO):
             assert handler("req") == "ok"
 
-        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
         events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
         assert [r.message for r in events] == ["invocation start", "invocation end"]
 

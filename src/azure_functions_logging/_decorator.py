@@ -116,28 +116,24 @@ def _log_lifecycle_end(
     outcome: str,
     exc: BaseException | None,
 ) -> None:
-    duration_ms = round((time.perf_counter() - start_time) * 1000, 3)
     if outcome == "error":
-        logger.log(
-            logging.ERROR,
-            "invocation error",
-            exc_info=exc,
-            extra={
-                "lifecycle_event": "end",
-                "outcome": "error",
-                "duration_ms": duration_ms,
-            },
-        )
+        emit_level = logging.ERROR
     elif logger.isEnabledFor(level):
-        logger.log(
-            level,
-            "invocation end",
-            extra={
-                "lifecycle_event": "end",
-                "outcome": "success",
-                "duration_ms": duration_ms,
-            },
-        )
+        emit_level = level
+    else:
+        # Success record below the effective level: skip before doing any work.
+        return
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 3)
+    logger.log(
+        emit_level,
+        "invocation error" if outcome == "error" else "invocation end",
+        exc_info=exc if outcome == "error" else None,
+        extra={
+            "lifecycle_event": "end",
+            "outcome": outcome,
+            "duration_ms": duration_ms,
+        },
+    )
 
 
 def _run_with_lifecycle_sync(
