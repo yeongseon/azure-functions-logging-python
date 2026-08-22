@@ -19,10 +19,12 @@ This document defines the architectural boundaries and design principles of the 
 This project does not aim to:
 
 - Replace Python's standard logging module
-- Provide distributed tracing or OpenTelemetry integration
+- Create, record, or export distributed traces / spans — this project never produces spans; span creation and export remain the job of OpenTelemetry or the Application Insights SDK
 - Manage log aggregation or external logging backends
 - Modify the root logger's handlers or formatters
 - Interfere with the Azure Functions worker's logging pipeline
+
+> **OpenTelemetry, scoped.** The blanket "no OpenTelemetry integration" non-goal from v0.1.0 has been narrowed. The library now ships an **opt-in** OpenTelemetry *log correlation* feature (`setup_logging(activate_trace_context=True)`, requires the `[otel]` extra): it binds the host's W3C trace context so existing OpenTelemetry log records inherit the invocation's `trace_id` / `span_id`. This is **correlation, not tracing** — the library still never creates, records, or exports spans (see the non-goal above).
 
 ## Design Principles
 

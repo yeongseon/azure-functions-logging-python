@@ -36,15 +36,15 @@ specifically designed to work safely within the Azure Functions worker architect
 
 ## 3. Non-Goals (v0.1.0)
 
-The initial version does not provide:
+The initial version (v0.1.0) did not provide the items below. Several have since shipped; this list is kept for historical scope context, with current status annotated. See also §11 "Future Enhancements".
 
-- Full JSON structured logging (planned for v0.2.0)
-- `host.json` log level conflict warning (planned for v0.2.0)
-- Sampling or log volume control
-- OpenTelemetry integration
-- Async context propagation across threads
-- Distributed tracing
-- Log aggregation or external backend integrations
+- ~~Full JSON structured logging~~ — **shipped in v0.2.0** (`JsonFormatter`)
+- ~~`host.json` log level conflict warning~~ — **shipped in v0.2.0**
+- ~~Sampling or log volume control~~ — **shipped** (`SamplingFilter`)
+- ~~OpenTelemetry integration~~ — **partially shipped:** opt-in OpenTelemetry *log correlation* via the `[otel]` extra (`activate_trace_context=True`). Span creation / trace export remains a non-goal (see below).
+- Async context propagation across threads (still a non-goal; contextvars do not follow `ThreadPoolExecutor` / background threads)
+- Distributed tracing — creating, recording, or exporting spans (**permanent non-goal**; use OpenTelemetry or the Application Insights SDK)
+- Log aggregation or external backend integrations (still a non-goal)
 
 ## 4. Target Users
 
