@@ -395,7 +395,7 @@ Every record now carries `invocation_id`. Filter by it (see [Query in Applicatio
 <details>
 <summary><strong>I want to know whether only the first request is slow</strong></summary>
 
-Every record carries `cold_start`. Query `cold_start == "true"` to find first-invocation records.
+Every record carries `cold_start`. To find first-invocation records, query it using the shape that matches your ingestion pipeline — `tostring(payload.cold_start) == "true"` when the JSON stays in `message`, or `customDimensions.cold_start == "true"` when fields are promoted (see [Query in Application Insights](#query-in-application-insights)).
 
 > **Caveat:** `cold_start=True` means the first invocation observed by *this Python worker process* after module load — **not** a platform-level cold-start metric. It does not measure host allocation or worker startup time before the first instrumented invocation.
 
@@ -415,6 +415,7 @@ Every record carries `host_instance_id`, a best-effort identifier of the worker 
 
 ```python
 from azure_functions_logging import SamplingFilter
+import logging
 
 logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(SamplingFilter(rate=10))  # keep at most 10 records/sec
 ```
@@ -429,6 +430,7 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(
 
 ```python
 from azure_functions_logging import RedactionFilter
+import logging
 
 for handler in logging.getLogger().handlers:
     handler.addFilter(RedactionFilter())  # masks passwords, tokens, secrets, connection strings — recursive, case-insensitive

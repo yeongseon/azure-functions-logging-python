@@ -40,7 +40,7 @@ table exists to show order-of-magnitude, not to be a fixed contract.
 
 | Benchmark | Median | Notes |
 | --- | ---: | --- |
-| `setup_logging(logger_name='bench')` | ~1.2 µs | One-time per process (idempotent), not per-request |
+| `setup_logging(logger_name='bench')` **[first-time]** | ~10 µs | First-time configuration of one named logger (idempotency guard reset each iteration so this is *not* the re-entry fast-path). Paid once per process, not per-request. |
 | `inject_context` + `restore_context` | ~6.7 µs | Lower-level path; per invocation |
 | `logging_context(context)` enter/exit | ~8.3 µs | Recommended primary path; per invocation |
 | `JsonFormatter.format(record)` | ~15 µs | Per emitted record, only when a record is actually formatted |

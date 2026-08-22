@@ -81,21 +81,47 @@ class Result:
         return f"{self.name:<38} {self.median_ns_per_op:>12,.0f} ns {self.min_ns_per_op:>12,.0f} ns"
 
 
-def _time_once(fn: Callable[[], None], iterations: int) -> float:
-    """Return ns/op for a single batch of ``iterations`` calls."""
-    start = time.perf_counter_ns()
+def _time_once(
+    fn: Callable[[], None],
+    iterations: int,
+    before: Callable[[], None] | None = None,
+) -> float:
+    """Return ns/op for a batch of ``iterations`` calls.
+
+    When ``before`` is provided it runs untimed before each call — used to reset
+    state (e.g. so ``setup_logging`` measures first-time cost, not its idempotent
+    fast-path) without charging the reset to the measurement.
+    """
+    if before is None:
+        start = time.perf_counter_ns()
+        for _ in range(iterations):
+            fn()
+        return (time.perf_counter_ns() - start) / iterations
+
+    total = 0
     for _ in range(iterations):
+        before()
+        start = time.perf_counter_ns()
         fn()
-    elapsed = time.perf_counter_ns() - start
-    return elapsed / iterations
+        total += time.perf_counter_ns() - start
+    return total / iterations
 
 
-def bench(name: str, fn: Callable[[], None], *, iterations: int, repeats: int = 7) -> Result:
-    fn()  # warmup / JIT-nothing but populate caches
+def bench(
+    name: str,
+    fn: Callable[[], None],
+    *,
+    iterations: int,
+    repeats: int = 7,
+    before: Callable[[], None] | None = None,
+) -> Result:
+    if before is not None:
+        before()
+    fn()  # warmup / populate caches
     gc_was_enabled = gc.isenabled()
     gc.disable()
     try:
-        samples = [_time_once(fn, iterations) for _ in range(repeats)]
+        samples = [_time_once(fn, iterations, before) for _ in range(repeats)]
     finally:
         if gc_was_enabled:
             gc.enable()
@@ -143,11 +169,30 @@ def run_benchmarks() -> list[Result]:
 
     results: list[Result] = []
 
-    # setup_logging() — configure a dedicated named logger to avoid touching root.
+    # setup_logging() first-time configuration cost. Without resetting state, the
+    # idempotency guard (_configured_loggers) would short-circuit every call after
+    # warmup and we'd measure re-entry, not real configuration. The reset runs
+    # untimed via ``before`` so only setup_logging() itself is measured.
+    import azure_functions_logging._setup as _setup_mod
+
+    def _reset_setup_state() -> None:
+        _setup_mod._configured_loggers.discard("bench")
+        lgr = logging.getLogger("bench")
+        lgr.handlers.clear()
+        lgr.filters.clear()
+
     def _setup() -> None:
         setup_logging(logger_name="bench")
 
-    results.append(bench("setup_logging(logger_name='bench')", _setup, iterations=2_000, repeats=5))
+    results.append(
+        bench(
+            "setup_logging(logger_name='bench') [first-time]",
+            _setup,
+            iterations=2_000,
+            repeats=5,
+            before=_reset_setup_state,
+        )
+    )
 
     ctx = _FakeContext()
 
