@@ -337,6 +337,101 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 - 서드파티 로거에 대해 PII redaction이나 노이즈 제어를 원할 때
 - `host.json` 구성이 조용히 로그를 억제하는데 이유를 모를 때
 
+## 증상 → 해결
+
+기능 이름이 아니라 증상을 들고 오셨나요? 여기서 시작하세요. 각 항목은 최소 설정, 결과 로그가 **증명하는 것**, 그리고 그만큼 중요한 **증명하지 못하는 것**을 함께 정리합니다.
+
+<details>
+<summary><strong><code>INFO</code> 로그가 Azure에서 보이지 않아요</strong></summary>
+
+**유력한 원인:** `host.json` 로그 레벨(또는 `AzureFunctionsJobHost__logging__logLevel__...` 앱 설정)이 앱이 내보내는 레벨을 억제하고 있음.
+
+```python
+setup_logging()  # host.json이 내보내는 레벨을 억제하면 시작 시점에 경고
+```
+
+**보게 되는 것:** 충돌 레벨을 명시하는 시작 경고. **증명:** 설정된 레벨이 레코드를 누락시키고 있음. **증명 못 함:** 그 레코드가 실제로 Application Insights ingestion에 도달했는지 — 이는 별개의 파이프라인 문제입니다.
+
+→ [host.json 충돌 감지](#hostjson-충돌-감지)
+</details>
+
+<details>
+<summary><strong>서로 다른 호출의 로그가 뒤섞여요</strong></summary>
+
+```python
+with logging_context(context):
+    logger.info("Processing order")
+```
+
+이제 모든 레코드에 `invocation_id`가 담깁니다. 그것으로 필터링하면([Application Insights에서 쿼리](#application-insights에서-쿼리) 참조) 단일 실행을 격리할 수 있습니다. **증명:** 어떤 레코드가 같은 호출에 속하는지. **증명 못 함:** worker 간 순서 — 타임스탬프는 프로세스별입니다.
+
+→ [호출 컨텍스트](#호출-컨텍스트)
+</details>
+
+<details>
+<summary><strong>첫 요청만 느린지 알고 싶어요</strong></summary>
+
+모든 레코드에 `cold_start`가 담깁니다. 첫 호출 레코드를 찾으려면 ingestion 파이프라인에 맞는 형태로 쿼리하세요 — JSON이 `message`에 남으면 `tostring(payload.cold_start) == "true"`, 필드가 승격되면 `customDimensions.cold_start == "true"`([Application Insights에서 쿼리](#application-insights에서-쿼리) 참조).
+
+> **주의:** `cold_start=True`는 모듈 로드 후 *이 Python worker 프로세스*가 처음 관측한 호출을 의미합니다 — 플랫폼 수준의 cold-start 지표가 **아닙니다**. 첫 계측 호출 이전의 host 할당이나 worker 시작 시간을 측정하지 않습니다.
+
+→ [호출 컨텍스트](#호출-컨텍스트)
+</details>
+
+<details>
+<summary><strong>이 오류를 낸 worker 인스턴스가 어느 것인가요?</strong></summary>
+
+모든 레코드에 `host_instance_id`가 담깁니다. 이는 로그를 생성한 worker 인스턴스의 best-effort 식별자입니다(`WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` 순으로 해석). **증명:** 같은 instance id를 가진 레코드는 같은 worker에서 나왔음. **증명 못 함:** Application Insights의 `cloud_RoleInstance`와의 동일성 — 보완적일 뿐 동일하다고 보장되지 않습니다.
+
+→ [호출 컨텍스트](#호출-컨텍스트)
+</details>
+
+<details>
+<summary><strong>Azure SDK / 서드파티 로거가 너무 시끄러워요</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import SamplingFilter
+
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(SamplingFilter(rate=10))  # 초당 최대 10개 레코드 유지
+```
+
+`SamplingFilter`는 시끄러운 로거가 집계에 도달하기 전에 비율을 제한합니다. **정확성에 대해서는 아무것도 증명하지 않습니다** — 의도적으로 레코드를 버리므로, 완전성이 필요한 로거는 샘플링하지 마세요.
+
+→ [노이즈 제어 및 PII Redaction](#노이즈-제어-및-pii-redaction)
+</details>
+
+<details>
+<summary><strong>민감한 값이 로깅되고 있을까 봐 걱정돼요</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import RedactionFilter
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(RedactionFilter())  # 비밀번호, 토큰, 시크릿, 연결 문자열 마스킹 — 재귀적, 대소문자 무시
+```
+
+**증명:** 일치하는 키가 레코드가 프로세스를 떠나기 전에 마스킹됨. **증명 못 함:** 자유 텍스트 메시지 안에 박힌 시크릿의 보호 — redaction은 키 기반입니다. `sensitive_keys=[...]`를 전달해 범위를 확장하세요.
+
+→ [노이즈 제어 및 PII Redaction](#노이즈-제어-및-pii-redaction)
+</details>
+
+<details>
+<summary><strong>worker 로그를 호출 트레이스와 상관시키고 싶어요</strong></summary>
+
+```python
+setup_logging(activate_trace_context=True)  # 필요: pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry 레코드가 호출의 trace_id / span_id를 상속
+```
+
+**증명:** 기존 OpenTelemetry 로그 레코드가 host 호출의 `trace_id` / `span_id`를 상속함. **증명 못 함:** span이 생성되거나 내보내진 것 — 이는 tracing이 아니라 correlation입니다([OpenTelemetry 트레이스 상관관계](#opentelemetry-트레이스-상관관계) 참조).
+</details>
+
 ## 문서
 
 - 전체 문서: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
