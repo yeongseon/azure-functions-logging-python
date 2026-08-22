@@ -42,7 +42,7 @@ The initial version (v0.1.0) did not provide the items below. Several have since
 - ~~`host.json` log level conflict warning~~ — **shipped in v0.2.0**
 - ~~Sampling or log volume control~~ — **shipped** (`SamplingFilter`)
 - ~~OpenTelemetry integration~~ — **partially shipped:** opt-in OpenTelemetry *log correlation* via the `[otel]` extra (`activate_trace_context=True`). Span creation / trace export remains a non-goal (see below).
-- Async context propagation across threads (still a non-goal; contextvars do not follow `ThreadPoolExecutor` / background threads)
+- Async context propagation across threads — **partially shipped:** opt-in, explicit propagation via `propagate_context()` for `ThreadPoolExecutor` / background threads (contextvars still do not follow threads *automatically*; implicit/monkeypatched instrumentation remains a non-goal)
 - Distributed tracing — creating, recording, or exporting spans (**permanent non-goal**; use OpenTelemetry or the Application Insights SDK)
 - Log aggregation or external backend integrations (still a non-goal)
 
@@ -246,7 +246,7 @@ inject_context(func_context)
 
 - Log sampling / volume control
 - `.catch()` decorator for exception logging
-- Async context propagation across threads
+- ~~Async context propagation across threads~~ — **shipped** (explicit `propagate_context()` helper)
 - Full OpenTelemetry correlation
 
 ## 12. Success Metrics

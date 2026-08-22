@@ -300,6 +300,38 @@ metadata = get_logging_metadata(handler)
 
 ::: azure_functions_logging.logging_context
 
+## propagate_context
+
+::: azure_functions_logging.propagate_context
+
+### Usage Notes
+
+- Binds the current invocation context to a callable so it can run on a
+  `ThreadPoolExecutor` worker or a manually created `threading.Thread`, which
+  `contextvars` do not reach on their own.
+- Wrap **inside** the invocation, immediately before submitting the work; the
+  context is snapshotted at wrap time.
+- Pass `context=context` to also propagate the Azure worker's
+  `thread_local_storage.invocation_id`; propagation failures are silent and never
+  crash the caller.
+
+### Example: ThreadPoolExecutor
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+import azure.functions as func
+from azure_functions_logging import logging_context, propagate_context
+
+
+def handler(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
+    with logging_context(context):
+        with ThreadPoolExecutor() as pool:
+            future = pool.submit(propagate_context(do_work, context=context), payload)
+            future.result()  # log records from do_work carry the invocation context
+    return func.HttpResponse("ok")
+```
+
 ## reset_context
 
 ::: azure_functions_logging.reset_context

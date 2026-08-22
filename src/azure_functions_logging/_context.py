@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import contextvars
+import functools
 import logging
 import threading
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, ParamSpec, TypeVar
 
 from ._constants import _CONTEXT_FIELD_NAMES
 from ._host_instance import get_host_instance_id
@@ -238,6 +239,117 @@ def restore_context(tokens: ContextTokens) -> None:
     """
     for var, token in tokens.items():
         var.reset(token)
+
+
+# --- Background-thread context propagation ---
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+#: Invocation context variables propagated by :func:`propagate_context`.
+_PROPAGATED_CONTEXT_VARS: tuple[contextvars.ContextVar[Any], ...] = (
+    invocation_id_var,
+    function_name_var,
+    trace_id_var,
+    span_id_var,
+    cold_start_var,
+)
+
+_MISSING = object()
+
+
+def propagate_context(
+    func: Callable[_P, _R],
+    *,
+    context: Any = None,
+) -> Callable[_P, _R]:
+    """Bind the current invocation context to *func* for background-thread execution.
+
+    Invocation context is stored in :mod:`contextvars`, which do **not** propagate
+    to :class:`~concurrent.futures.ThreadPoolExecutor` workers or manually created
+    :class:`threading.Thread` targets. Wrapping a callable with
+    ``propagate_context`` snapshots the current invocation context fields
+    (``invocation_id``, ``function_name``, ``trace_id``, ``span_id``,
+    ``cold_start``) **at wrap time** and re-applies them inside the wrapper when
+    it later runs on another thread, then restores the previous values on exit so
+    pooled threads never leak context between tasks.
+
+    Wrap the callable inside the invocation whose context should be propagated,
+    immediately before handing work to a thread or executor::
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        def handler(req, context):
+            with logging_context(context):
+                with ThreadPoolExecutor() as pool:
+                    pool.submit(propagate_context(do_work, context=context), payload)
+
+    When an Azure Functions ``context`` object is supplied, the worker's
+    ``thread_local_storage.invocation_id`` is also set for the duration of the
+    call (and restored afterwards) so the worker's own logging handler correlates
+    records emitted from the background thread. This is best-effort and
+    duck-typed: any missing attribute or error is silently ignored (Principle 3:
+    context propagation failures never crash the caller). No ``azure-functions``
+    import is required.
+
+    Args:
+        func: The callable to run on a background thread. Called with whatever
+            positional/keyword arguments the returned wrapper receives.
+        context: Optional Azure Functions context object (``func.Context``). When
+            provided, its ``invocation_id`` is propagated to the worker's
+            ``thread_local_storage`` in addition to the ``contextvars`` snapshot.
+
+    Returns:
+        A wrapper around *func* that applies the snapshotted context on entry and
+        restores the previous state on exit. Reusable and concurrency-safe: it may
+        be submitted to multiple threads simultaneously.
+    """
+    snapshot: tuple[tuple[contextvars.ContextVar[Any], Any], ...] = tuple(
+        (var, var.get()) for var in _PROPAGATED_CONTEXT_VARS
+    )
+
+    inv_id: Any = None
+    tls: Any = None
+    if context is not None:
+        try:
+            inv_id = getattr(context, "invocation_id", None)
+            tls = getattr(context, "thread_local_storage", None)
+        except Exception:  # nosec B110 — Principle 3: context failures are silent
+            inv_id = None
+            tls = None
+
+    @functools.wraps(func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        tokens: list[tuple[contextvars.ContextVar[Any], contextvars.Token[Any]]] = []
+        previous_tls_invocation_id: Any = _MISSING
+        tls_was_set = False
+        try:
+            for var, value in snapshot:
+                tokens.append((var, var.set(value)))
+            if tls is not None and inv_id is not None:
+                try:
+                    previous_tls_invocation_id = getattr(tls, "invocation_id", _MISSING)
+                    tls.invocation_id = inv_id
+                    tls_was_set = True
+                except Exception:  # nosec B110 — Principle 3: context failures are silent
+                    tls_was_set = False
+            return func(*args, **kwargs)
+        finally:
+            if tls_was_set:
+                try:
+                    if previous_tls_invocation_id is _MISSING:
+                        try:
+                            del tls.invocation_id
+                        except Exception:  # nosec B110 — Principle 3: silent
+                            tls.invocation_id = None
+                    else:
+                        tls.invocation_id = previous_tls_invocation_id
+                except Exception:  # nosec B110 — Principle 3: context failures are silent
+                    pass
+            for var, token in reversed(tokens):
+                var.reset(token)
+
+    return wrapper
 
 
 # Process-wide default for OpenTelemetry trace-context activation. Toggled by
