@@ -44,6 +44,33 @@ def _check_cold_start() -> bool:
     return False
 
 
+def _validate_extra_context_vars(
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None,
+) -> dict[str, contextvars.ContextVar[Any]]:
+    """Validate and copy user *extra_context_vars*, rejecting built-in collisions.
+
+    Shared by :class:`ContextFilter` and :func:`_install_context_factory` so both
+    context-injection strategies enforce the identical collision rule: a
+    user-supplied field name must not shadow one of the built-in context fields
+    (:data:`_CONTEXT_FIELD_NAMES`).
+
+    Returns a shallow copy of the mapping so later caller mutations do not affect
+    the stored variables.
+
+    Raises:
+        ValueError: If any field name collides with a built-in context field.
+    """
+    extra = extra_context_vars or {}
+    collisions = set(extra) & set(_CONTEXT_FIELD_NAMES)
+    if collisions:
+        msg = (
+            "extra_context_vars field names collide with built-in "
+            f"context fields: {', '.join(sorted(collisions))}"
+        )
+        raise ValueError(msg)
+    return dict(extra)
+
+
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
@@ -79,15 +106,7 @@ class ContextFilter(logging.Filter):
                 Field names must not collide with the built-in context fields.
         """
         super().__init__()
-        extra = extra_context_vars or {}
-        collisions = set(extra) & set(self.CONTEXT_FIELDS)
-        if collisions:
-            msg = (
-                "extra_context_vars field names collide with built-in "
-                f"context fields: {', '.join(sorted(collisions))}"
-            )
-            raise ValueError(msg)
-        self._extra_context_vars = dict(extra)
+        self._extra_context_vars = _validate_extra_context_vars(extra_context_vars)
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Add context fields to the log record. Always returns True."""
@@ -331,7 +350,9 @@ _CONTEXT_FACTORY_MARKER = "_azure_functions_logging_context_factory"
 _CONTEXT_FACTORY_PREVIOUS = "_azure_functions_logging_previous_factory"
 
 
-def _install_context_factory() -> None:
+def _install_context_factory(
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+) -> None:
     """Install a global LogRecordFactory that injects context into every LogRecord.
 
     This is an alternative to ``ContextFilter`` that guarantees context fields
@@ -356,7 +377,19 @@ def _install_context_factory() -> None:
 
     This function is idempotent for repeated direct calls while the currently
     active ``LogRecordFactory`` is the context factory installed by this package.
+
+    Args:
+        extra_context_vars: Optional mapping of ``field_name -> ContextVar``
+            whose current values are copied onto every record alongside the
+            built-in context fields, mirroring :class:`ContextFilter`. Field
+            names must not collide with the built-in context fields.
+
+    Raises:
+        ValueError: If any *extra_context_vars* field name collides with a
+            built-in context field. Validation runs before any global state is
+            mutated, so an invalid call installs nothing.
     """
+    extra = _validate_extra_context_vars(extra_context_vars)
     current_factory = logging.getLogRecordFactory()
     if getattr(current_factory, _CONTEXT_FACTORY_MARKER, False):
         return
@@ -371,6 +404,8 @@ def _install_context_factory() -> None:
         record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
         record.host_instance_id = get_host_instance_id()
+        for field_name, var in extra.items():
+            setattr(record, field_name, var.get())
         return record
 
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)

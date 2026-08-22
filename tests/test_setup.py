@@ -775,17 +775,47 @@ def test_setup_logging_root_logger_propagation_untouched() -> None:
         root.propagate = saved_propagate
 
 
-def test_extra_context_vars_with_record_factory_warns() -> None:
-    # Passing extra_context_vars while use_record_factory=True has no effect;
-    # setup_logging must warn rather than silently drop the argument (#366).
-    extra = {"tenant": contextvars.ContextVar("tenant", default=None)}
+def test_extra_context_vars_with_record_factory_injects() -> None:
+    # extra_context_vars is now honored in record-factory mode too (#380): the
+    # global LogRecordFactory copies user fields onto every record, and
+    # setup_logging no longer warns that the argument is ignored.
+    tenant_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("tenant", default=None)
+    extra = {"tenant": tenant_var}
+    token = tenant_var.set("acme")
+    try:
+        with patch.dict(os.environ, {}, clear=True):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                setup_logging(
+                    logger_name="afl.test.factory_extra_ctx",
+                    use_record_factory=True,
+                    extra_context_vars=extra,
+                )
+        assert not [w for w in caught if "extra_context_vars is ignored" in str(w.message)]
+        record = logging.getLogRecordFactory()(
+            "afl.test.factory_extra_ctx", logging.INFO, __file__, 1, "hi", (), None
+        )
+        assert record.tenant == "acme"  # type: ignore[attr-defined]
+        # Built-in context fields are still injected alongside the extra field.
+        assert record.invocation_id is None  # type: ignore[attr-defined]
+    finally:
+        tenant_var.reset(token)
+
+
+def test_extra_context_vars_with_record_factory_collision_raises() -> None:
+    # A user field name that shadows a built-in context field must raise the
+    # same ValueError as ContextFilter mode, and install no global factory.
+    baseline_factory = logging.getLogRecordFactory()
+    extra = {"invocation_id": contextvars.ContextVar("bad", default=None)}
     with patch.dict(os.environ, {}, clear=True):
-        with pytest.warns(UserWarning, match="extra_context_vars is ignored"):
+        with pytest.raises(ValueError, match="collide with built-in"):
             setup_logging(
-                logger_name="afl.test.warn_extra_ctx",
+                logger_name="afl.test.factory_collision",
                 use_record_factory=True,
                 extra_context_vars=extra,
             )
+    # Invalid call left no persistent global side effect.
+    assert logging.getLogRecordFactory() is baseline_factory
 
 
 def test_extra_context_vars_without_record_factory_does_not_warn() -> None:

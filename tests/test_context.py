@@ -449,6 +449,45 @@ def test_install_context_factory_extra_collision_raises() -> None:
         logger.propagate = True
 
 
+def test_install_context_factory_injects_extra_context_vars() -> None:
+    """The factory copies user extra_context_vars onto every record (#380)."""
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    tenant_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+        "tenant_id", default=None
+    )
+    token = tenant_var.set("acme")
+    try:
+        invocation_id_var.set("factory-inv")
+        _install_context_factory({"tenant_id": tenant_var})
+
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "hi", (), None)
+        assert record.tenant_id == "acme"  # type: ignore[attr-defined]
+        # Built-in fields are still injected alongside the extra field.
+        assert record.invocation_id == "factory-inv"  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        invocation_id_var.set(None)
+        tenant_var.reset(token)
+
+
+def test_install_context_factory_extra_collision_raises_value_error() -> None:
+    """extra_context_vars colliding with a built-in field raises ValueError and
+    installs no factory (#380)."""
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    bad = {"invocation_id": contextvars.ContextVar("bad", default=None)}
+    try:
+        with pytest.raises(ValueError, match="collide with built-in"):
+            _install_context_factory(bad)
+        # No global side effect on the invalid call.
+        assert logging.getLogRecordFactory() is old_factory
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+
 def test_install_context_factory_with_logger_emit() -> None:
     """Context fields appear on records emitted through a real logger."""
 
