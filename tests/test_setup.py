@@ -813,3 +813,63 @@ def test_record_factory_without_extra_context_vars_does_not_warn() -> None:
                 use_record_factory=True,
             )
     assert not [w for w in caught if "extra_context_vars is ignored" in str(w.message)]
+
+
+# ---------------------------------------------------------------------------
+# #381: reconfiguration semantics — repeat-call contract pinning
+# ---------------------------------------------------------------------------
+def test_azure_repeat_calls_do_not_modify_root_level_or_handlers() -> None:
+    """In Azure mode, repeated setup_logging() calls must leave the root logger's
+    level and handler list untouched (host.json owns the level)."""
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_filters = root.filters[:]
+    original_level = root.level
+    try:
+        handler = logging.StreamHandler()
+        root.handlers[:] = [handler]
+        root.setLevel(logging.WARNING)
+        handlers_snapshot = root.handlers[:]
+
+        with patch.dict(os.environ, {"FUNCTIONS_WORKER_RUNTIME": "python"}, clear=True):
+            setup_logging(level=logging.DEBUG)
+            setup_logging(level=logging.DEBUG)
+
+        assert root.level == logging.WARNING  # level never changed
+        assert root.handlers == handlers_snapshot  # handler list never changed
+    finally:
+        root.handlers[:] = original_handlers
+        root.filters[:] = original_filters
+        root.setLevel(original_level)
+
+
+def test_switch_back_to_filter_mode_leaves_global_factory_installed() -> None:
+    """Documented caveat: True -> False installs a fresh ContextFilter but does
+    NOT uninstall the already-installed global LogRecordFactory."""
+    from azure_functions_logging._context import _CONTEXT_FACTORY_MARKER
+
+    name_true = "afl.test.reconfig.factory"
+    name_false = "afl.test.reconfig.filter"
+    for n in (name_true, name_false):
+        lg = logging.getLogger(n)
+        lg.handlers.clear()
+        lg.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=name_true, use_record_factory=True)
+        assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
+        # A subsequent filter-mode call for a different logger does not tear the
+        # global factory back down.
+        setup_logging(logger_name=name_false, use_record_factory=False)
+
+    assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
+    filter_installed = any(
+        type(f) is ContextFilter for f in logging.getLogger(name_false).filters
+    ) or any(
+        type(f) is ContextFilter for h in logging.getLogger(name_false).handlers for f in h.filters
+    )
+    assert filter_installed
+    for n in (name_true, name_false):
+        lg = logging.getLogger(n)
+        lg.handlers.clear()
+        lg.filters.clear()

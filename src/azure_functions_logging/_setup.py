@@ -89,8 +89,36 @@ def setup_logging(
       ``propagate`` flag is set to ``False`` so records are not also emitted
       by an ancestor (e.g. root) handler, which would double-log.
 
-    This function is idempotent per ``logger_name`` — calling it multiple times
-    for the same logger has no additional effect.
+    **Reconfiguration (calling ``setup_logging()`` more than once).**
+    Repeat calls are safe and never double-install filters or handlers. The
+    exact contract depends on the detected environment:
+
+    - **Standalone local mode** is fully idempotent per ``logger_name``: state
+      is tracked in a process-wide set, so the *first* call for a given
+      ``logger_name`` wins and later calls for that same name return early —
+      ``level``, ``format``, and the added handler are applied only once.
+      Configure a different ``logger_name`` to set up an additional logger.
+    - **Azure / Core Tools mode** is idempotent per
+      ``(logger_name, use_record_factory)`` at the *handler* level: each root
+      handler is given the ``ContextFilter`` (and ``functions_formatter``, if
+      supplied) exactly once, tracked by a ``WeakSet``. Repeat calls therefore
+      *recover* by picking up any handlers the host attached after the previous
+      call, without duplicating filters. The root logger's level and handler
+      list are never modified (``host.json`` owns the level).
+
+    **Switching ``use_record_factory`` between calls.** Enabling it
+    (``False`` -> ``True``) installs the global ``LogRecordFactory`` and strips
+    any ``ContextFilter`` this package previously installed on the target and
+    root loggers, so context is injected by exactly one mechanism. The two
+    modes keep isolated per-signature state, so a later ``ContextFilter`` call
+    never reuses a factory-mode instance (or vice versa). Switching back
+    (``True`` -> ``False``) installs a fresh ``ContextFilter`` but does **not**
+    uninstall the already-installed global factory; prefer a single, consistent
+    ``use_record_factory`` value per process.
+
+    **Switching ``activate_trace_context``.** A bare ``setup_logging()`` (the
+    default ``activate_trace_context=None``) leaves the previously configured
+    activation default untouched; pass ``True``/``False`` to change it.
 
     Args:
         level: Logging level for local development. Ignored in Azure/Core Tools.
