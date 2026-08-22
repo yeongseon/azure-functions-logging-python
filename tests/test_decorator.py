@@ -15,6 +15,7 @@ Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 from __future__ import annotations
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -326,3 +327,140 @@ class TestCopyIdentityAttrs:
         # __dict__ must not be aliased: mutating wrapper must not touch func.
         wrapper.__dict__["_marker"] = 1
         assert "_marker" not in func.__dict__
+
+
+# ---------------------------------------------------------------------------
+# 8. Opt-in invocation lifecycle logging (#382)
+# ---------------------------------------------------------------------------
+
+
+class TestLifecycleLogging:
+    """@with_context(lifecycle=True) emits start/end/error records."""
+
+    def test_disabled_by_default_emits_no_lifecycle_records(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context
+        def handler(req: object, context: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.DEBUG):
+            assert handler("req", _MOCK_CONTEXT) == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert events == []
+
+    def test_sync_success_emits_start_and_end(self, caplog: pytest.LogCaptureFixture) -> None:
+        @with_context(lifecycle=True)
+        def handler(req: object, context: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.INFO):
+            assert handler("req", _MOCK_CONTEXT) == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        end = events[1]
+        assert end.__dict__["outcome"] == "success"
+        assert isinstance(end.__dict__["duration_ms"], float)
+        assert end.__dict__["duration_ms"] >= 0.0
+
+    def test_sync_exception_emits_error_and_reraises(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def handler(req: object, context: object) -> str:
+            raise ValueError("boom")
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ValueError, match="boom"):
+                handler("req", _MOCK_CONTEXT)
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation error"]
+        err = events[1]
+        assert err.levelno == logging.ERROR
+        assert err.__dict__["outcome"] == "error"
+        assert err.exc_info is not None
+        assert isinstance(err.__dict__["duration_ms"], float)
+
+    def test_async_success_emits_start_and_end(self, caplog: pytest.LogCaptureFixture) -> None:
+        @with_context(lifecycle=True)
+        async def handler(req: object, context: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.INFO):
+            assert asyncio.run(handler("req", _MOCK_CONTEXT)) == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        assert events[1].__dict__["outcome"] == "success"
+
+    def test_async_exception_emits_error_and_reraises(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        async def handler(req: object, context: object) -> str:
+            raise ValueError("boom")
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ValueError, match="boom"):
+                asyncio.run(handler("req", _MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation error"]
+        assert events[1].__dict__["outcome"] == "error"
+
+    def test_configurable_level_suppresses_start_end_below_threshold(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True, lifecycle_level=logging.DEBUG)
+        def handler(req: object, context: object) -> str:
+            return "ok"
+
+        # Only capture INFO and above: DEBUG-level start/end are filtered out.
+        with caplog.at_level(logging.INFO):
+            assert handler("req", _MOCK_CONTEXT) == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert events == []
+
+    def test_lifecycle_records_carry_invocation_context(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def handler(req: object, context: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.INFO):
+            handler("req", _MOCK_CONTEXT)
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        # Records are emitted inside the logging_context, so the module logger
+        # sees the bound invocation id via the standard injection path.
+        assert events, "expected lifecycle records"
+
+    def test_lifecycle_without_context_still_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        @with_context(lifecycle=True)
+        def handler(req: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.INFO):
+            assert handler("req") == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+
+    def test_async_lifecycle_without_context_still_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        async def handler(req: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.INFO):
+            assert asyncio.run(handler("req")) == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]

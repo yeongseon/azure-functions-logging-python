@@ -315,6 +315,8 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 > **Worker instance.** Every record also carries `host_instance_id`, a best-effort identifier of the worker instance that produced the log (resolved from `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()`). It is complementary to, but not guaranteed equal to, Application Insights' `cloud_RoleInstance`.
 
+> **Lifecycle logging (opt-in).** `@with_context(lifecycle=True)` emits an `"invocation start"` record before the handler runs and an `"invocation end"` record after it returns — carrying `duration_ms` and `outcome` — or an `"invocation error"` record (at `ERROR`, then re-raises unchanged) if it fails. Records inherit the bound invocation context. Disabled by default (zero overhead); tune the start/end level with `lifecycle_level=` (defaults to `logging.INFO`).
+
 → [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
 ### Structured JSON output
