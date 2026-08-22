@@ -361,6 +361,101 @@ At startup the library warns when your `host.json` — or `AzureFunctionsJobHost
 - You want PII redaction or noise control for third-party loggers
 - Your `host.json` config silently suppresses logs and you don't know why
 
+## Common symptoms → fixes
+
+Arriving with a symptom rather than a feature name? Start here. Each entry lists the minimal setup, what the resulting log proves, and — just as importantly — what it *cannot* prove.
+
+<details>
+<summary><strong>My <code>INFO</code> logs are invisible in Azure</strong></summary>
+
+**Likely cause:** a `host.json` log level (or an `AzureFunctionsJobHost__logging__logLevel__...` app setting) is suppressing the level your app emits.
+
+```python
+setup_logging()  # warns at startup if host.json suppresses a level you emit
+```
+
+**What you'll see:** a startup warning naming the conflicting level. **Proves:** your configured level is dropping records. **Does not prove:** that the record ever reached Application Insights ingestion — that is a separate pipeline concern.
+
+→ [host.json conflict detection](#hostjson-conflict-detection)
+</details>
+
+<details>
+<summary><strong>Logs from different invocations are interleaved</strong></summary>
+
+```python
+with logging_context(context):
+    logger.info("Processing order")
+```
+
+Every record now carries `invocation_id`. Filter by it (see [Query in Application Insights](#query-in-application-insights)) to isolate a single execution. **Proves:** which records belong to the same invocation. **Does not prove:** ordering across workers — timestamps are per-process.
+
+→ [Invocation context](#invocation-context)
+</details>
+
+<details>
+<summary><strong>I want to know whether only the first request is slow</strong></summary>
+
+Every record carries `cold_start`. To find first-invocation records, query it using the shape that matches your ingestion pipeline — `tostring(payload.cold_start) == "true"` when the JSON stays in `message`, or `customDimensions.cold_start == "true"` when fields are promoted (see [Query in Application Insights](#query-in-application-insights)).
+
+> **Caveat:** `cold_start=True` means the first invocation observed by *this Python worker process* after module load — **not** a platform-level cold-start metric. It does not measure host allocation or worker startup time before the first instrumented invocation.
+
+→ [Invocation context](#invocation-context)
+</details>
+
+<details>
+<summary><strong>Which worker instance produced this error?</strong></summary>
+
+Every record carries `host_instance_id`, a best-effort identifier of the worker instance (resolved from `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()`). **Proves:** records sharing an instance id came from the same worker. **Does not prove:** equality with Application Insights' `cloud_RoleInstance` — it is complementary, not guaranteed identical.
+
+→ [Invocation context](#invocation-context)
+</details>
+
+<details>
+<summary><strong>Azure SDK / third-party loggers are too noisy</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import SamplingFilter
+
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(SamplingFilter(rate=10))  # keep at most 10 records/sec
+```
+
+`SamplingFilter` rate-limits chatty loggers before they reach aggregation. **Proves nothing about correctness** — it deliberately drops records, so do not sample loggers you need complete.
+
+→ [Noise control & PII redaction](#noise-control--pii-redaction)
+</details>
+
+<details>
+<summary><strong>I'm worried sensitive values are being logged</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import RedactionFilter
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(RedactionFilter())  # masks passwords, tokens, secrets, connection strings — recursive, case-insensitive
+```
+
+**Proves:** matched keys are masked before records leave the process. **Does not prove:** protection for secrets embedded inside free-text messages — redaction is key-based; pass `sensitive_keys=[...]` to extend coverage.
+
+→ [Noise control & PII redaction](#noise-control--pii-redaction)
+</details>
+
+<details>
+<summary><strong>I want worker logs correlated to the invocation trace</strong></summary>
+
+```python
+setup_logging(activate_trace_context=True)  # requires: pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry record inherits the invocation trace_id / span_id
+```
+
+**Proves:** your existing OpenTelemetry log records inherit the host invocation's `trace_id` / `span_id`. **Does not prove:** a span was created or exported — this is correlation, not tracing (see [OpenTelemetry trace correlation](#opentelemetry-trace-correlation)).
+</details>
+
 ## Documentation
 
 - Full docs: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
