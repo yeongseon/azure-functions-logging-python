@@ -414,8 +414,9 @@ Every record carries `host_instance_id`, a best-effort identifier of the worker 
 <summary><strong>Azure SDK / third-party loggers are too noisy</strong></summary>
 
 ```python
-from azure_functions_logging import SamplingFilter
 import logging
+
+from azure_functions_logging import SamplingFilter
 
 logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(SamplingFilter(rate=10))  # keep at most 10 records/sec
 ```
@@ -429,8 +430,9 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(
 <summary><strong>I'm worried sensitive values are being logged</strong></summary>
 
 ```python
-from azure_functions_logging import RedactionFilter
 import logging
+
+from azure_functions_logging import RedactionFilter
 
 for handler in logging.getLogger().handlers:
     handler.addFilter(RedactionFilter())  # masks passwords, tokens, secrets, connection strings — recursive, case-insensitive
