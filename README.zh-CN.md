@@ -336,6 +336,101 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 - 您希望对第三方 logger 进行 PII redaction 或噪声控制时
 - 您的 `host.json` 配置静默抑制日志而您不知道原因时
 
+## 症状 → 修复
+
+带着症状而非功能名称前来？从这里开始。每个条目列出最小设置、结果日志**能证明什么**，以及同样重要的**不能证明什么**。
+
+<details>
+<summary><strong>我的 <code>INFO</code> 日志在 Azure 中不可见</strong></summary>
+
+**可能原因：** 某个 `host.json` 日志级别（或 `AzureFunctionsJobHost__logging__logLevel__...` 应用设置）正在抑制应用输出的级别。
+
+```python
+setup_logging()  # 若 host.json 抑制了你输出的级别，启动时会警告
+```
+
+**你会看到：** 一条命名冲突级别的启动警告。**证明：** 你配置的级别正在丢弃记录。**不能证明：** 该记录是否真的到达了 Application Insights ingestion — 那是另一个独立的管道问题。
+
+→ [host.json 冲突检测](#hostjson-冲突检测)
+</details>
+
+<details>
+<summary><strong>不同调用的日志交织在一起</strong></summary>
+
+```python
+with logging_context(context):
+    logger.info("Processing order")
+```
+
+现在每条记录都带有 `invocation_id`。按它过滤（参见[在 Application Insights 中查询](#在-application-insights-中查询)）即可隔离单次执行。**证明：** 哪些记录属于同一次调用。**不能证明：** worker 之间的顺序 — 时间戳是按进程的。
+
+→ [调用上下文](#调用上下文)
+</details>
+
+<details>
+<summary><strong>我想知道是不是只有第一次请求慢</strong></summary>
+
+每条记录都带有 `cold_start`。要查找首次调用的记录，请按与你的 ingestion 管道匹配的形式查询 — 当 JSON 保留在 `message` 中时用 `tostring(payload.cold_start) == "true"`，当字段被提升时用 `customDimensions.cold_start == "true"`（参见[在 Application Insights 中查询](#在-application-insights-中查询)）。
+
+> **注意：** `cold_start=True` 指模块加载后 *此 Python worker 进程* 观察到的首次调用 — **而非**平台级的 cold-start 指标。它不衡量首次受控调用之前的 host 分配或 worker 启动时间。
+
+→ [调用上下文](#调用上下文)
+</details>
+
+<details>
+<summary><strong>哪个 worker 实例产生了这个错误？</strong></summary>
+
+每条记录都带有 `host_instance_id`，这是产生日志的 worker 实例的 best-effort 标识符（按 `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` 解析）。**证明：** 具有相同 instance id 的记录来自同一 worker。**不能证明：** 与 Application Insights 的 `cloud_RoleInstance` 相等 — 它是互补的，不保证完全一致。
+
+→ [调用上下文](#调用上下文)
+</details>
+
+<details>
+<summary><strong>Azure SDK / 第三方日志器太嗧</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import SamplingFilter
+
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(SamplingFilter(rate=10))  # 每秒最多保留 10 条记录
+```
+
+`SamplingFilter` 在嗧闹日志器到达聚合之前限制其速率。**它不证明任何正确性** — 它故意丢弃记录，因此不要对你需要完整的日志器采样。
+
+→ [噪声控制与 PII 脱敏](#噪声控制与-pii-脱敏)
+</details>
+
+<details>
+<summary><strong>我担心敏感值被记录下来</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import RedactionFilter
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(RedactionFilter())  # 掩蔽密码、令牌、密钥、连接字符串 — 递归、不区分大小写
+```
+
+**证明：** 匹配的键在记录离开进程前被掩蔽。**不能证明：** 对嵌入自由文本消息中的密钥的保护 — 脱敏是基于键的；传入 `sensitive_keys=[...]` 以扩展覆盖范围。
+
+→ [噪声控制与 PII 脱敏](#噪声控制与-pii-脱敏)
+</details>
+
+<details>
+<summary><strong>我想将 worker 日志与调用追踪关联</strong></summary>
+
+```python
+setup_logging(activate_trace_context=True)  # 需要：pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry 记录继承调用的 trace_id / span_id
+```
+
+**证明：** 你现有的 OpenTelemetry 日志记录继承 host 调用的 `trace_id` / `span_id`。**不能证明：** 创建或导出了 span — 这是关联（correlation）而非追踪（tracing）（参见[OpenTelemetry 追踪关联](#opentelemetry-追踪关联)）。
+</details>
+
 ## 文档
 
 - 完整文档: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)

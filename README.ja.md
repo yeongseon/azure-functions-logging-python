@@ -337,6 +337,101 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 - サードパーティロガーに対して PII redaction やノイズ制御が必要なとき
 - `host.json` 設定が静かにログを抑制し、その理由がわからないとき
 
+## 症状 → 解決
+
+機能名ではなく症状から探していますか？ここから始めてください。各項目は、最小限のセットアップ、結果のログが**証明すること**、そして同じく重要な**証明できないこと**を示します。
+
+<details>
+<summary><strong><code>INFO</code> ログが Azure で見えない</strong></summary>
+
+**考えられる原因:** `host.json` のログレベル（または `AzureFunctionsJobHost__logging__logLevel__...` アプリ設定）が、アプリが出力するレベルを抑制している。
+
+```python
+setup_logging()  # host.json が出力レベルを抑制している場合、起動時に警告
+```
+
+**見えるもの:** 衝突レベルを名指しする起動警告。**証明:** 設定レベルがレコードをドロップしていること。**証明できないこと:** そのレコードが実際に Application Insights の ingestion に到達したか — これは別のパイプラインの問題です。
+
+→ [host.json 衝突検出](#hostjson-衝突検出)
+</details>
+
+<details>
+<summary><strong>異なる呼び出しのログが入り交じる</strong></summary>
+
+```python
+with logging_context(context):
+    logger.info("Processing order")
+```
+
+これですべてのレコードに `invocation_id` が付与されます。それでフィルタリングすれば（[Application Insights でのクエリ](#application-insights-でのクエリ) 参照）単一の実行を分離できます。**証明:** どのレコードが同じ呼び出しに属するか。**証明できないこと:** worker 間の順序 — タイムスタンプはプロセスごとです。
+
+→ [呼び出しコンテキスト](#呼び出しコンテキスト)
+</details>
+
+<details>
+<summary><strong>最初のリクエストだけが遅いのか知りたい</strong></summary>
+
+すべてのレコードに `cold_start` が付与されます。初回呼び出しのレコードを探すには、ingestion パイプラインに合った形でクエリします — JSON が `message` に残る場合は `tostring(payload.cold_start) == "true"`、フィールドが昇格される場合は `customDimensions.cold_start == "true"`（[Application Insights でのクエリ](#application-insights-でのクエリ) 参照）。
+
+> **注意:** `cold_start=True` は、モジュールロード後に *この Python worker プロセス* が最初に観測した呼び出しを意味します — プラットフォームレベルの cold-start メトリクスでは**ありません**。初回の計測対象呼び出しより前の host 割り当てや worker 起動時間は測定しません。
+
+→ [呼び出しコンテキスト](#呼び出しコンテキスト)
+</details>
+
+<details>
+<summary><strong>このエラーを出した worker インスタンスはどれか？</strong></summary>
+
+すべてのレコードに `host_instance_id` が付与されます。これはログを生成した worker インスタンスの best-effort な識別子です（`WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()` の順で解決）。**証明:** 同じ instance id を持つレコードは同じ worker から出たこと。**証明できないこと:** Application Insights の `cloud_RoleInstance` との一致 — 補完的であり、同一とは保証されません。
+
+→ [呼び出しコンテキスト](#呼び出しコンテキスト)
+</details>
+
+<details>
+<summary><strong>Azure SDK / サードパーティロガーが騒がしすぎる</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import SamplingFilter
+
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").addFilter(SamplingFilter(rate=10))  # 毎秒最大 10 レコードを保持
+```
+
+`SamplingFilter` は騒がしいロガーが集計に到達する前にレートを制限します。**正確性については何も証明しません** — 意図的にレコードを破棄するため、完全に必要なロガーはサンプリングしないでください。
+
+→ [ノイズ制御と PII Redaction](#ノイズ制御と-pii-redaction)
+</details>
+
+<details>
+<summary><strong>機密な値がログに出ていないか心配</strong></summary>
+
+```python
+import logging
+
+from azure_functions_logging import RedactionFilter
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(RedactionFilter())  # パスワード、トークン、シークレット、接続文字列をマスク — 再帰的、大文字小文字を区別しない
+```
+
+**証明:** 一致したキーがレコードがプロセスを離れる前にマスクされること。**証明できないこと:** フリーテキストメッセージ内に埋め込まれたシークレットの保護 — redaction はキーベースです。`sensitive_keys=[...]` を渡して範囲を拡張してください。
+
+→ [ノイズ制御と PII Redaction](#ノイズ制御と-pii-redaction)
+</details>
+
+<details>
+<summary><strong>worker ログを呼び出しトレースに相関付けたい</strong></summary>
+
+```python
+setup_logging(activate_trace_context=True)  # 必要: pip install azure-functions-logging[otel]
+
+with logging_context(context):
+    logger.info("processing")  # OpenTelemetry レコードが呼び出しの trace_id / span_id を継承
+```
+
+**証明:** 既存の OpenTelemetry ログレコードが host 呼び出しの `trace_id` / `span_id` を継承すること。**証明できないこと:** span が作成またはエクスポートされたこと — これは tracing ではなく correlation です（[OpenTelemetry トレース相関付け](#opentelemetry-トレース相関付け) 参照）。
+</details>
+
 ## ドキュメント
 
 - 完全なドキュメント: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
