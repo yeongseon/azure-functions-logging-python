@@ -285,11 +285,12 @@ def with_context(
             ``trace_id``/``span_id`` (requires the ``[otel]`` extra; silent
             no-op otherwise). When ``None`` (default), the process-wide default
             configured via ``setup_logging(activate_trace_context=...)`` applies.
-        lifecycle: When ``True``, emit opt-in invocation lifecycle records — a
+        lifecycle: When ``True``, emit opt-in invocation lifecycle records — an
             ``"invocation start"`` record before the handler runs and an
-            ``"invocation end"`` record after it returns (or ``"invocation
-            error"`` if it raises). End/error records carry ``duration_ms`` and
-            ``outcome`` extras. Exceptions are logged then re-raised unchanged.
+            ``"invocation end"`` record after it returns (or an
+            ``"invocation error"`` record if it raises). End/error records carry
+            ``duration_ms`` and ``outcome`` extras. Exceptions are logged then
+            re-raised unchanged.
             Defaults to ``False`` (no output, zero overhead when disabled).
         lifecycle_level: Log level for the start/end lifecycle records when
             ``lifecycle=True``. Defaults to ``logging.INFO``. Error records are
