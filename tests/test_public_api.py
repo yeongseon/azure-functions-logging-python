@@ -19,6 +19,7 @@ class TestAPISurface:
             "get_logger",
             "inject_context",
             "logging_context",
+            "propagate_context",
             "reset_context",
             "restore_context",
             "setup_logging",
@@ -45,6 +46,7 @@ class TestAPISurface:
             get_logging_metadata,
             inject_context,
             logging_context,
+            propagate_context,
             reset_context,
             restore_context,
         )

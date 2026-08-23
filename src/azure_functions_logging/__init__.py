@@ -6,6 +6,7 @@ from ._context import (
     ContextTokens,
     inject_context,
     logging_context,
+    propagate_context,
     reset_context,
     restore_context,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "inject_context",
     "JsonFormatter",
     "logging_context",
+    "propagate_context",
     "RedactionFilter",
     "reset_context",
     "restore_context",

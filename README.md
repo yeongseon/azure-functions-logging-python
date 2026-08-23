@@ -319,6 +319,22 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 → [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
+### Background-thread context propagation
+
+Invocation context is carried via `contextvars`, which do **not** follow work handed to a `ThreadPoolExecutor` or a manually created `threading.Thread` — records emitted from those threads lose their `invocation_id`. `propagate_context()` binds the current invocation context to a callable so it stays correlated on the worker thread. Wrap the callable inside the invocation, immediately before submitting the work:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+from azure_functions_logging import logging_context, propagate_context
+
+with logging_context(context):
+    with ThreadPoolExecutor() as pool:
+        pool.submit(propagate_context(do_work, context=context), payload)
+```
+
+Passing `context=context` also propagates the Azure worker's `thread_local_storage.invocation_id` so the worker's own logging handler correlates too. This is explicit and opt-in: the library never monkeypatches `threading` / `concurrent.futures`, and propagation failures never crash the caller. It is **correlation only** — no spans are created or exported.
+
 ### Structured JSON output
 
 Pass `setup_logging(functions_formatter=JsonFormatter())` to emit Application Insights-ready NDJSON on host-managed handlers (or `format="json"` for standalone/CI). Extra fields land under `extra`; opt into `truncate_native_strings=True` to clip long string values.
