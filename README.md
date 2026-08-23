@@ -315,6 +315,8 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 > **Worker instance.** Every record also carries `host_instance_id`, a best-effort identifier of the worker instance that produced the log (resolved from `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()`). It is complementary to, but not guaranteed equal to, Application Insights' `cloud_RoleInstance`.
 
+> **`@with_context` requires a declared context parameter.** The Azure Functions worker only supplies `func.Context` when your handler signature declares it, so `@with_context` must decorate a handler that accepts a `context: func.Context` parameter (or a `**kwargs`). If it can't receive the context, injection would be a silent no-op — the decorator now emits a `RuntimeWarning` at import time to flag this. Use `@with_context(strict=True)` to raise instead (CI-enforceable), or `@with_context(param="...")` to match a differently-named parameter.
+
 → [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
 ### Structured JSON output

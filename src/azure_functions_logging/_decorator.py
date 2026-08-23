@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from typing import Any, Callable, TypeVar, overload
+import warnings
 
 from ._context import logging_context
 from ._metadata import LoggingMetadata, read_logging_metadata, set_logging_metadata
@@ -77,6 +78,58 @@ def _resolve_positional_index(func: Callable[..., Any], param: str) -> int | Non
     return None
 
 
+def _signature_can_receive_context(func: Callable[..., Any], param: str) -> bool:
+    """Return whether *func*'s signature could ever receive the context argument.
+
+    Used at decoration time to detect an *ineffective* ``@with_context``: the
+    Azure Functions worker injects the invocation ``Context`` object only when
+    the handler signature declares the parameter (see
+    ``azure-functions-python-worker`` ``FunctionInfo.is_context_required``), so a
+    handler that never declares *param* can never have context injected and the
+    decorator silently no-ops.
+
+    Returns ``True`` (i.e. *do not warn*) when:
+
+    * the signature cannot be introspected (be conservative — never warn on a
+      false positive);
+    * a parameter named *param* is present (any kind);
+    * a ``**kwargs`` (``VAR_KEYWORD``) parameter is present, which could carry
+      the context by keyword at call time.
+
+    Returns ``False`` only when the signature is introspectable and definitively
+    cannot receive *param*.
+    """
+    try:
+        parameters = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return True
+    if param in parameters:
+        return True
+    return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+
+
+def _check_context_detectable(func: Callable[..., Any], param: str, strict: bool) -> None:
+    """Warn (or raise, when *strict*) if ``@with_context`` can never inject context.
+
+    Runs once, at decoration time. Emits a :class:`RuntimeWarning` by default so
+    the misconfiguration is surfaced without breaking the app; raises
+    :class:`ValueError` when ``strict=True`` for CI-enforceable safety.
+    """
+    if _signature_can_receive_context(func, param):
+        return
+    handler_name = getattr(func, "__qualname__", getattr(func, "__name__", repr(func)))
+    message = (
+        f"@with_context is ineffective on {handler_name!r}: its signature declares "
+        f"no {param!r} parameter, so the Azure Functions worker can never supply "
+        "the invocation context and context injection is a silent no-op. Add "
+        f"'{param}: func.Context' to the handler signature (or pass "
+        "param=... to match an existing parameter)."
+    )
+    if strict:
+        raise ValueError(message)
+    warnings.warn(message, RuntimeWarning, stacklevel=3)
+
+
 def _find_context_arg(
     param: str,
     positional_index: int | None,
@@ -133,7 +186,10 @@ def with_context(func: _F) -> _F: ...
 
 @overload
 def with_context(
-    *, param: str = ..., activate_trace_context: bool | None = ...
+    *,
+    param: str = ...,
+    activate_trace_context: bool | None = ...,
+    strict: bool = ...,
 ) -> Callable[[_F], _F]: ...
 
 
@@ -142,6 +198,7 @@ def with_context(
     *,
     param: str = _DEFAULT_PARAM,
     activate_trace_context: bool | None = None,
+    strict: bool = False,
 ) -> _F | Callable[[_F], _F]:
     """Decorator that automatically injects invocation context.
 
@@ -172,9 +229,20 @@ def with_context(
             ``trace_id``/``span_id`` (requires the ``[otel]`` extra; silent
             no-op otherwise). When ``None`` (default), the process-wide default
             configured via ``setup_logging(activate_trace_context=...)`` applies.
+        strict: When ``True``, raise :class:`ValueError` at decoration time if the
+            handler signature declares no ``param`` parameter (and cannot receive
+            it via ``**kwargs``), since context injection would silently no-op.
+            When ``False`` (default), the same condition emits a
+            :class:`RuntimeWarning` instead, so the app keeps running.
+
+    Warns:
+        RuntimeWarning: If the decorated handler cannot receive the context
+            argument, making injection an ineffective no-op. The Azure Functions
+            worker only supplies ``func.Context`` when the signature declares it.
     """
 
     def decorator(fn: _F) -> _F:
+        _check_context_detectable(fn, param, strict)
         if asyncio.iscoroutinefunction(fn):
             return _wrap_async(fn, param, activate_trace_context)
         return _wrap_sync(fn, param, activate_trace_context)
