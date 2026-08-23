@@ -20,6 +20,7 @@ from azure_functions_logging._context import (
     inject_context,
     invocation_id_var,
     logging_context,
+    propagate_context,
     reset_context,
     restore_context,
     span_id_var,
@@ -449,6 +450,45 @@ def test_install_context_factory_extra_collision_raises() -> None:
         logger.propagate = True
 
 
+def test_install_context_factory_injects_extra_context_vars() -> None:
+    """The factory copies user extra_context_vars onto every record (#380)."""
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    tenant_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+        "tenant_id", default=None
+    )
+    token = tenant_var.set("acme")
+    try:
+        invocation_id_var.set("factory-inv")
+        _install_context_factory({"tenant_id": tenant_var})
+
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "hi", (), None)
+        assert record.tenant_id == "acme"  # type: ignore[attr-defined]
+        # Built-in fields are still injected alongside the extra field.
+        assert record.invocation_id == "factory-inv"  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        invocation_id_var.set(None)
+        tenant_var.reset(token)
+
+
+def test_install_context_factory_extra_collision_raises_value_error() -> None:
+    """extra_context_vars colliding with a built-in field raises ValueError and
+    installs no factory (#380)."""
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    bad = {"invocation_id": contextvars.ContextVar("bad", default=None)}
+    try:
+        with pytest.raises(ValueError, match="collide with built-in"):
+            _install_context_factory(bad)
+        # No global side effect on the invalid call.
+        assert logging.getLogRecordFactory() is old_factory
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+
 def test_install_context_factory_with_logger_emit() -> None:
     """Context fields appear on records emitted through a real logger."""
 
@@ -673,3 +713,166 @@ def test_reset_context_clears_span_id() -> None:
     span_id_var.set("00f067aa0ba902b7")
     reset_context()
     assert span_id_var.get() is None
+
+
+def test_propagate_context_carries_contextvars_to_worker_thread() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    invocation_id_var.set("inv-abc")
+    function_name_var.set("my_func")
+    trace_id_var.set("4bf92f3577b34da6a3ce929d0e0e4736")
+    span_id_var.set("00f067aa0ba902b7")
+    cold_start_var.set(True)
+
+    def worker() -> dict[str, Any]:
+        return {
+            "invocation_id": invocation_id_var.get(),
+            "function_name": function_name_var.get(),
+            "trace_id": trace_id_var.get(),
+            "span_id": span_id_var.get(),
+            "cold_start": cold_start_var.get(),
+        }
+
+    wrapped = propagate_context(worker)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        # Prove the pool thread has no context of its own first.
+        assert pool.submit(worker).result()["invocation_id"] is None
+        result = pool.submit(wrapped).result()
+
+    assert result == {
+        "invocation_id": "inv-abc",
+        "function_name": "my_func",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "span_id": "00f067aa0ba902b7",
+        "cold_start": True,
+    }
+
+
+def test_propagate_context_passes_arguments_through() -> None:
+    def add(a: int, b: int, *, c: int = 0) -> int:
+        return a + b + c
+
+    wrapped = propagate_context(add)
+    assert wrapped(1, 2, c=3) == 6
+
+
+def test_propagate_context_restores_previous_contextvars_in_pooled_thread() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        invocation_id_var.set("inv-1")
+        pool.submit(propagate_context(lambda: None)).result()
+        # The pooled thread must not leak "inv-1" into the next task.
+        leaked = pool.submit(invocation_id_var.get).result()
+
+    assert leaked is None
+
+
+def test_propagate_context_snapshots_at_wrap_time() -> None:
+    invocation_id_var.set("wrap-time")
+    wrapped = propagate_context(invocation_id_var.get)
+    invocation_id_var.set("call-time")
+    assert wrapped() == "wrap-time"
+
+
+def test_propagate_context_sets_azure_thread_local_invocation_id() -> None:
+    tls = SimpleNamespace()
+    context = SimpleNamespace(invocation_id="inv-xyz", thread_local_storage=tls)
+
+    def worker() -> str | None:
+        return getattr(tls, "invocation_id", None)
+
+    wrapped = propagate_context(worker, context=context)
+    assert wrapped() == "inv-xyz"
+    # Restored (deleted) after the call because it was previously absent.
+    assert not hasattr(tls, "invocation_id")
+
+
+def test_propagate_context_restores_previous_thread_local_invocation_id() -> None:
+    tls = SimpleNamespace(invocation_id="pre-existing")
+    context = SimpleNamespace(invocation_id="inv-new", thread_local_storage=tls)
+
+    seen: list[str | None] = []
+    wrapped = propagate_context(lambda: seen.append(tls.invocation_id), context=context)
+    wrapped()
+
+    assert seen == ["inv-new"]
+    assert tls.invocation_id == "pre-existing"
+
+
+def test_propagate_context_ignores_context_without_thread_local() -> None:
+    context = SimpleNamespace(invocation_id="inv-1")  # no thread_local_storage
+    invocation_id_var.set("ctxvar")
+    wrapped = propagate_context(invocation_id_var.get, context=context)
+    assert wrapped() == "ctxvar"
+
+
+def test_propagate_context_thread_local_failure_is_silent() -> None:
+    class Boom:
+        @property
+        def invocation_id(self) -> str:
+            raise RuntimeError("boom")
+
+        @invocation_id.setter
+        def invocation_id(self, value: str) -> None:
+            raise RuntimeError("boom")
+
+    context = SimpleNamespace(invocation_id="inv-1", thread_local_storage=Boom())
+    invocation_id_var.set("ctxvar")
+    wrapped = propagate_context(invocation_id_var.get, context=context)
+    # Must not raise despite the thread-local setter blowing up.
+    assert wrapped() == "ctxvar"
+
+
+def test_propagate_context_reusable_across_concurrent_threads() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    invocation_id_var.set("shared")
+    wrapped = propagate_context(invocation_id_var.get)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = [f.result() for f in [pool.submit(wrapped) for _ in range(8)]]
+    assert results == ["shared"] * 8
+
+
+def test_propagate_context_context_attribute_access_failure_is_silent() -> None:
+    class BadContext:
+        @property
+        def invocation_id(self) -> str:
+            raise RuntimeError("boom")
+
+    invocation_id_var.set("ctxvar")
+    wrapped = propagate_context(invocation_id_var.get, context=BadContext())
+    assert wrapped() == "ctxvar"
+
+
+def test_propagate_context_thread_local_delete_failure_falls_back_to_none() -> None:
+    class NoDelTLS:
+        def __delattr__(self, name: str) -> None:
+            raise AttributeError("cannot delete")
+
+    tls = NoDelTLS()  # invocation_id initially absent
+    context = SimpleNamespace(invocation_id="inv-1", thread_local_storage=tls)
+    wrapped = propagate_context(lambda: None, context=context)
+    wrapped()
+    # del failed during restore, so it falls back to setting None.
+    assert getattr(tls, "invocation_id") is None  # noqa: B009
+
+
+def test_propagate_context_thread_local_restore_failure_is_silent() -> None:
+    class RestoreBoomTLS:
+        def __init__(self) -> None:
+            object.__setattr__(self, "invocation_id", "orig")
+            object.__setattr__(self, "_calls", 0)
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            calls = object.__getattribute__(self, "_calls")
+            object.__setattr__(self, "_calls", calls + 1)
+            if calls >= 1:  # fail on the restore (second) assignment
+                raise RuntimeError("boom")
+            object.__setattr__(self, name, value)
+
+    tls = RestoreBoomTLS()
+    context = SimpleNamespace(invocation_id="inv-new", thread_local_storage=tls)
+    wrapped = propagate_context(lambda: None, context=context)
+    # Restore raising must not propagate out of the wrapper.
+    wrapped()

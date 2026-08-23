@@ -91,6 +91,7 @@ def test_public_api_exports() -> None:
         "get_logger",
         "inject_context",
         "logging_context",
+        "propagate_context",
         "reset_context",
         "restore_context",
         "setup_logging",

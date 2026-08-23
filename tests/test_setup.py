@@ -775,17 +775,47 @@ def test_setup_logging_root_logger_propagation_untouched() -> None:
         root.propagate = saved_propagate
 
 
-def test_extra_context_vars_with_record_factory_warns() -> None:
-    # Passing extra_context_vars while use_record_factory=True has no effect;
-    # setup_logging must warn rather than silently drop the argument (#366).
-    extra = {"tenant": contextvars.ContextVar("tenant", default=None)}
+def test_extra_context_vars_with_record_factory_injects() -> None:
+    # extra_context_vars is now honored in record-factory mode too (#380): the
+    # global LogRecordFactory copies user fields onto every record, and
+    # setup_logging no longer warns that the argument is ignored.
+    tenant_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("tenant", default=None)
+    extra = {"tenant": tenant_var}
+    token = tenant_var.set("acme")
+    try:
+        with patch.dict(os.environ, {}, clear=True):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                setup_logging(
+                    logger_name="afl.test.factory_extra_ctx",
+                    use_record_factory=True,
+                    extra_context_vars=extra,
+                )
+        assert not [w for w in caught if "extra_context_vars is ignored" in str(w.message)]
+        record = logging.getLogRecordFactory()(
+            "afl.test.factory_extra_ctx", logging.INFO, __file__, 1, "hi", (), None
+        )
+        assert record.tenant == "acme"  # type: ignore[attr-defined]
+        # Built-in context fields are still injected alongside the extra field.
+        assert record.invocation_id is None  # type: ignore[attr-defined]
+    finally:
+        tenant_var.reset(token)
+
+
+def test_extra_context_vars_with_record_factory_collision_raises() -> None:
+    # A user field name that shadows a built-in context field must raise the
+    # same ValueError as ContextFilter mode, and install no global factory.
+    baseline_factory = logging.getLogRecordFactory()
+    extra = {"invocation_id": contextvars.ContextVar("bad", default=None)}
     with patch.dict(os.environ, {}, clear=True):
-        with pytest.warns(UserWarning, match="extra_context_vars is ignored"):
+        with pytest.raises(ValueError, match="collide with built-in"):
             setup_logging(
-                logger_name="afl.test.warn_extra_ctx",
+                logger_name="afl.test.factory_collision",
                 use_record_factory=True,
                 extra_context_vars=extra,
             )
+    # Invalid call left no persistent global side effect.
+    assert logging.getLogRecordFactory() is baseline_factory
 
 
 def test_extra_context_vars_without_record_factory_does_not_warn() -> None:
@@ -813,3 +843,63 @@ def test_record_factory_without_extra_context_vars_does_not_warn() -> None:
                 use_record_factory=True,
             )
     assert not [w for w in caught if "extra_context_vars is ignored" in str(w.message)]
+
+
+# ---------------------------------------------------------------------------
+# #381: reconfiguration semantics — repeat-call contract pinning
+# ---------------------------------------------------------------------------
+def test_azure_repeat_calls_do_not_modify_root_level_or_handlers() -> None:
+    """In Azure mode, repeated setup_logging() calls must leave the root logger's
+    level and handler list untouched (host.json owns the level)."""
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_filters = root.filters[:]
+    original_level = root.level
+    try:
+        handler = logging.StreamHandler()
+        root.handlers[:] = [handler]
+        root.setLevel(logging.WARNING)
+        handlers_snapshot = root.handlers[:]
+
+        with patch.dict(os.environ, {"FUNCTIONS_WORKER_RUNTIME": "python"}, clear=True):
+            setup_logging(level=logging.DEBUG)
+            setup_logging(level=logging.DEBUG)
+
+        assert root.level == logging.WARNING  # level never changed
+        assert root.handlers == handlers_snapshot  # handler list never changed
+    finally:
+        root.handlers[:] = original_handlers
+        root.filters[:] = original_filters
+        root.setLevel(original_level)
+
+
+def test_switch_back_to_filter_mode_leaves_global_factory_installed() -> None:
+    """Documented caveat: True -> False installs a fresh ContextFilter but does
+    NOT uninstall the already-installed global LogRecordFactory."""
+    from azure_functions_logging._context import _CONTEXT_FACTORY_MARKER
+
+    name_true = "afl.test.reconfig.factory"
+    name_false = "afl.test.reconfig.filter"
+    for n in (name_true, name_false):
+        lg = logging.getLogger(n)
+        lg.handlers.clear()
+        lg.filters.clear()
+
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=name_true, use_record_factory=True)
+        assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
+        # A subsequent filter-mode call for a different logger does not tear the
+        # global factory back down.
+        setup_logging(logger_name=name_false, use_record_factory=False)
+
+    assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
+    filter_installed = any(
+        type(f) is ContextFilter for f in logging.getLogger(name_false).filters
+    ) or any(
+        type(f) is ContextFilter for h in logging.getLogger(name_false).handlers for f in h.filters
+    )
+    assert filter_installed
+    for n in (name_true, name_false):
+        lg = logging.getLogger(n)
+        lg.handlers.clear()
+        lg.filters.clear()

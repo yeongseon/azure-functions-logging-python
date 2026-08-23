@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import contextvars
+import functools
 import logging
 import threading
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, ParamSpec, TypeVar
 
 from ._constants import _CONTEXT_FIELD_NAMES
 from ._host_instance import get_host_instance_id
@@ -42,6 +43,33 @@ def _check_cold_start() -> bool:
             _cold_start = False
             return True
     return False
+
+
+def _validate_extra_context_vars(
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None,
+) -> dict[str, contextvars.ContextVar[Any]]:
+    """Validate and copy user *extra_context_vars*, rejecting built-in collisions.
+
+    Shared by :class:`ContextFilter` and :func:`_install_context_factory` so both
+    context-injection strategies enforce the identical collision rule: a
+    user-supplied field name must not shadow one of the built-in context fields
+    (:data:`_CONTEXT_FIELD_NAMES`).
+
+    Returns a shallow copy of the mapping so later caller mutations do not affect
+    the stored variables.
+
+    Raises:
+        ValueError: If any field name collides with a built-in context field.
+    """
+    extra = extra_context_vars or {}
+    collisions = set(extra) & set(_CONTEXT_FIELD_NAMES)
+    if collisions:
+        msg = (
+            "extra_context_vars field names collide with built-in "
+            f"context fields: {', '.join(sorted(collisions))}"
+        )
+        raise ValueError(msg)
+    return dict(extra)
 
 
 class ContextFilter(logging.Filter):
@@ -79,15 +107,7 @@ class ContextFilter(logging.Filter):
                 Field names must not collide with the built-in context fields.
         """
         super().__init__()
-        extra = extra_context_vars or {}
-        collisions = set(extra) & set(self.CONTEXT_FIELDS)
-        if collisions:
-            msg = (
-                "extra_context_vars field names collide with built-in "
-                f"context fields: {', '.join(sorted(collisions))}"
-            )
-            raise ValueError(msg)
-        self._extra_context_vars = dict(extra)
+        self._extra_context_vars = _validate_extra_context_vars(extra_context_vars)
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Add context fields to the log record. Always returns True."""
@@ -240,6 +260,117 @@ def restore_context(tokens: ContextTokens) -> None:
         var.reset(token)
 
 
+# --- Background-thread context propagation ---
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+#: Invocation context variables propagated by :func:`propagate_context`.
+_PROPAGATED_CONTEXT_VARS: tuple[contextvars.ContextVar[Any], ...] = (
+    invocation_id_var,
+    function_name_var,
+    trace_id_var,
+    span_id_var,
+    cold_start_var,
+)
+
+_MISSING = object()
+
+
+def propagate_context(
+    func: Callable[_P, _R],
+    *,
+    context: Any = None,
+) -> Callable[_P, _R]:
+    """Bind the current invocation context to *func* for background-thread execution.
+
+    Invocation context is stored in :mod:`contextvars`, which do **not** propagate
+    to :class:`~concurrent.futures.ThreadPoolExecutor` workers or manually created
+    :class:`threading.Thread` targets. Wrapping a callable with
+    ``propagate_context`` snapshots the current invocation context fields
+    (``invocation_id``, ``function_name``, ``trace_id``, ``span_id``,
+    ``cold_start``) **at wrap time** and re-applies them inside the wrapper when
+    it later runs on another thread, then restores the previous values on exit so
+    pooled threads never leak context between tasks.
+
+    Wrap the callable inside the invocation whose context should be propagated,
+    immediately before handing work to a thread or executor::
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        def handler(req, context):
+            with logging_context(context):
+                with ThreadPoolExecutor() as pool:
+                    pool.submit(propagate_context(do_work, context=context), payload)
+
+    When an Azure Functions ``context`` object is supplied, the worker's
+    ``thread_local_storage.invocation_id`` is also set for the duration of the
+    call (and restored afterwards) so the worker's own logging handler correlates
+    records emitted from the background thread. This is best-effort and
+    duck-typed: any missing attribute or error is silently ignored (Principle 3:
+    context propagation failures never crash the caller). No ``azure-functions``
+    import is required.
+
+    Args:
+        func: The callable to run on a background thread. Called with whatever
+            positional/keyword arguments the returned wrapper receives.
+        context: Optional Azure Functions context object (``func.Context``). When
+            provided, its ``invocation_id`` is propagated to the worker's
+            ``thread_local_storage`` in addition to the ``contextvars`` snapshot.
+
+    Returns:
+        A wrapper around *func* that applies the snapshotted context on entry and
+        restores the previous state on exit. Reusable and concurrency-safe: it may
+        be submitted to multiple threads simultaneously.
+    """
+    snapshot: tuple[tuple[contextvars.ContextVar[Any], Any], ...] = tuple(
+        (var, var.get()) for var in _PROPAGATED_CONTEXT_VARS
+    )
+
+    inv_id: Any = None
+    tls: Any = None
+    if context is not None:
+        try:
+            inv_id = getattr(context, "invocation_id", None)
+            tls = getattr(context, "thread_local_storage", None)
+        except Exception:  # nosec B110 — Principle 3: context failures are silent
+            inv_id = None
+            tls = None
+
+    @functools.wraps(func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        tokens: list[tuple[contextvars.ContextVar[Any], contextvars.Token[Any]]] = []
+        previous_tls_invocation_id: Any = _MISSING
+        tls_was_set = False
+        try:
+            for var, value in snapshot:
+                tokens.append((var, var.set(value)))
+            if tls is not None and inv_id is not None:
+                try:
+                    previous_tls_invocation_id = getattr(tls, "invocation_id", _MISSING)
+                    tls.invocation_id = inv_id
+                    tls_was_set = True
+                except Exception:  # nosec B110 — Principle 3: context failures are silent
+                    tls_was_set = False
+            return func(*args, **kwargs)
+        finally:
+            if tls_was_set:
+                try:
+                    if previous_tls_invocation_id is _MISSING:
+                        try:
+                            del tls.invocation_id
+                        except Exception:  # nosec B110 — Principle 3: silent
+                            tls.invocation_id = None
+                    else:
+                        tls.invocation_id = previous_tls_invocation_id
+                except Exception:  # nosec B110 — Principle 3: context failures are silent
+                    pass
+            for var, token in reversed(tokens):
+                var.reset(token)
+
+    return wrapper
+
+
 # Process-wide default for OpenTelemetry trace-context activation. Toggled by
 # ``setup_logging(activate_trace_context=...)`` and consulted by
 # ``logging_context`` / ``with_context`` when their per-call flag is ``None``.
@@ -331,7 +462,9 @@ _CONTEXT_FACTORY_MARKER = "_azure_functions_logging_context_factory"
 _CONTEXT_FACTORY_PREVIOUS = "_azure_functions_logging_previous_factory"
 
 
-def _install_context_factory() -> None:
+def _install_context_factory(
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+) -> None:
     """Install a global LogRecordFactory that injects context into every LogRecord.
 
     This is an alternative to ``ContextFilter`` that guarantees context fields
@@ -356,7 +489,19 @@ def _install_context_factory() -> None:
 
     This function is idempotent for repeated direct calls while the currently
     active ``LogRecordFactory`` is the context factory installed by this package.
+
+    Args:
+        extra_context_vars: Optional mapping of ``field_name -> ContextVar``
+            whose current values are copied onto every record alongside the
+            built-in context fields, mirroring :class:`ContextFilter`. Field
+            names must not collide with the built-in context fields.
+
+    Raises:
+        ValueError: If any *extra_context_vars* field name collides with a
+            built-in context field. Validation runs before any global state is
+            mutated, so an invalid call installs nothing.
     """
+    extra = _validate_extra_context_vars(extra_context_vars)
     current_factory = logging.getLogRecordFactory()
     if getattr(current_factory, _CONTEXT_FACTORY_MARKER, False):
         return
@@ -371,6 +516,8 @@ def _install_context_factory() -> None:
         record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
         record.host_instance_id = get_host_instance_id()
+        for field_name, var in extra.items():
+            setattr(record, field_name, var.get())
         return record
 
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)

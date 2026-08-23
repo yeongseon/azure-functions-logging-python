@@ -89,8 +89,36 @@ def setup_logging(
       ``propagate`` flag is set to ``False`` so records are not also emitted
       by an ancestor (e.g. root) handler, which would double-log.
 
-    This function is idempotent per ``logger_name`` — calling it multiple times
-    for the same logger has no additional effect.
+    **Reconfiguration (calling ``setup_logging()`` more than once).**
+    Repeat calls are safe and never double-install filters or handlers. The
+    exact contract depends on the detected environment:
+
+    - **Standalone local mode** is fully idempotent per ``logger_name``: state
+      is tracked in a process-wide set, so the *first* call for a given
+      ``logger_name`` wins and later calls for that same name return early —
+      ``level``, ``format``, and the added handler are applied only once.
+      Configure a different ``logger_name`` to set up an additional logger.
+    - **Azure / Core Tools mode** is idempotent per
+      ``(logger_name, use_record_factory)`` at the *handler* level: each root
+      handler is given the ``ContextFilter`` (and ``functions_formatter``, if
+      supplied) exactly once, tracked by a ``WeakSet``. Repeat calls therefore
+      *recover* by picking up any handlers the host attached after the previous
+      call, without duplicating filters. The root logger's level and handler
+      list are never modified (``host.json`` owns the level).
+
+    **Switching ``use_record_factory`` between calls.** Enabling it
+    (``False`` -> ``True``) installs the global ``LogRecordFactory`` and strips
+    any ``ContextFilter`` this package previously installed on the target and
+    root loggers, so context is injected by exactly one mechanism. The two
+    modes keep isolated per-signature state, so a later ``ContextFilter`` call
+    never reuses a factory-mode instance (or vice versa). Switching back
+    (``True`` -> ``False``) installs a fresh ``ContextFilter`` but does **not**
+    uninstall the already-installed global factory; prefer a single, consistent
+    ``use_record_factory`` value per process.
+
+    **Switching ``activate_trace_context``.** A bare ``setup_logging()`` (the
+    default ``activate_trace_context=None``) leaves the previously configured
+    activation default untouched; pass ``True``/``False`` to change it.
 
     Args:
         level: Logging level for local development. Ignored in Azure/Core Tools.
@@ -117,11 +145,11 @@ def setup_logging(
             overwritten by the filter at handler dispatch time. Defaults to
             False to preserve the existing handler-filter-only behavior.
         extra_context_vars: Optional mapping of ``field_name -> ContextVar``
-            whose current values ``ContextFilter`` also copies onto each
-            LogRecord, alongside the four built-in context fields. Field names
-            must not collide with the built-in fields. Only applies to the
-            ``ContextFilter`` strategy; a warning is emitted if it is provided
-            when ``use_record_factory=True``.
+            whose current values are copied onto each LogRecord, alongside the
+            built-in context fields. Field names must not collide with the
+            built-in fields (raises ``ValueError`` otherwise). Applies to both
+            injection strategies: the default ``ContextFilter`` and the global
+            ``LogRecordFactory`` (``use_record_factory=True``).
         activate_trace_context: Sets the process-wide default that
             ``logging_context`` and ``with_context`` consult to attach the
             host's W3C trace context (via OpenTelemetry) — making OTel log
@@ -146,23 +174,12 @@ def setup_logging(
         msg = "format must be 'color' or 'json'"
         raise ValueError(msg)
 
-    # A caller-supplied extra_context_vars has no effect in record-factory
-    # mode (context is injected by the global LogRecordFactory, which does not
-    # read it). Silently dropping an explicit argument is a config footgun, so
-    # warn rather than ignore it. Only warn when the argument is actually set.
-    if use_record_factory and extra_context_vars:
-        warnings.warn(
-            "extra_context_vars is ignored when use_record_factory=True: context "
-            "is injected via the global LogRecordFactory, which does not read "
-            "extra_context_vars. Use the default ContextFilter mode "
-            "(use_record_factory=False) to apply them.",
-            stacklevel=2,
-        )
-
-    # Install the global LogRecordFactory only after argument validation,
-    # so an invalid call does not leave persistent global side effects.
+    # Install the global LogRecordFactory only after argument validation, so an
+    # invalid call (e.g. an extra_context_vars collision) does not leave
+    # persistent global side effects. In record-factory mode the factory now
+    # carries extra_context_vars too, so both modes honor user fields.
     if use_record_factory:
-        _install_context_factory()
+        _install_context_factory(extra_context_vars)
 
     with _configured_lock:
         # Only override the process-wide activation default when the caller

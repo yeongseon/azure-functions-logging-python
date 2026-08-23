@@ -315,9 +315,27 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 > **Worker instance.** Every record also carries `host_instance_id`, a best-effort identifier of the worker instance that produced the log (resolved from `WEBSITE_INSTANCE_ID` → `WEBSITE_POD_NAME` → `CONTAINER_NAME` → `socket.gethostname()`). It is complementary to, but not guaranteed equal to, Application Insights' `cloud_RoleInstance`.
 
+> **`@with_context` requires a declared context parameter.** The Azure Functions worker only supplies `func.Context` when your handler signature declares it, so `@with_context` must decorate a handler that accepts a `context: func.Context` parameter (or a `**kwargs`). If it can't receive the context, injection would be a silent no-op — the decorator now emits a `RuntimeWarning` at import time to flag this. Use `@with_context(strict=True)` to raise instead (CI-enforceable), or `@with_context(param="...")` to match a differently-named parameter.
+
 > **Lifecycle logging (opt-in).** `@with_context(lifecycle=True)` emits an `"invocation start"` record before the handler runs and an `"invocation end"` record after it returns — carrying `duration_ms` and `outcome` — or an `"invocation error"` record (at `ERROR`, then re-raises unchanged) if it fails. Records inherit the bound invocation context. Disabled by default (zero overhead); tune the start/end level with `lifecycle_level=` (defaults to `logging.INFO`).
 
 → [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
+
+### Background-thread context propagation
+
+Invocation context is carried via `contextvars`, which do **not** follow work handed to a `ThreadPoolExecutor` or a manually created `threading.Thread` — records emitted from those threads lose their `invocation_id`. `propagate_context()` binds the current invocation context to a callable so it stays correlated on the worker thread. Wrap the callable inside the invocation, immediately before submitting the work:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+from azure_functions_logging import logging_context, propagate_context
+
+with logging_context(context):
+    with ThreadPoolExecutor() as pool:
+        pool.submit(propagate_context(do_work, context=context), payload)
+```
+
+Passing `context=context` also propagates the Azure worker's `thread_local_storage.invocation_id` so the worker's own logging handler correlates too. This is explicit and opt-in: the library never monkeypatches `threading` / `concurrent.futures`, and propagation failures never crash the caller. It is **correlation only** — no spans are created or exported.
 
 ### Structured JSON output
 

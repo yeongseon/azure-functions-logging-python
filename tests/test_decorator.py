@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from types import SimpleNamespace
+import warnings
 
 import pytest
 
@@ -176,29 +177,104 @@ class TestAsync:
 
 
 class TestMissingContextParam:
-    """When the handler doesn't have the expected context param,
-    the decorator must not crash — just skip injection.
+    """When the handler cannot receive the expected context param, the decorator
+    must not crash the app — it skips injection and warns (or raises when strict).
     """
 
-    def test_no_context_param_does_not_crash(self) -> None:
-        @with_context
-        def handler(req: object) -> str:
-            # No context injected — vars stay None
-            assert invocation_id_var.get() is None
-            return "ok"
+    def test_no_context_param_warns_but_does_not_crash(self) -> None:
+        with pytest.warns(RuntimeWarning, match="ineffective"):
+
+            @with_context
+            def handler(req: object) -> str:
+                # No context injected — vars stay None
+                assert invocation_id_var.get() is None
+                return "ok"
 
         result = handler("req")
         assert result == "ok"
 
-    def test_wrong_param_name_does_not_crash(self) -> None:
-        @with_context(param="ctx")
-        def handler(req: object, context: object) -> str:
-            # 'ctx' not in signature → no injection
-            assert invocation_id_var.get() is None
-            return "ok"
+    def test_wrong_param_name_warns_but_does_not_crash(self) -> None:
+        with pytest.warns(RuntimeWarning, match="'ctx'"):
+
+            @with_context(param="ctx")
+            def handler(req: object, context: object) -> str:
+                # 'ctx' not in signature → no injection
+                assert invocation_id_var.get() is None
+                return "ok"
 
         result = handler("req", _MOCK_CONTEXT)
         assert result == "ok"
+
+    def test_kwargs_signature_does_not_warn(self) -> None:
+        # A **kwargs handler could receive the context by keyword at call time,
+        # so the decorator must not warn about an ineffective injection.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            @with_context
+            def handler(req: object, **kwargs: object) -> str:
+                return "ok"
+
+        assert handler("req") == "ok"
+
+    def test_declared_context_param_does_not_warn(self) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            @with_context
+            def handler(req: object, context: object) -> str:
+                return "ok"
+
+        assert handler("req", _MOCK_CONTEXT) == "ok"
+
+    def test_strict_raises_on_missing_context_param(self) -> None:
+        with pytest.raises(ValueError, match="ineffective"):
+
+            @with_context(strict=True)
+            def handler(req: object) -> str:  # pragma: no cover - never called
+                return "ok"
+
+    def test_strict_allows_declared_context_param(self) -> None:
+        @with_context(strict=True)
+        def handler(req: object, context: object) -> str:
+            return "ok"
+
+        assert handler("req", _MOCK_CONTEXT) == "ok"
+
+    def test_async_missing_context_param_warns(self) -> None:
+        with pytest.warns(RuntimeWarning, match="ineffective"):
+
+            @with_context
+            async def handler(req: object) -> str:
+                assert invocation_id_var.get() is None
+                return "ok"
+
+        assert asyncio.run(handler("req")) == "ok"
+
+    def test_async_strict_raises_on_missing_context_param(self) -> None:
+        with pytest.raises(ValueError, match="ineffective"):
+
+            @with_context(strict=True)
+            async def handler(req: object) -> str:  # pragma: no cover
+                return "ok"
+
+    def test_uninspectable_signature_does_not_warn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Some callables have no introspectable signature; the decorator must be
+        # conservative and never warn on a false positive when inspection fails.
+        import inspect
+
+        def _raise(_func: object) -> object:
+            raise ValueError("no signature")
+
+        monkeypatch.setattr(inspect, "signature", _raise)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            @with_context
+            def handler(req: object) -> str:
+                return "ok"
+
+        assert handler("req") == "ok"
 
 
 # ---------------------------------------------------------------------------
