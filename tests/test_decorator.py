@@ -471,3 +471,34 @@ class TestLifecycleLogging:
 
         events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
         assert [r.message for r in events] == ["invocation start", "invocation end"]
+
+    def test_base_exception_propagates_without_error_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # KeyboardInterrupt/SystemExit and other BaseExceptions must propagate
+        # unchanged and must NOT be logged as an "invocation error".
+        @with_context(lifecycle=True)
+        def handler(req: object, context: object) -> str:
+            raise KeyboardInterrupt
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(KeyboardInterrupt):
+                handler("req", _MOCK_CONTEXT)
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        # Only the start record is emitted; no error record for BaseException.
+        assert [r.message for r in events] == ["invocation start"]
+
+    def test_async_cancelled_error_propagates_without_error_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        async def handler(req: object, context: object) -> str:
+            raise asyncio.CancelledError
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(handler("req", _MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start"]

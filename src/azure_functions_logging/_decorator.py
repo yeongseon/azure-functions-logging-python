@@ -114,7 +114,7 @@ def _log_lifecycle_end(
     level: int,
     start_time: float,
     outcome: str,
-    exc: BaseException | None,
+    exc: Exception | None,
 ) -> None:
     if outcome == "error":
         emit_level = logging.ERROR
@@ -147,7 +147,7 @@ def _run_with_lifecycle_sync(
     _log_lifecycle_start(logger, level)
     try:
         result = func(*args, **kwargs)
-    except BaseException as exc:
+    except Exception as exc:
         _log_lifecycle_end(logger, level, start_time, "error", exc)
         raise
     _log_lifecycle_end(logger, level, start_time, "success", None)
@@ -165,7 +165,7 @@ async def _run_with_lifecycle_async(
     _log_lifecycle_start(logger, level)
     try:
         result = await func(*args, **kwargs)
-    except BaseException as exc:
+    except Exception as exc:
         _log_lifecycle_end(logger, level, start_time, "error", exc)
         raise
     _log_lifecycle_end(logger, level, start_time, "success", None)
