@@ -317,6 +317,8 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 > **`@with_context` requires a declared context parameter.** The Azure Functions worker only supplies `func.Context` when your handler signature declares it, so `@with_context` must decorate a handler that accepts a `context: func.Context` parameter (or a `**kwargs`). If it can't receive the context, injection would be a silent no-op — the decorator now emits a `RuntimeWarning` at import time to flag this. Use `@with_context(strict=True)` to raise instead (CI-enforceable), or `@with_context(param="...")` to match a differently-named parameter.
 
+> **Lifecycle logging (opt-in).** `@with_context(lifecycle=True)` emits an `"invocation start"` record before the handler runs and an `"invocation end"` record after it returns — carrying `duration_ms` and `outcome` — or an `"invocation error"` record (at `ERROR`, then re-raises unchanged) if it fails. Records inherit the bound invocation context. Disabled by default (zero overhead); tune the start/end level with `lifecycle_level=` (defaults to `logging.INFO`).
+
 → [Usage: context injection](https://yeongseon.dev/azure-functions-python/logging/usage/#3-context-injection-in-azure-functions) · [API: `with_context`](https://yeongseon.dev/azure-functions-python/logging/api/#with_context)
 
 ### Background-thread context propagation
