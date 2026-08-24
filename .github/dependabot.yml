@@ -18,6 +18,13 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -49,3 +56,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "actions/download-artifact"
         update-types: ["version-update:semver-major"]
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
