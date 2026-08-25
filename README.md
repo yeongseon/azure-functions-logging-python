@@ -12,11 +12,14 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
 [![Docs](https://img.shields.io/badge/docs-yeongseon.dev-blue)](https://yeongseon.dev/azure-functions-python/logging/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Status: Active](https://img.shields.io/badge/status-active-brightgreen.svg)](#project-status)
 
 Read this in: [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
 **Invocation-aware observability for Azure Functions Python v2.**
 Surfaces `invocation_id`, detects cold starts, warns on `host.json` misconfig, and outputs Application Insights-ready structured logs — without replacing Python's standard `logging`.
+
+**Project status: Active.** <a id="project-status"></a>This library is actively maintained and shipping new features. It follows [semantic versioning](https://semver.org/) on a `0.x` line — minor releases may introduce additive features and, until `1.0`, occasional breaking changes announced in the [changelog](CHANGELOG.md); patch releases are backward-compatible fixes.
 
 ---
 
