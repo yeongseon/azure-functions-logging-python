@@ -110,6 +110,20 @@ Examples are part of the supported API experience and should stay verified.
 - Add or update smoke tests whenever an example changes.
 - Prefer lightweight smoke coverage over infrastructure-heavy end-to-end tests.
 
+## Design Guardrails
+
+These are hard API-surface limits, not soft preferences — changing them requires an explicit design discussion in an issue first.
+
+### `setup_logging` complexity ceiling
+
+`setup_logging(...)` today exposes **8 keyword-only parameters** (`level`, `format`, `logger_name`, `functions_formatter`, `host_json_path`, `use_record_factory`, `extra_context_vars`, `activate_trace_context`).
+
+- **No 9th keyword argument.** The next configuration increment must be a **profile/preset** (e.g. a named `profile="..."` bundling related settings), **not** another standalone flag.
+- Adding a boolean/flag kwarg is a smell: it multiplies the valid-combination surface and pushes the function toward an untestable configuration matrix.
+- If a new behavior seems to need a kwarg, first ask whether it belongs in a preset, in an existing parameter, or in a separate function.
+
+Signature of record: `src/azure_functions_logging/_setup.py`.
+
 ## Commit Message Guidelines
 
 We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
