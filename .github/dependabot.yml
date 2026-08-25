@@ -20,3 +20,14 @@ updates:
       - "dependencies"
       - "github-actions"
     open-pull-requests-limit: 10
+    ignore:
+      # actions/upload-artifact + actions/download-artifact are managed as a v4
+      # "canonical pair" by tools/lint_release_workflows.py (release-gate drift
+      # lint). download-artifact v5+ ships breaking behavior (Node 24 runner
+      # minimum, digest-mismatch fail-by-default) that would break the gate lint
+      # and CI, so major bumps are adopted deliberately, not by Dependabot.
+      # See yeongseon/azure-functions-validation-python#306.
+      - dependency-name: "actions/upload-artifact"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "actions/download-artifact"
+        update-types: ["version-update:semver-major"]
