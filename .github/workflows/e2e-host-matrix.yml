@@ -1,0 +1,129 @@
+name: e2e-host-matrix
+
+# Scheduled Core Tools / host version matrix smoke (#394).
+#
+# Boots the local ``examples/e2e_app`` under a real ``func`` host + Azurite
+# across multiple Azure Functions Core Tools versions and asserts the host
+# starts and serves HTTP. This catches host-behavior drift across Core
+# Tools / host releases early, WITHOUT deploying to Azure (no cloud, no
+# secrets). It is intentionally **scheduled-only** (plus manual dispatch) so
+# it never blocks a PR and its CI cost stays bounded.
+#
+# NOTE: this is a *host-boot* smoke — it proves the app registers and serves
+# under each Core Tools version. It is not a substitute for the real-Azure
+# certification in e2e-azure.yml.
+on:
+  schedule:
+    # Weekly, Mondays 05:00 UTC. Off the PR path.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-boot-matrix:
+    name: Host-boot smoke (func ${{ matrix.core_tools }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Do not cancel the whole matrix when one Core Tools version fails —
+      # each entry is an independent drift signal.
+      fail-fast: false
+      matrix:
+        # Chosen set (documented per the issue acceptance checklist):
+        #   * "4"      — the latest published 4.x Core Tools (drift detector:
+        #                surfaces breakage in the newest release before it is
+        #                pinned anywhere).
+        #   * "4.12.0" — the version currently pinned by e2e-azure.yml and
+        #                cookbook-host-smoke (control / known-good baseline).
+        # Both are guaranteed installable via npm. Expand this list with
+        # additional explicit versions only after confirming they install and
+        # boot cleanly here.
+        core_tools: ["4", "4.12.0"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install Azure Functions Core Tools + Azurite
+        run: |
+          npm install -g "azure-functions-core-tools@${{ matrix.core_tools }}" azurite
+          echo "func version: $(func --version)"
+          echo "azurite version: $(azurite --version)"
+
+      - name: Install the library and the app's runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          # The worker that `func start` launches uses this Python env, so the
+          # app's import of azure_functions_logging must resolve here.
+          pip install -e .
+          pip install -r examples/e2e_app/requirements.txt
+
+      - name: Start Azurite
+        run: |
+          mkdir -p /tmp/azurite
+          azurite --silent --location /tmp/azurite \
+            --blobHost 127.0.0.1 --queueHost 127.0.0.1 --tableHost 127.0.0.1 &
+          echo "AZURITE_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Boot func host and smoke the HTTP endpoints
+        working-directory: examples/e2e_app
+        env:
+          AzureWebJobsStorage: UseDevelopmentStorage=true
+          FUNCTIONS_WORKER_RUNTIME: python
+        run: |
+          set -euo pipefail
+          # Launch the host in the background, capturing logs for diagnostics.
+          func start --port 7071 --python > "$RUNNER_TEMP/func-host.log" 2>&1 &
+          echo "FUNC_PID=$!" >> "$GITHUB_ENV"
+
+          # Poll for readiness (host + worker registration can take a while on
+          # a cold runner). Fail loudly with the host log if it never comes up.
+          ready=""
+          for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:7071/api/health" >/dev/null 2>&1; then
+              ready="yes"
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$ready" ]; then
+            echo "::error ::func host did not become ready within timeout (Core Tools ${{ matrix.core_tools }})"
+            echo "----- func host log -----"
+            cat "$RUNNER_TEMP/func-host.log" || true
+            exit 1
+          fi
+
+          echo "Host is up. Asserting /api/health payload..."
+          HEALTH="$(curl -fsS http://127.0.0.1:7071/api/health)"
+          echo "health response: $HEALTH"
+          echo "$HEALTH" | grep -q '"status": "ok"'
+
+          echo "Asserting /api/version reports the installed package..."
+          VERSION="$(curl -fsS http://127.0.0.1:7071/api/version)"
+          echo "version response: $VERSION"
+          echo "$VERSION" | grep -q '"version"'
+
+      - name: Stop background processes
+        if: always()
+        run: |
+          [ -n "${FUNC_PID:-}" ] && kill "${FUNC_PID}" 2>/dev/null || true
+          [ -n "${AZURITE_PID:-}" ] && kill "${AZURITE_PID}" 2>/dev/null || true
+
+      - name: Upload func host log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: func-host-log-${{ matrix.core_tools }}
+          path: ${{ runner.temp }}/func-host.log
+          if-no-files-found: ignore
+          retention-days: 14
