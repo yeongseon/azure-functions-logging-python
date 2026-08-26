@@ -144,6 +144,8 @@ def setup_logging(
             handlers, because the global ``LogRecordFactory`` would be
             overwritten by the filter at handler dispatch time. Defaults to
             False to preserve the existing handler-filter-only behavior.
+            See how correlation works, injection modes:
+            https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#3-two-ways-the-id-lands-on-a-record
         extra_context_vars: Optional mapping of ``field_name -> ContextVar``
             whose current values are copied onto each LogRecord, alongside the
             built-in context fields. Field names must not collide with the

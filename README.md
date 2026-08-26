@@ -479,9 +479,35 @@ with logging_context(context):
 **Proves:** your existing OpenTelemetry log records inherit the host invocation's `trace_id` / `span_id`. **Does not prove:** a span was created or exported — this is correlation, not tracing (see [OpenTelemetry trace correlation](#opentelemetry-trace-correlation)).
 </details>
 
+<details>
+<summary><strong>Logs from a background thread have no <code>invocation_id</code></strong></summary>
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from azure_functions_logging import logging_context, propagate_context
+
+with logging_context(context):
+    with ThreadPoolExecutor() as pool:
+        pool.submit(propagate_context(do_work, context=context), payload)
+```
+
+**Likely cause:** `contextvars` do not follow work handed to a new thread or `ThreadPoolExecutor`, so records emitted there lose the bound context. **Proves:** wrapping the callable with `propagate_context()` keeps `invocation_id` correlated on the worker thread. **Does not prove:** anything about threads you did not wrap — propagation is explicit and opt-in.
+
+→ [How correlation works: background threads](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#4-why-background-threads-lose-the-id) · [Background-thread context propagation](#background-thread-context-propagation)
+</details>
+
+<details>
+<summary><strong>My <code>invocation_id</code> doesn't match Application Insights <code>operation_Id</code></strong></summary>
+
+These are **different identifiers with different owners.** `invocation_id` is this library's field — always present, one per invocation, read from the host's gRPC contract. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; that is expected, not a bug.
+
+→ [How correlation works: vs Application Insights](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#5-relationship-to-application-insights-operation_id) · [OpenTelemetry trace correlation](#opentelemetry-trace-correlation)
+</details>
+
 ## Documentation
 
 - Full docs: [yeongseon.dev/azure-functions-python/logging](https://yeongseon.dev/azure-functions-python/logging/)
+- [How Correlation Works](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/) — how `invocation_id` flows from the host to every log record
 - [Configuration reference](https://yeongseon.dev/azure-functions-python/logging/configuration/)
 - [Troubleshooting guide](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/)
 - [API reference](https://yeongseon.dev/azure-functions-python/logging/api/)

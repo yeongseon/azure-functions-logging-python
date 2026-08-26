@@ -331,6 +331,10 @@ def with_context(
 
     Both sync and async handlers are supported.
 
+    See Also:
+        How correlation works, how the id reaches your handler:
+        https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#2-how-it-reaches-your-handler
+
     Args:
         func: The handler function (when used without parentheses).
         param: Name of the parameter that receives the Azure Functions

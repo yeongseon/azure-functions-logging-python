@@ -22,6 +22,7 @@ nav:
       - Usage: usage.md
       - Architecture: architecture.md
       - OpenTelemetry: opentelemetry.md
+      - How Correlation Works: how-correlation-works.md
   - Examples:
       - Basic Setup: examples/basic_setup.md
       - JSON Output: examples/json_output.md
