@@ -324,6 +324,39 @@ additionally imports the **private** `opentelemetry.sdk._logs` path, which remai
 underscore-private upstream and can break on OTel upgrades. This affects tests
 only — it is never imported by shipped runtime code.
 
+## Background-Thread Logs Lose `invocation_id`
+
+### Symptoms
+
+- Records emitted from a `threading.Thread` or `ThreadPoolExecutor` worker have no `invocation_id`, while records on the handler thread do.
+
+### Root Cause
+
+Invocation context is stored in `contextvars`, which do not automatically propagate to threads you spawn inside the handler.
+
+### Resolution
+
+Wrap the callable with `propagate_context()` immediately before submitting the work:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from azure_functions_logging import logging_context, propagate_context
+
+with logging_context(context):
+    with ThreadPoolExecutor() as pool:
+        pool.submit(propagate_context(do_work, context=context), payload)
+```
+
+See [How correlation works: background threads](how-correlation-works.md#4-why-background-threads-lose-the-id).
+
+## `invocation_id` Does Not Match Application Insights `operation_Id`
+
+### Clarification
+
+`invocation_id` is this library's field — present on every record emitted within a bound invocation context (`logging_context()` / `inject_context()`), one per invocation, read from the host's gRPC contract. It can be absent outside that context — for example on records from background threads that did not call `propagate_context()`. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; the two identifiers have different owners and are not guaranteed equal.
+
+See [How correlation works: vs Application Insights](how-correlation-works.md#5-relationship-to-application-insights-operation_id).
+
 ## Fast Diagnostic Checklist
 
 Run through this list during incidents:

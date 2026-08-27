@@ -322,6 +322,10 @@ def propagate_context(
         A wrapper around *func* that applies the snapshotted context on entry and
         restores the previous state on exit. Reusable and concurrency-safe: it may
         be submitted to multiple threads simultaneously.
+
+    See Also:
+        How correlation works, background threads:
+        https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#4-why-background-threads-lose-the-id
     """
     snapshot: tuple[tuple[contextvars.ContextVar[Any], Any], ...] = tuple(
         (var, var.get()) for var in _PROPAGATED_CONTEXT_VARS

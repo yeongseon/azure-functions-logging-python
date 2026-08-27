@@ -12,6 +12,7 @@ Part of the **Azure Functions Python DX Toolkit**. Drop-in structured (JSON) log
 ## User Guide
 - [Usage](https://yeongseon.dev/azure-functions-python/logging/usage/): Helper reference and injection modes.
 - [Architecture](https://yeongseon.dev/azure-functions-python/logging/architecture/): How the logging pipeline works.
+- [How Correlation Works](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/): How `invocation_id` flows from the host to every log record, and how it relates to Application Insights correlation.
 
 ## Examples
 - [Basic Setup](https://yeongseon.dev/azure-functions-python/logging/examples/basic_setup/): Get started fast.
