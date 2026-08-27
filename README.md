@@ -499,7 +499,7 @@ with logging_context(context):
 <details>
 <summary><strong>My <code>invocation_id</code> doesn't match Application Insights <code>operation_Id</code></strong></summary>
 
-These are **different identifiers with different owners.** `invocation_id` is this library's field — always present, one per invocation, read from the host's gRPC contract. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; that is expected, not a bug.
+These are **different identifiers with different owners.** `invocation_id` is this library's field — present on every record emitted within a bound invocation context (`logging_context()` / `inject_context()`), one per invocation, read from the host's gRPC contract. It can be absent outside that context — for example on records from background threads that did not call `propagate_context()`. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; that is expected, not a bug.
 
 → [How correlation works: vs Application Insights](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#5-relationship-to-application-insights-operation_id) · [OpenTelemetry trace correlation](#opentelemetry-trace-correlation)
 </details>

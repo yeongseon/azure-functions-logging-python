@@ -4,7 +4,7 @@ How `azure-functions-logging` turns a per-invocation identifier into the `invoca
 
 !!! note "Scope of this page"
     Claims here are limited to the public gRPC proto contract and behavior you can observe from user code — no host-internal narration.
-    External citations are pinned to a specific tag or commit, not a moving branch.
+    GitHub source links are pinned to a specific tag or commit, not a moving branch. External specification and vendor references (Python docs, W3C, Microsoft Learn) link to their canonical/stable URLs, which are versioned or long-lived rather than commit-pinned.
     Links verified 2026-08-26.
 
 ## 1. Where `invocation_id` comes from

@@ -353,7 +353,7 @@ See [How correlation works: background threads](how-correlation-works.md#4-why-b
 
 ### Clarification
 
-`invocation_id` is this library's field — always present, one per invocation, read from the host's gRPC contract. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; the two identifiers have different owners and are not guaranteed equal.
+`invocation_id` is this library's field — present on every record emitted within a bound invocation context (`logging_context()` / `inject_context()`), one per invocation, read from the host's gRPC contract. It can be absent outside that context — for example on records from background threads that did not call `propagate_context()`. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; the two identifiers have different owners and are not guaranteed equal.
 
 See [How correlation works: vs Application Insights](how-correlation-works.md#5-relationship-to-application-insights-operation_id).
 
