@@ -9,6 +9,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LINT_PATH = _REPO_ROOT / "tools" / "lint_doc_links.py"
 
@@ -60,3 +62,66 @@ def test_external_raw_main_fails() -> None:
     text = "https://raw.githubusercontent.com/Azure/lib/main/azure/functions/_abc.py\n"
     errors = lint_mod.check_links(text, "fake.md")
     assert errors and "mutable ref 'main'" in errors[0]
+
+
+class _FakeResp:
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    def __enter__(self) -> "_FakeResp":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+def test_verify_refs_checks_full_url_and_passes_on_200(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--verify-refs must HEAD the full citation URL (ref + path), not a truncated one."""
+    lint_mod._ref_exists.cache_clear()
+    seen: list[str] = []
+
+    def fake_urlopen(req, timeout=10.0):  # type: ignore[no-untyped-def]
+        seen.append(req.full_url)
+        return _FakeResp(200)
+
+    monkeypatch.setattr(lint_mod, "urlopen", fake_urlopen)
+    url = "https://github.com/Azure/proto/blob/v1.0.0/src/proto/FunctionRpc.proto"
+    text = f"See [proto]({url}#L10).\n"
+    errors = lint_mod.check_links(text, "fake.md", verify_refs=True)
+    assert errors == []
+    # The full path (ref + file path) is verified, not just up through the ref.
+    assert seen == [url]
+
+
+def test_verify_refs_fails_on_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A definitive 404 on the full citation URL must be reported as drift."""
+    lint_mod._ref_exists.cache_clear()
+    seen: list[str] = []
+
+    def fake_urlopen(req, timeout=10.0):  # type: ignore[no-untyped-def]
+        seen.append(req.full_url)
+        raise lint_mod.HTTPError(req.full_url, 404, "Not Found", hdrs=None, fp=None)
+
+    monkeypatch.setattr(lint_mod, "urlopen", fake_urlopen)
+    url = "https://raw.githubusercontent.com/Azure/lib/2.2.0/azure/functions/_missing.py"
+    text = f"{url}\n"
+    errors = lint_mod.check_links(text, "fake.md", verify_refs=True)
+    assert errors and "does not" in errors[0] and url in errors[0]
+    assert seen == [url]
+
+
+def test_verify_refs_caches_per_unique_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeated occurrences of the same URL trigger a single network call."""
+    lint_mod._ref_exists.cache_clear()
+    calls: list[str] = []
+
+    def fake_urlopen(req, timeout=10.0):  # type: ignore[no-untyped-def]
+        calls.append(req.full_url)
+        return _FakeResp(200)
+
+    monkeypatch.setattr(lint_mod, "urlopen", fake_urlopen)
+    url = "https://github.com/Azure/proto/blob/v1.0.0/a.proto"
+    text = f"{url}\n{url}\n{url}\n"
+    errors = lint_mod.check_links(text, "fake.md", verify_refs=True)
+    assert errors == []
+    assert calls == [url]
