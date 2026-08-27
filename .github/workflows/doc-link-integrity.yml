@@ -1,0 +1,41 @@
+name: Doc Link Tag-Integrity
+
+# Guards against documentation citing external source at a moving ref
+# (e.g. /blob/main/...). Runs the static check on docs-touching PRs, and a
+# weekly network-verified pass that also fails on refs that 404 upstream.
+# See tools/lint_doc_links.py.
+
+on:
+  pull_request:
+    paths:
+      - "README*.md"
+      - "DESIGN.md"
+      - "docs/**/*.md"
+      - "tools/lint_doc_links.py"
+      - ".github/workflows/doc-link-integrity.yml"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  link-integrity:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+
+      - name: Check external links are immutably pinned
+        run: python tools/lint_doc_links.py
+
+      - name: Verify external link refs exist (scheduled / manual)
+        if: github.event_name != 'pull_request'
+        run: python tools/lint_doc_links.py --verify-refs

@@ -74,9 +74,14 @@ lint-workflows: ensure-hatch
 	@$(HATCH) run python tools/lint_release_workflows.py
 	@$(HATCH) run python tools/lint_workflow_pins.py
 
+.PHONY: lint-doc-links
+lint-doc-links: ensure-hatch
+	@$(HATCH) run python tools/lint_doc_links.py
+
 .PHONY: check-all
 check-all: ensure-hatch
 	@$(MAKE) lint-workflows
+	@$(MAKE) lint-doc-links
 	@$(MAKE) check
 	@$(MAKE) test
 	@$(MAKE) security
