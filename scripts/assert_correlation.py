@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Assert the correlation claims from docs/how-correlation-works.md against a log.
+"""Assert the correlation claims from the public "How correlation works" docs against a log.
 
 Consumes the ``func`` host log produced by the host-boot matrix smoke after a
 request to ``/api/correlation`` (see ``examples/e2e_app/function_app.py``) and
-certifies three observable claims:
+certifies three observable claims (documented at
+``https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/``):
 
 1. ``invocation_id`` on a bound record parses as a UUID (proto contract, §1–§2).
 2. Two records from the same invocation share one ``invocation_id`` (§2).
@@ -37,8 +38,8 @@ def _extract_json_objects(text: str) -> list[dict[str, object]]:
     """Return every top-level JSON object embedded anywhere in *text*.
 
     The host prefixes worker log lines with its own text, so a record may not
-    start at column 0. Scan for balanced ``{...}`` spans and keep the ones that
-    parse as objects carrying our ``marker`` field.
+    start at column 0. Scan for balanced ``{...}`` spans and keep every span that
+    parses as a JSON object; callers filter by ``marker`` via :func:`_find`.
     """
     objects: list[dict[str, object]] = []
     depth = 0
@@ -145,7 +146,8 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(f"usage: {argv[0]} <path-to-func-host.log>", file=sys.stderr)
         return 2
-    text = open(argv[1], encoding="utf-8", errors="replace").read()
+    with open(argv[1], encoding="utf-8", errors="replace") as fh:
+        text = fh.read()
     failures = check(text)
     if failures:
         print("Correlation certification FAILED:", file=sys.stderr)

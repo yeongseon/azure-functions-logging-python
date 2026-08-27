@@ -181,4 +181,3 @@ def correlation(req: func.HttpRequest, context: func.Context) -> func.HttpRespon
         )
     finally:
         afl.restore_context(tokens)
-        afl.restore_context(tokens)
