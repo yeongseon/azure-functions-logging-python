@@ -113,6 +113,31 @@ jobs:
           echo "version response: $VERSION"
           echo "$VERSION" | grep -q '"version"'
 
+          echo "Exercising /api/correlation to certify correlation claims..."
+          CORR="$(curl -fsS http://127.0.0.1:7071/api/correlation)"
+          echo "correlation response: $CORR"
+
+          # Worker log records reach the host log asynchronously; wait until all
+          # three markers have flushed (or fail loudly with the captured log).
+          markers=""
+          for i in $(seq 1 24); do
+            if grep -q 'corr-main-1' "$RUNNER_TEMP/func-host.log" \
+               && grep -q 'corr-main-2' "$RUNNER_TEMP/func-host.log" \
+               && grep -q 'corr-thread-unpropagated' "$RUNNER_TEMP/func-host.log"; then
+              markers="yes"
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$markers" ]; then
+            echo "::error ::correlation markers never appeared in the host log (Core Tools ${{ matrix.core_tools }})"
+            cat "$RUNNER_TEMP/func-host.log" || true
+            exit 1
+          fi
+
+          echo "Asserting correlation claims against the host log..."
+          python ../../scripts/assert_correlation.py "$RUNNER_TEMP/func-host.log"
+
       - name: Stop background processes
         if: always()
         run: |

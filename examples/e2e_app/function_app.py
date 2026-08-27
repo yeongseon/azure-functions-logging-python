@@ -1,11 +1,15 @@
 """E2E test function app for azure-functions-logging.
 
-Exposes four endpoints:
+Exposes these endpoints:
 
 - GET /api/health            — liveness probe
 - GET /api/before            — BEFORE: plain stdlib logging, no context injection
 - GET /api/after             — AFTER:  azure-functions-logging with full context
 - GET /api/logme             — alias for /api/after (e2e test compat)
+- GET /api/correlation       — emits records that certify correlation claims:
+                               two main-thread records share one invocation_id,
+                               and a background thread without propagate_context
+                               loses it (negative control).
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import logging
+import threading
 
 import azure.functions as func
 
@@ -128,6 +133,50 @@ def logme(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
         )
         return func.HttpResponse(
             json.dumps({"logged": True, "correlation_id": correlation_id}),
+            mimetype="application/json",
+        )
+    finally:
+        afl.restore_context(tokens)
+
+
+# ── correlation certification ────────────────────────────────────────────
+#
+# Emits records that let the host-boot matrix smoke assert the claims made in
+# docs/how-correlation-works.md against a real func host:
+#
+#   1. invocation_id on a bound record parses as a UUID (§1–§2).
+#   2. Two records from the same invocation share one invocation_id (§2).
+#   3. A background thread WITHOUT propagate_context loses the invocation_id
+#      (§4, negative control) — proving the contextvars boundary is real.
+#
+# Every record carries a stable "marker" extra field so the assertion script can
+# locate the exact lines regardless of ordering or interleaving.
+
+
+@app.route(route="correlation", auth_level=func.AuthLevel.ANONYMOUS)
+def correlation(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
+    """Emit correlation-certification records for the host-boot smoke."""
+    logger = afl.get_logger(__name__)
+    tokens = afl.inject_context(context)
+    try:
+        # (1) + (2): two bound records on the request thread — same invocation_id,
+        # which must be a valid UUID.
+        logger.info("afl correlation certify", extra={"marker": "corr-main-1"})
+        logger.info("afl correlation certify", extra={"marker": "corr-main-2"})
+
+        # (3) negative control: a background thread with NO propagate_context.
+        # Its record must NOT carry the invocation_id.
+        def _unpropagated() -> None:
+            logger.warning(
+                "afl correlation certify", extra={"marker": "corr-thread-unpropagated"}
+            )
+
+        thread = threading.Thread(target=_unpropagated)
+        thread.start()
+        thread.join()
+
+        return func.HttpResponse(
+            json.dumps({"endpoint": "correlation", "invocation_id": context.invocation_id}),
             mimetype="application/json",
         )
     finally:
