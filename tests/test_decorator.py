@@ -146,7 +146,7 @@ class TestAsync:
             assert invocation_id_var.get() == "inv-dec"
             return "ok"
 
-        result = asyncio.get_event_loop().run_until_complete(handler("req", _MOCK_CONTEXT))
+        result = asyncio.run(handler("req", _MOCK_CONTEXT))
         assert result == "ok"
         # Context reset after return
         assert invocation_id_var.get() is None
@@ -157,7 +157,7 @@ class TestAsync:
             raise ValueError("async boom")
 
         with pytest.raises(ValueError, match="async boom"):
-            asyncio.get_event_loop().run_until_complete(handler("req", _MOCK_CONTEXT))
+            asyncio.run(handler("req", _MOCK_CONTEXT))
 
         assert invocation_id_var.get() is None
 
@@ -167,7 +167,7 @@ class TestAsync:
             assert function_name_var.get() == "fn-dec"
             return "ok"
 
-        result = asyncio.get_event_loop().run_until_complete(handler("req", _MOCK_CONTEXT))
+        result = asyncio.run(handler("req", _MOCK_CONTEXT))
         assert result == "ok"
 
 
