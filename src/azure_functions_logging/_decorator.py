@@ -8,7 +8,6 @@ Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/22
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import logging
 import time
@@ -368,7 +367,7 @@ def with_context(
 
     def decorator(fn: _F) -> _F:
         _check_context_detectable(fn, param, strict)
-        if asyncio.iscoroutinefunction(fn):
+        if inspect.iscoroutinefunction(fn):
             return _wrap_async(fn, param, activate_trace_context, lifecycle, lifecycle_level)
         return _wrap_sync(fn, param, activate_trace_context, lifecycle, lifecycle_level)
 
