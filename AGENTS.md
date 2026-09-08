@@ -71,6 +71,10 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 
 When splitting a large piece of work into focused issues, keep the umbrella open as a tracker that links each child issue with a checkbox; close it once every child is closed or explicitly deferred.
 
+### Issue-creation access (fleet policy)
+
+Keep issue creation **open/unrestricted** on every public toolkit repository (issue tracker enabled, no `interaction-limits`). External bug reports are the only inbound support channel, so restricting issue creation suppresses the signal we most need. Do not enable an interaction limit or restrict issue creation without an explicit, documented reason recorded in an issue first.
+
 ## Validation
 - `make test`
 - `make lint`
