@@ -1,10 +1,77 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.11.0] - 2026-09-08
+
+### Bug Fixes
+
+- *(ci)* Test matrix silently runs Python 3.10 due to hatch default-env pin (#423) 
+- *(ci)* Reset artifact action pins to canonical v4 + Dependabot ignore (#399) 
+- *(setup)* Warn when extra_context_vars is ignored under use_record_factory (#369) 
+- *(setup)* Stop double-logging on standalone named loggers (#362) 
+- *(otel)* Don't overwrite an active local span in activated_trace_context (#361) 
+- *(formatter)* Suppress color outside TTY and honor NO_COLOR (#352) 
+- *(logger)* Report user call sites from FunctionLogger (#350) 
+
+### Documentation
+
+- 0.11.0 follow-ups (#425, #426, #427) (#430) 
+- Add "How correlation works" mechanism page and cross-links (#409) 
+- *(logging)* Codify setup_logging complexity ceiling (no 9th kwarg) (#397) 
+- *(logging)* Add explicit maturity/status marker to README (#396) 
+- *(setup)* Define and document setup_logging() reconfiguration semantics (#386) 
+- Sync symptom-driven examples into translated READMEs (#377) 
+- Refine scope docs, add symptom examples & benchmarks (#376) 
+- *(context)* Align ContextFilter docstring with the default injection mode (#370) 
+- Remove redundant content from README (#357) 
+- Recapture local demo screenshots from real terminal output (#356) 
+- Refresh App Insights screenshots with real PII-free captures (#355) 
+- *(examples)* Show Application Insights query results for each example (#354) 
+- Unify basic-usage guides onto one recommended path and fix contradictions (#345) 
+- Fix stale repo URLs in module docstrings (#351) 
+- *(opentelemetry)* Add verified App Insights query captures (#344) 
+
+### Features
+
+- *(decorator)* Optional invocation lifecycle auto-logging (start/end/duration) (#387) 
+- *(context)* Add background-thread invocation context propagation helper (#385) 
+- *(context)* Support extra_context_vars in use_record_factory mode (#384) 
+- Detect ineffective @with_context at decoration time (#383) 
+- *(logger)* Delegate unimplemented stdlib Logger attributes on FunctionLogger (#368) 
+
+### Miscellaneous Tasks
+
+- Guard against hatch default-env pin hiding the CI matrix (#433) (#434) 
+- *(release)* Drop GITHUB_TOKEN scopes on notify-cookbook job (#413) (#431) 
+- Codify open issue-creation as fleet policy in AGENTS.md (#429) (#432) 
+- *(docs)* Add external-link tag-integrity check (#410) 
+- Notify cookbook to re-run e2e after PyPI release (#404) 
+- *(logging)* Scheduled Core Tools host-boot matrix smoke on e2e app (#398) 
+- *(deps)* Bump actions/upload-artifact from 4.6.2 to 7.0.1 (#372) 
+- *(deps)* Bump actions/download-artifact from 4.3.0 to 8.0.1 (#371) 
+- *(deps)* Bump github/codeql-action/analyze from 4.37.6 to 4.37.7 (#391) 
+- *(deps)* Bump github/codeql-action/init from 4.37.6 to 4.37.7 (#390) 
+- *(deps)* Bump mypy from 2.3.0 to 2.3.1 (#389) 
+- *(deps)* Bump ruff from 0.16.2 to 0.16.3 (#388) 
+- *(e2e)* Certify the release candidate wheel, not the PyPI build (#346) 
+
+### Other
+
+- Bump version to 0.11.0 
+- *(deps)* Add Dependabot cooldown to age new releases (#422) 
+
+### Refactor
+
+- P3 cleanup — dead code, field-name SSOT, decorator perf (#364) 
+
+### Testing
+
+- *(e2e)* Assert correlation-doc claims in host-boot matrix smoke (#411) 
 ## [0.10.2] - 2026-08-14
 
 ### Documentation
 
+- Update changelog 
 - Consolidate official documentation URL onto yeongseon.dev (#339) 
 - Sync context-field API in docs (span_id, host_instance_id, setup_logging params) (#331) 
 - *(i18n)* Adopt best-effort translation policy with staleness banners (#330) 
