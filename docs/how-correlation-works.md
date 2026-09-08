@@ -70,6 +70,38 @@ with logging_context(context):
 
 `propagate_context()` binds the current invocation context to the callable so it stays correlated on the worker thread. This is opt-in and correlation-only; the library never monkeypatches `threading` / `concurrent.futures`. See [Troubleshooting: background-thread logs lose `invocation_id`](troubleshooting.md#background-thread-logs-lose-invocation_id).
 
+### Anti-patterns
+
+`propagate_context()` snapshots the invocation context **at the moment you call it**, so *when* and *where* you wrap matters:
+
+1. **Do not build a wrapper once and reuse it across invocations.** The wrapper snapshots the invocation context at wrap time and re-applies that *same* snapshot on every call. Wrap once and reuse, and every later invocation's worker-thread records inherit the *first* invocation's `invocation_id`.
+
+    ```python
+    # WRONG: wrapped once, reused — freezes the first invocation's snapshot
+    _worker = None
+
+    def handler(req, context):
+        global _worker
+        with logging_context(context):
+            if _worker is None:
+                _worker = propagate_context(do_work, context=context)
+            pool.submit(_worker, payload)  # carries the FIRST invocation's id forever
+    ```
+
+    Re-wrap **inside** each invocation, immediately before submitting the work, so every submission captures that invocation's live context.
+
+2. **Do not wrap outside an active invocation context.** The wrapper snapshots the `contextvars` fields *as they are when you call `propagate_context()`*. Call it before `logging_context()` binds them (or after it has exited) and the snapshot is empty — the worker thread's records carry a blank `invocation_id` instead of inheriting the invocation's.
+
+    ```python
+    # WRONG: wrapped before the context is bound — captures an empty snapshot
+    wrapped = propagate_context(do_work)
+    with logging_context(context):
+        pool.submit(wrapped, payload)  # records emit an empty invocation_id
+    ```
+
+!!! note "asyncio needs no helper"
+    `contextvars` **are** propagated automatically to `asyncio` tasks (`asyncio.create_task()` copies the current context — see the [CPython `contextvars` docs](https://docs.python.org/3.12/library/contextvars.html)). `propagate_context()` is only for OS threads (`threading.Thread` / `ThreadPoolExecutor`); using it around coroutines or tasks is unnecessary.
+
 ## 5. Relationship to Application Insights `operation_Id`
 
 `invocation_id` is **this library's** field: a stable key you control, present on every record, ideal for `where invocation_id == "..."` queries. Application Insights has its own distributed-correlation model built on the W3C [Trace Context](https://www.w3.org/TR/2021/REC-trace-context-1-20211123/) recommendation, where telemetry is stitched together by `operation_Id` / `operation_ParentId` — see [Azure Monitor telemetry correlation](https://learn.microsoft.com/en-us/azure/azure-monitor/app/distributed-trace-data).
