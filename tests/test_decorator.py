@@ -15,6 +15,7 @@ Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from types import SimpleNamespace
 import warnings
@@ -417,6 +418,23 @@ class TestLifecycleLogging:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         @with_context
+        def handler(req: object, context: object) -> str:
+            return "ok"
+
+        with caplog.at_level(logging.DEBUG):
+            assert handler("req", _MOCK_CONTEXT) == "ok"
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert events == []
+
+    def test_lifecycle_default_off(self, caplog: pytest.LogCaptureFixture) -> None:
+        # Pin the *declared default* so a future refactor cannot silently flip
+        # an output-changing default (#425). Complements the behavioral check
+        # above by asserting the signature default value itself, not just that
+        # the bare-decorator path happens to emit nothing.
+        assert inspect.signature(with_context).parameters["lifecycle"].default is False
+
+        @with_context()
         def handler(req: object, context: object) -> str:
             return "ok"
 
