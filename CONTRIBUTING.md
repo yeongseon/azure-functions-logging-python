@@ -124,6 +124,16 @@ These are hard API-surface limits, not soft preferences — changing them requir
 
 Signature of record: `src/azure_functions_logging/_setup.py`.
 
+### `with_context` parameter ceiling
+
+`with_context(...)` today exposes **5 keyword-only parameters** (`param`, `activate_trace_context`, `strict`, `lifecycle`, `lifecycle_level`).
+
+- **No 6th keyword argument.** Future lifecycle extensions (e.g. sampling, a slow-invocation threshold) must arrive via a **config object / preset** — for example a single `lifecycle=LifecycleConfig(...)` object bundling related settings — **not** as new standalone `lifecycle_*` flags.
+- The same reasoning as `setup_logging` applies: each added flag multiplies the valid-combination surface and pushes the decorator toward an untestable configuration matrix.
+- If a new behavior seems to need a kwarg, first ask whether it belongs in a preset, in an existing parameter, or in a separate decorator.
+
+Signature of record: `src/azure_functions_logging/_decorator.py`.
+
 ## Commit Message Guidelines
 
 We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
