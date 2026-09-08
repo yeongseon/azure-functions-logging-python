@@ -311,11 +311,16 @@ jobs:
     name: Trigger cookbook e2e re-verification
     needs: [build, publish]
     runs-on: ubuntu-latest
+    # This job never uses GITHUB_TOKEN (the cross-repo dispatch below authenticates
+    # with COOKBOOK_DISPATCH_TOKEN), so drop all GITHUB_TOKEN scopes (#413).
+    permissions: {}
     env:
       # Cross-repo repository_dispatch needs a token with contents:write on the
-      # cookbook repo (GITHUB_TOKEN cannot cross repositories). Supply a PAT or
-      # GitHub App token via the COOKBOOK_DISPATCH_TOKEN secret. When it is unset
-      # the step is skipped, so missing wiring never fails a release.
+      # cookbook repo (GITHUB_TOKEN cannot cross repositories). Prefer a
+      # fine-grained PAT scoped to azure-functions-cookbook-python contents:write
+      # (or a GitHub App installation token) over a broad classic PAT, and rotate
+      # on cutover — supply it via the COOKBOOK_DISPATCH_TOKEN secret. When it is
+      # unset the step is skipped, so missing wiring never fails a release.
       DISPATCH_TOKEN: ${{ secrets.COOKBOOK_DISPATCH_TOKEN }}
     steps:
       - name: Dispatch sibling-release to cookbook
