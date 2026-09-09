@@ -1,11 +1,26 @@
-"""OpenTelemetry log-correlation spike, kept as a regression guard (issue #253).
+"""End-to-end OpenTelemetry log-correlation contract (issues #253, #437).
 
-The original spike proved that attaching the host's W3C trace context lets an
-OpenTelemetry ``LoggingHandler`` stamp emitted log records with the host span's
-``trace_id`` / ``span_id`` — without this package ever creating, recording, or
-exporting a span. Per #253 the spike itself is retained here so the pinned
-behaviour (including its known thread-boundary limitation) cannot silently
-regress.
+These tests are the **behavioural contract** for
+:func:`azure_functions_logging._otel.activated_trace_context` proven through a
+real OpenTelemetry ``LoggingHandler`` and in-memory exporter — i.e. the same
+path a production app exercises. They complement the unit-level contract in
+``tests/test_otel.py`` (which drives ``activated_trace_context`` directly) by
+asserting the *observable* result: the ``trace_id`` / ``span_id`` actually
+stamped onto emitted log records.
+
+Each test maps to a documented invariant of ``activated_trace_context``:
+
+* a valid host span is attached and inherited by emitted records;
+* correlation survives ``await`` and stays isolated across concurrent tasks;
+* the context is always detached on exit (normal and exceptional);
+* a record emitted with no active context is uncorrelated (``span_id == 0``);
+* an already-active **real local** span is never overwritten by the host span;
+* an invalid/no-op host span context is not attached;
+* nested host activations restore the outer host span on exit;
+* the contextvar boundary means worker threads do not inherit correlation.
+
+The package never creates, records, or exports a span itself — it only
+*attaches* the remote span context extracted from the host ``traceparent``.
 
 These tests require the OpenTelemetry SDK. They skip cleanly when it is absent,
 so the base install stays zero-dependency.
@@ -45,6 +60,10 @@ _TRACE_ID_B = "0af7651916cd43dd8448eb211c80319c"
 _PARENT_ID_B = "b7ad6b7169203331"
 _TRACEPARENT_B = f"00-{_TRACE_ID_B}-{_PARENT_ID_B}-01"
 
+# An all-zero traceparent extracts to an invalid (no-op) span context, which
+# must NOT be attached — doing so would break the trace tree.
+_INVALID_TRACEPARENT = "00-00000000000000000000000000000000-0000000000000000-00"
+
 
 def _make_context(trace_parent: str | None = _TRACEPARENT) -> SimpleNamespace:
     return SimpleNamespace(
@@ -62,7 +81,7 @@ def otel_logger() -> Iterator[tuple[logging.Logger, InMemoryLogRecordExporter]]:
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     handler = LoggingHandler(logger_provider=provider)
 
-    logger = logging.getLogger("afl.otel.spike")
+    logger = logging.getLogger("afl.otel.contract")
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
     logger.propagate = False
@@ -79,9 +98,11 @@ def _only_record(exporter: InMemoryLogRecordExporter) -> Any:
     return logs[0].log_record
 
 
-def test_spike_sync_record_inherits_host_span(
+def test_valid_host_span_is_inherited_by_sync_record(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
+    """Contract: a valid host ``traceparent`` is attached, so a record emitted
+    inside the activation inherits the host ``trace_id`` and ``span_id``."""
     logger, exporter = otel_logger
     with logging_context(_make_context(), activate_trace_context=True):
         logger.info("hello")
@@ -90,9 +111,10 @@ def test_spike_sync_record_inherits_host_span(
     assert format(record.span_id, "016x") == _PARENT_ID
 
 
-def test_spike_correlation_survives_await(
+def test_correlation_survives_await(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
+    """Contract: activation is contextvar-based, so it survives ``await``."""
     logger, exporter = otel_logger
 
     async def handler() -> None:
@@ -105,9 +127,11 @@ def test_spike_correlation_survives_await(
     assert format(record.span_id, "016x") == _PARENT_ID
 
 
-def test_spike_gather_isolates_concurrent_contexts(
+def test_concurrent_tasks_keep_isolated_host_spans(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
+    """Contract: concurrent ``asyncio`` tasks each see only their own host
+    span — no cross-task context bleed."""
     logger, exporter = otel_logger
 
     async def emit(trace_parent: str, message: str) -> None:
@@ -127,16 +151,15 @@ def test_spike_gather_isolates_concurrent_contexts(
         rec.log_record.body: format(rec.log_record.span_id, "016x")
         for rec in exporter.get_finished_logs()
     }
-    # Each concurrent task's record carries only its own host span — no bleed.
     assert by_message == {"a": _PARENT_ID, "b": _PARENT_ID_B}
 
 
-def test_spike_thread_boundary_loses_correlation(
+def test_worker_thread_does_not_inherit_correlation(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
-    """Known limitation: OTel runtime context is contextvar-based, so worker
-    threads spawned via ``ThreadPoolExecutor`` do NOT inherit the host span.
-    Pinned as a regression guard (span_id == 0 in the spawned thread)."""
+    """Contract (documented limitation): OTel runtime context is
+    contextvar-based, so worker threads spawned via ``ThreadPoolExecutor`` do
+    NOT inherit the host span. Records there fall back to ``span_id == 0``."""
     logger, exporter = otel_logger
 
     with logging_context(_make_context(), activate_trace_context=True):
@@ -147,9 +170,11 @@ def test_spike_thread_boundary_loses_correlation(
     assert record.span_id == 0
 
 
-def test_spike_nested_contexts_restore_outer_span(
+def test_nested_host_activation_restores_outer_span(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
+    """Contract: a nested host activation overrides the outer host span while
+    active, then restores the outer host span (LIFO detach) on exit."""
     logger, exporter = otel_logger
 
     with logging_context(_make_context(_TRACEPARENT), activate_trace_context=True):
@@ -164,26 +189,67 @@ def test_spike_nested_contexts_restore_outer_span(
     assert spans == {"inner": _PARENT_ID_B, "outer": _PARENT_ID}
 
 
-def test_spike_exception_path_detaches_context(
+def test_context_is_detached_after_exception(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
+    """Contract: the host context is always detached on exit, including when
+    the block raises — a later record outside any context is uncorrelated."""
     logger, exporter = otel_logger
 
     with pytest.raises(ValueError):
         with logging_context(_make_context(), activate_trace_context=True):
             raise ValueError("boom")
 
-    # After the failing block the host span must be detached: a later record
-    # emitted outside any context is uncorrelated.
     logger.info("after")
     record = _only_record(exporter)
     assert record.span_id == 0
 
 
-def test_spike_no_context_is_uncorrelated(
+def test_record_without_active_context_is_uncorrelated(
     otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
 ) -> None:
+    """Contract: outside any activation a record has no host span
+    (``span_id == 0``)."""
     logger, exporter = otel_logger
     logger.info("orphan")
     record = _only_record(exporter)
     assert record.span_id == 0
+
+
+def test_invalid_host_span_context_is_not_attached(
+    otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
+) -> None:
+    """Contract: an all-zero (invalid/no-op) extracted span context must NOT be
+    attached — the record stays uncorrelated rather than parented to an invalid
+    context that would break the trace tree."""
+    logger, exporter = otel_logger
+    with logging_context(_make_context(_INVALID_TRACEPARENT), activate_trace_context=True):
+        logger.info("invalid host span")
+    record = _only_record(exporter)
+    assert record.span_id == 0
+
+
+def test_active_real_local_span_is_not_overwritten(
+    otel_logger: tuple[logging.Logger, InMemoryLogRecordExporter],
+) -> None:
+    """Contract: when a real local span is already active (e.g. worker
+    auto-instrumentation or the user's own ``start_as_current_span``), the host
+    activation must leave it untouched — the record inherits the LOCAL span, not
+    the host's non-recording remote span."""
+    pytest.importorskip("opentelemetry.sdk.trace")
+    from opentelemetry.sdk.trace import TracerProvider
+
+    logger, exporter = otel_logger
+    # A real SDK-backed tracer produces a *valid* local span; the default
+    # (no-op) tracer would produce span_id 0 and be treated as "no local span".
+    tracer = TracerProvider().get_tracer("afl.otel.contract.test")
+
+    with tracer.start_as_current_span("local-span") as local_span:
+        local_span_id = format(local_span.get_span_context().span_id, "016x")
+        with logging_context(_make_context(), activate_trace_context=True):
+            logger.info("under local span")
+
+    record = _only_record(exporter)
+    # The real local span wins — the host span-id must NOT appear.
+    assert format(record.span_id, "016x") == local_span_id
+    assert format(record.span_id, "016x") != _PARENT_ID

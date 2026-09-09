@@ -20,7 +20,7 @@ Design constraints (see README "What this package does not do"):
 Known limitation: OpenTelemetry's runtime context is contextvar-based, so
 correlation does **not** propagate into worker threads spawned via
 ``ThreadPoolExecutor`` / ``run_in_executor``. Logs emitted from such threads
-are orphaned. This matches the behaviour pinned by the spike test suite.
+are orphaned. This behaviour is pinned by the OTel contract test suite.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ def activated_trace_context(
         #
         # A currently-active *remote* span is only a previously-attached host
         # traceparent, not a real worker span, so a nested activation is allowed
-        # to replace it (see test_spike_nested_contexts_restore_outer_span).
+        # to replace it (see test_nested_host_activation_restores_outer_span).
         span_context = otel_trace.get_current_span(extracted).get_span_context()
         current_span_context = otel_trace.get_current_span().get_span_context()
         current_is_real_local_span = (

@@ -157,8 +157,8 @@ def test_activated_trace_context_preserves_already_active_span() -> None:
 def test_activated_trace_context_nested_host_override() -> None:
     # F1 boundary (issue #358): a currently-active *remote* span is only a
     # previously-attached host traceparent, not a real worker span, so a nested
-    # host activation IS allowed to override it (mirrors the public-API spike
-    # test_spike_nested_contexts_restore_outer_span). The outer host span is
+    # host activation IS allowed to override it (mirrors the public-API contract
+    # test_nested_host_activation_restores_outer_span). The outer host span is
     # restored on exit of the inner block.
     pytest.importorskip("opentelemetry.context")
     from opentelemetry import trace
