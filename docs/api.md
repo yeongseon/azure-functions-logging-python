@@ -359,6 +359,48 @@ def handler(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     return func.HttpResponse("ok")
 ```
 
+## propagating_executor
+
+::: azure_functions_logging.propagating_executor
+
+## PropagatingExecutor
+
+::: azure_functions_logging.PropagatingExecutor
+
+### Usage Notes
+
+- Ergonomic alternative to wrapping every callable with `propagate_context`:
+  the executor auto-wraps each callable passed to `submit` / `map` at
+  submission time, snapshotting the invocation context bound on the submitting
+  thread.
+- Propagation stays **explicit and opt-in at the executor boundary** — the
+  library never monkeypatches `threading` / `concurrent.futures`. Work submitted
+  to a plain executor is unaffected.
+- `propagating_executor(pool)` wraps an existing executor; with no `pool` it
+  creates and owns a new `ThreadPoolExecutor` from the forwarded keyword
+  arguments (e.g. `max_workers=`).
+- Pass `context=context` to also propagate the Azure worker's
+  `thread_local_storage.invocation_id`; propagation failures never crash the
+  caller.
+
+### Example: propagating executor
+
+```python
+import azure.functions as func
+from azure_functions_logging import logging_context, propagating_executor
+
+
+def handler(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
+    with logging_context(context):
+        with propagating_executor(max_workers=4, context=context) as pool:
+            # No per-submit propagate_context() needed — records from do_work
+            # carry the invocation context.
+            futures = [pool.submit(do_work, item) for item in payload]
+            for future in futures:
+                future.result()
+    return func.HttpResponse("ok")
+```
+
 ## reset_context
 
 ::: azure_functions_logging.reset_context
