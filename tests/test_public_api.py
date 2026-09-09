@@ -11,6 +11,7 @@ class TestAPISurface:
             "__version__",
             "AttributeFlattenFilter",
             "ContextTokens",
+            "DEFAULT_REDACTION_PATTERNS",
             "FunctionLogger",
             "JsonFormatter",
             "RedactionFilter",

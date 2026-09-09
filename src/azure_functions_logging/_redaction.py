@@ -7,7 +7,8 @@ the same key set and matching rules instead of maintaining separate copies.
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, Iterable
 
 MASK = "***"
 
@@ -87,3 +88,73 @@ def mask_value(
 ) -> Any:
     """Return ``mask`` if ``key`` is sensitive, otherwise the original ``value``."""
     return mask if is_sensitive(key, sensitive_keys) else value
+
+
+# ---------------------------------------------------------------------------
+# Value / pattern-based redaction (opt-in)
+# ---------------------------------------------------------------------------
+#
+# Key-based redaction only masks values whose *key* is sensitive. It cannot see
+# a secret embedded in a free-text message (``"connecting with token=ghp_x"``).
+# ``mask_patterns`` closes that gap by masking substrings that match a secret
+# pattern. It is opt-in (off by default) because pattern scanning has a hot-path
+# cost and can produce false positives; callers enable it explicitly by passing
+# ``patterns=`` to :class:`RedactionFilter`.
+
+# High-confidence secret patterns. Each mask replaces the matched secret with
+# ``MASK``. Patterns that define a ``keep`` named group preserve that captured
+# prefix (e.g. ``token=``) so the log stays readable while the value is masked.
+DEFAULT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # key=value / key: value secrets — keep the key, mask the value.
+    re.compile(
+        r"(?P<keep>(?i:password|passwd|pwd|token|secret|api[_-]?key|"
+        r"access[_-]?key|client[_-]?secret|refresh[_-]?token|authorization)"
+        r"\s*[=:]\s*)[^\s,;'\"]+"
+    ),
+    # Bearer / auth scheme tokens.
+    re.compile(r"(?P<keep>(?i:bearer)\s+)[A-Za-z0-9._~+/\-]+=*"),
+    # Azure connection-string secrets (AccountKey=, SharedAccessKey=,
+    # SharedAccessSignature=, sig=).
+    re.compile(
+        r"(?P<keep>(?i:AccountKey|SharedAccessKey|SharedAccessSignature|sig)=)"
+        r"[^\s;&,'\"]+"
+    ),
+    # AWS access key id.
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    # GitHub personal/OAuth/app/refresh/server tokens.
+    re.compile(r"gh[posru]_[A-Za-z0-9]{20,}"),
+    # JSON Web Tokens (three base64url segments).
+    re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+)
+
+
+def _mask_replacement(match: re.Match[str], mask: str) -> str:
+    """Return the replacement for one match: ``<keep-prefix>MASK`` or ``MASK``."""
+    prefix = match.groupdict().get("keep")
+    return f"{prefix}{mask}" if prefix else mask
+
+
+def mask_patterns(
+    text: str,
+    patterns: Iterable[re.Pattern[str]] = DEFAULT_PATTERNS,
+    mask: str = MASK,
+) -> str:
+    """Mask substrings of ``text`` that match any secret ``patterns``.
+
+    Each matched span is replaced with ``mask``. When a pattern defines a
+    ``keep`` named group, that captured prefix (e.g. ``token=``) is preserved so
+    the surrounding message stays readable and only the secret is masked.
+
+    Never raises: a pattern that errors during substitution is skipped so one
+    broken rule cannot suppress the others (Principle 3 — redaction failures are
+    silent). Non-string / empty input is returned unchanged.
+    """
+    if not text:
+        return text
+    result = text
+    for pattern in patterns:
+        try:
+            result = pattern.sub(lambda m: _mask_replacement(m, mask), result)
+        except Exception:  # nosec B112 — a broken pattern must not stop others
+            continue
+    return result

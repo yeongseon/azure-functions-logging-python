@@ -356,6 +356,16 @@ At startup the library warns when your `host.json` — or `AzureFunctionsJobHost
 
 `SamplingFilter` rate-limits chatty third-party loggers (e.g. `azure-core`, `urllib3`); `RedactionFilter` masks sensitive keys (passwords, tokens, secrets, connection strings, and more — case-insensitive, recursive) before logs reach aggregation. Attach either to your root handlers, and pass `sensitive_keys=[...]` to customize redaction.
 
+Key-based redaction can't see a secret embedded in a free-text *message* (e.g. `logger.info("connecting with token=ghp_...")`). Opt into **value/pattern-based** redaction by passing `patterns=`, which masks matches in the rendered message and string `extra` values:
+
+```python
+from azure_functions_logging import DEFAULT_REDACTION_PATTERNS, RedactionFilter
+
+handler.addFilter(RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS))
+```
+
+`DEFAULT_REDACTION_PATTERNS` is a curated high-confidence set (bearer tokens, `key=value` secrets, Azure connection-string keys / SAS `sig=`, AWS access-key IDs, GitHub tokens, JWTs). It is **off by default** — pattern scanning adds hot-path cost and can produce false positives — so enable it deliberately; you can also supply your own regex strings or compiled patterns. Substitution failures never raise.
+
 → [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### Context binding
@@ -461,7 +471,7 @@ for handler in logging.getLogger().handlers:
     handler.addFilter(RedactionFilter())  # masks passwords, tokens, secrets, connection strings — recursive, case-insensitive
 ```
 
-**Proves:** matched keys are masked before records leave the process. **Does not prove:** protection for secrets embedded inside free-text messages — redaction is key-based; pass `sensitive_keys=[...]` to extend coverage.
+**Proves:** matched keys are masked before records leave the process. **Does not prove:** protection for secrets embedded inside free-text messages — key-based redaction only sees keys. Opt into `patterns=DEFAULT_REDACTION_PATTERNS` (or your own patterns) for value-based masking of message text, and pass `sensitive_keys=[...]` to extend key coverage.
 
 → [Noise control & PII redaction](#noise-control--pii-redaction)
 </details>

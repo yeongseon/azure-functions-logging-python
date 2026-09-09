@@ -190,6 +190,33 @@ for handler in logging.getLogger().handlers:
 
 ::: azure_functions_logging.RedactionFilter
 
+### Value / pattern-based redaction
+
+By default `RedactionFilter` is **key-based**: it masks values whose *key* is
+sensitive, but not secrets embedded in a free-text message or string `extra`
+(e.g. `logger.info("connecting with token=ghp_...")`). Pass `patterns=` to
+enable **opt-in** value-based redaction of the rendered message and string
+extras:
+
+```python
+from azure_functions_logging import DEFAULT_REDACTION_PATTERNS, RedactionFilter
+
+flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+```
+
+It is off by default because pattern scanning has a hot-path cost and can
+produce false positives. `DEFAULT_REDACTION_PATTERNS` is a curated set of
+high-confidence secrets (bearer tokens, `key=value` secrets, Azure
+connection-string keys / SAS `sig=`, AWS access-key IDs, GitHub tokens, JWTs);
+patterns with a `keep` named group preserve a readable prefix (e.g. `token=`)
+while masking only the value. You may also pass your own regex strings or
+compiled patterns. Substitution failures never raise (see the design
+principle that redaction failures are silent).
+
+## DEFAULT_REDACTION_PATTERNS
+
+::: azure_functions_logging.DEFAULT_REDACTION_PATTERNS
+
 ## AttributeFlattenFilter
 
 ::: azure_functions_logging.AttributeFlattenFilter
