@@ -14,12 +14,14 @@ from ._decorator import get_logging_metadata, with_context
 from ._filters import AttributeFlattenFilter, RedactionFilter, SamplingFilter
 from ._json_formatter import JsonFormatter
 from ._logger import FunctionLogger
+from ._redaction import DEFAULT_PATTERNS as DEFAULT_REDACTION_PATTERNS
 from ._setup import setup_logging
 
 __all__ = [
     "__version__",
     "AttributeFlattenFilter",
     "ContextTokens",
+    "DEFAULT_REDACTION_PATTERNS",
     "FunctionLogger",
     "get_logger",
     "get_logging_metadata",

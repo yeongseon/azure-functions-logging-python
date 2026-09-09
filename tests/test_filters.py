@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import pytest
@@ -1220,3 +1221,181 @@ def test_redaction_does_not_over_redact_benign_dotted_keys(key: str) -> None:
     flt.filter(record)
 
     assert getattr(record, key) == "visible-value"
+
+
+# ---------------------------------------------------------------------------
+# RedactionFilter — value / pattern-based redaction (#435)
+# ---------------------------------------------------------------------------
+
+
+def test_mask_patterns_masks_key_value_secret_preserving_key() -> None:
+    from azure_functions_logging._redaction import mask_patterns
+
+    masked = mask_patterns("connecting with token=ghp_abcdef0123456789ABCDEF ok")
+
+    assert "ghp_abcdef0123456789ABCDEF" not in masked
+    assert "token=***" in masked  # key prefix preserved, value masked
+
+
+def test_mask_patterns_masks_bearer_jwt_aws_and_azure_sig() -> None:
+    from azure_functions_logging._redaction import mask_patterns
+
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N"
+    samples = {
+        "sent Bearer abc.def-123_456 now": "Bearer ***",
+        f"jwt {jwt}": "jwt ***",
+        "key AKIAIOSFODNN7EXAMPLE here": "key *** here",
+        "BlobEndpoint=x;sig=aB3%2FcD4eF5;more": "sig=***",
+    }
+    for text, expected_fragment in samples.items():
+        masked = mask_patterns(text)
+        assert expected_fragment in masked, (text, masked)
+
+
+def test_mask_patterns_leaves_non_matching_text_unchanged() -> None:
+    from azure_functions_logging._redaction import mask_patterns
+
+    text = "processing order o-42 for user u-1 in region koreacentral"
+    assert mask_patterns(text) == text
+
+
+def test_mask_patterns_empty_string_is_returned_unchanged() -> None:
+    from azure_functions_logging._redaction import mask_patterns
+
+    assert mask_patterns("") == ""
+
+
+def test_mask_patterns_skips_pattern_that_raises_and_applies_others() -> None:
+    """Principle 3: a broken pattern must not stop the others or raise."""
+    from azure_functions_logging._redaction import mask_patterns
+
+    class _BoomPattern:
+        def sub(self, *args: object, **kwargs: object) -> str:
+            raise RuntimeError("boom")
+
+    good = re.compile(r"AKIA[0-9A-Z]{16}")
+    masked = mask_patterns(
+        "key AKIAIOSFODNN7EXAMPLE",
+        patterns=[_BoomPattern(), good],  # type: ignore[list-item]
+    )
+    assert "AKIAIOSFODNN7EXAMPLE" not in masked
+    assert "***" in masked
+
+
+def test_redaction_filter_masks_secret_in_message_when_patterns_enabled() -> None:
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+
+    flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    record = _make_record(msg="connecting with token=ghp_abcdef0123456789ABCDEF")
+
+    assert flt.filter(record) is True
+    assert "ghp_abcdef0123456789ABCDEF" not in record.getMessage()
+    assert "token=***" in record.getMessage()
+
+
+def test_redaction_filter_masks_secret_in_message_with_args() -> None:
+    """Message masking renders %-args first, then clears args to avoid re-interp."""
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+
+    flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    record = logging.LogRecord(
+        name="t",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="auth header %s sent",
+        args=("Bearer abc.def-123",),
+        exc_info=None,
+    )
+
+    assert flt.filter(record) is True
+    rendered = record.getMessage()
+    assert "abc.def-123" not in rendered
+    assert "Bearer ***" in rendered
+    assert record.args == ()
+
+
+def test_redaction_filter_masks_secret_in_string_extra() -> None:
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+
+    flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    record = _make_record(msg="safe")
+    setattr(record, "detail", "upstream said password=hunter2!!")
+
+    flt.filter(record)
+
+    assert getattr(record, "detail") == "upstream said password=***"
+
+
+def test_redaction_filter_patterns_leave_non_matching_message_and_extra() -> None:
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+
+    flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    record = _make_record(msg="processing order o-42")
+    setattr(record, "detail", "region koreacentral")
+
+    flt.filter(record)
+
+    assert record.getMessage() == "processing order o-42"
+    assert getattr(record, "detail") == "region koreacentral"
+
+
+def test_redaction_filter_without_patterns_leaves_message_unchanged() -> None:
+    """Backward compatibility: no patterns => message-embedded secrets untouched."""
+    flt = RedactionFilter()
+    record = _make_record(msg="connecting with token=ghp_abcdef0123456789ABCDEF")
+
+    flt.filter(record)
+
+    assert record.getMessage() == "connecting with token=ghp_abcdef0123456789ABCDEF"
+
+
+def test_redaction_filter_accepts_regex_string_patterns() -> None:
+    flt = RedactionFilter(patterns=[r"CUSTOM-[0-9]+"])
+    record = _make_record(msg="id CUSTOM-999 seen")
+
+    flt.filter(record)
+
+    assert record.getMessage() == "id *** seen"
+
+
+def test_redaction_filter_invalid_regex_string_raises_at_construction() -> None:
+    with pytest.raises(re.error):
+        RedactionFilter(patterns=["(unclosed"])
+
+
+def test_redaction_filter_message_masking_never_raises() -> None:
+    """Principle 3: a pattern erroring at runtime must not break filtering."""
+
+    class _BoomPattern:
+        def sub(self, *args: object, **kwargs: object) -> str:
+            raise RuntimeError("boom")
+
+    flt = RedactionFilter()
+    flt._patterns = (_BoomPattern(),)  # type: ignore[assignment]
+    record = _make_record(msg="token=ghp_abcdef0123456789ABCDEF")
+    setattr(record, "detail", "token=ghp_abcdef0123456789ABCDEF")
+
+    assert flt.filter(record) is True  # no exception propagates
+
+
+def test_redaction_filter_patterns_and_keys_compose() -> None:
+    """Key-based redaction and pattern-based redaction both apply."""
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+
+    flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    record = _make_record(msg="login with token=ghp_abcdef0123456789ABCDEF")
+    setattr(record, "password", "s3cr3t")
+
+    flt.filter(record)
+
+    assert getattr(record, "password") == "***"  # key-based
+    assert "ghp_abcdef0123456789ABCDEF" not in record.getMessage()  # pattern-based
+
+
+def test_default_redaction_patterns_is_public_and_nonempty() -> None:
+    import azure_functions_logging as afl
+
+    assert "DEFAULT_REDACTION_PATTERNS" in afl.__all__
+    assert len(afl.DEFAULT_REDACTION_PATTERNS) > 0
+    assert all(isinstance(p, re.Pattern) for p in afl.DEFAULT_REDACTION_PATTERNS)

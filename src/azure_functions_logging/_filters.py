@@ -10,6 +10,7 @@ Provides:
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import Any, Iterable
@@ -18,6 +19,7 @@ from ._constants import _RESERVED_LOG_RECORD_KEYS
 from ._redaction import MASK as _MASK
 from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
 from ._redaction import is_sensitive as _is_sensitive
+from ._redaction import mask_patterns as _mask_patterns
 from ._redaction import normalize_key as _normalize_key
 
 _REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
@@ -258,6 +260,17 @@ class RedactionFilter(logging.Filter):
             ``credential``, ``account_key``, ``access_key``.
         name: Optional logger-name scope. When set, only matching loggers are
             subject to redaction; non-matching records pass through unchanged.
+        patterns: Optional iterable of secret patterns (compiled ``re.Pattern``
+            or regex strings) enabling **value-based** redaction of the rendered
+            message and string ``extra`` values — catching secrets embedded in
+            free text that key-based redaction cannot see. Off by default
+            (``None``) to avoid false positives and hot-path scanning cost; pass
+            :data:`~azure_functions_logging._redaction.DEFAULT_PATTERNS` for a
+            curated high-confidence set. A pattern may define a ``keep`` named
+            group to preserve a readable prefix (e.g. ``token=``) while masking
+            only the value. Regex strings are compiled at construction; an
+            invalid pattern raises ``re.error`` there (fail-fast on config), and
+            runtime substitution failures are swallowed (Principle 3).
 
     Note:
         The default set includes ``credential`` which may over-redact
@@ -273,12 +286,18 @@ class RedactionFilter(logging.Filter):
         self,
         sensitive_keys: Iterable[str] | None = None,
         name: str = "",
+        patterns: Iterable[str | re.Pattern[str]] | None = None,
     ) -> None:
         super().__init__(name)
         self._sensitive_keys: frozenset[str] = (
             frozenset(_normalize_key(k) for k in sensitive_keys)
             if sensitive_keys is not None
             else _DEFAULT_SENSITIVE_KEYS
+        )
+        self._patterns: tuple[re.Pattern[str], ...] = (
+            tuple(p if isinstance(p, re.Pattern) else re.compile(p) for p in patterns)
+            if patterns is not None
+            else ()
         )
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -294,15 +313,35 @@ class RedactionFilter(logging.Filter):
                         continue
                     if _is_sensitive(key, self._sensitive_keys):
                         setattr(record, key, _MASK)
-                    else:
-                        value = record.__dict__[key]
-                        if isinstance(value, (dict, list)):
-                            setattr(record, key, _redact_value(value, self._sensitive_keys))
+                        continue
+                    value = record.__dict__[key]
+                    if isinstance(value, (dict, list)):
+                        setattr(record, key, _redact_value(value, self._sensitive_keys))
+                    elif self._patterns and isinstance(value, str):
+                        setattr(record, key, _mask_patterns(value, self._patterns))
                 except Exception:  # nosec B110 — one broken field must not stop others
                     pass
+            if self._patterns:
+                self._mask_message(record)
         except Exception:  # nosec B110 — filter must never raise
             pass
         return True
+
+    def _mask_message(self, record: logging.LogRecord) -> None:
+        """Mask secrets embedded in the rendered message via ``self._patterns``.
+
+        Renders the message (applying ``args``) once, masks it, and — only when
+        something changed — replaces ``record.msg`` with the masked text and
+        clears ``record.args`` so formatters do not re-interpolate. Never raises.
+        """
+        try:
+            rendered = record.getMessage()
+            masked = _mask_patterns(rendered, self._patterns)
+            if masked != rendered:
+                record.msg = masked
+                record.args = ()
+        except Exception:  # nosec B110 — message masking must never raise
+            pass
 
 
 class AttributeFlattenFilter(logging.Filter):

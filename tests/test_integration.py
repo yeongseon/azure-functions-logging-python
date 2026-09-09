@@ -83,6 +83,7 @@ def test_public_api_exports() -> None:
         "__version__",
         "AttributeFlattenFilter",
         "ContextTokens",
+        "DEFAULT_REDACTION_PATTERNS",
         "FunctionLogger",
         "JsonFormatter",
         "RedactionFilter",
