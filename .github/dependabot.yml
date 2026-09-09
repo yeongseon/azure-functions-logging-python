@@ -18,6 +18,13 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -26,10 +33,10 @@ updates:
     # Let freshly-published versions age before Dependabot proposes them, so a
     # compromised release has time to be yanked/flagged (supply-chain hardening).
     cooldown:
+      # github-actions does not follow semver the way registry packages do, so
+      # Dependabot only supports a flat default-days cooldown here (the
+      # semver-*-days keys are rejected for this ecosystem).
       default-days: 7
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
       include:
         - "*"
     commit-message:
@@ -49,3 +56,15 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "actions/download-artifact"
         update-types: ["version-update:semver-major"]
+      # azure/login is a fleet-wide canonical pin (tools/lint_release_workflows.py
+      # CANONICAL_ACTIONS). A per-repo Dependabot bump breaks the canonical-pin
+      # lint (tests/test_release_workflow_pins.py), so version bumps are adopted
+      # deliberately as a coordinated fleet change, not by Dependabot.
+      - dependency-name: "azure/login"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
