@@ -319,7 +319,7 @@ must never crash your app).
 
 The `[otel]` extra pins only `opentelemetry-api>=1.24` (no upper bound). Runtime
 code imports **only** the stable public `opentelemetry.context` /
-`opentelemetry.propagate` APIs. The test suite (`tests/test_otel_spike.py`)
+`opentelemetry.propagate` APIs. The test suite (`tests/test_otel_contract.py`)
 additionally imports the **private** `opentelemetry.sdk._logs` path, which remains
 underscore-private upstream and can break on OTel upgrades. This affects tests
 only — it is never imported by shipped runtime code.
