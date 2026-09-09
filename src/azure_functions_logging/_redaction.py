@@ -155,6 +155,6 @@ def mask_patterns(
     for pattern in patterns:
         try:
             result = pattern.sub(lambda m: _mask_replacement(m, mask), result)
-        except Exception:  # nosec B110 — a broken pattern must not stop others
+        except Exception:  # nosec B112 — a broken pattern must not stop others
             continue
     return result
