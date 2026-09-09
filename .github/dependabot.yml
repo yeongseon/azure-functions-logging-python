@@ -56,6 +56,11 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "actions/download-artifact"
         update-types: ["version-update:semver-major"]
+      # azure/login is a fleet-wide canonical pin (tools/lint_release_workflows.py
+      # CANONICAL_ACTIONS). A per-repo Dependabot bump breaks the canonical-pin
+      # lint (tests/test_release_workflow_pins.py), so version bumps are adopted
+      # deliberately as a coordinated fleet change, not by Dependabot.
+      - dependency-name: "azure/login"
     groups:
       github-actions:
         patterns:
