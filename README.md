@@ -340,6 +340,18 @@ with logging_context(context):
 
 Passing `context=context` also propagates the Azure worker's `thread_local_storage.invocation_id` so the worker's own logging handler correlates too. This is explicit and opt-in: the library never monkeypatches `threading` / `concurrent.futures`, and propagation failures never crash the caller. It is **correlation only** — no spans are created or exported.
 
+To avoid wrapping every submitted callable by hand, use `propagating_executor()` — a context-propagating executor that auto-wraps each `submit` / `map` callable with the currently-bound invocation context. It wraps an existing pool or creates and owns a new `ThreadPoolExecutor`:
+
+```python
+from azure_functions_logging import logging_context, propagating_executor
+
+with logging_context(context):
+    with propagating_executor(max_workers=4, context=context) as pool:
+        pool.submit(do_work, payload)  # record carries invocation_id
+```
+
+Propagation stays explicit and opt-in **at the executor boundary** — a plain `ThreadPoolExecutor` is unaffected, and the library still never monkeypatches `threading` / `concurrent.futures`.
+
 ### Structured JSON output
 
 Pass `setup_logging(functions_formatter=JsonFormatter())` to emit Application Insights-ready NDJSON on host-managed handlers (or `format="json"` for standalone/CI). Extra fields land under `extra`; opt into `truncate_native_strings=True` to clip long string values.
@@ -501,7 +513,7 @@ with logging_context(context):
         pool.submit(propagate_context(do_work, context=context), payload)
 ```
 
-**Likely cause:** `contextvars` do not follow work handed to a new thread or `ThreadPoolExecutor`, so records emitted there lose the bound context. **Proves:** wrapping the callable with `propagate_context()` keeps `invocation_id` correlated on the worker thread. **Does not prove:** anything about threads you did not wrap — propagation is explicit and opt-in.
+**Likely cause:** `contextvars` do not follow work handed to a new thread or `ThreadPoolExecutor`, so records emitted there lose the bound context. **Proves:** wrapping the callable with `propagate_context()` keeps `invocation_id` correlated on the worker thread. **Does not prove:** anything about threads you did not wrap — propagation is explicit and opt-in. To avoid wrapping each callable, submit through `propagating_executor(context=context)`, which auto-wraps every `submit` / `map`.
 
 → [How correlation works: background threads](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#4-why-background-threads-lose-the-id) · [Background-thread context propagation](#background-thread-context-propagation)
 </details>

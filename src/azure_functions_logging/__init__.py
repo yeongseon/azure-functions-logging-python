@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from ._context import (
     ContextTokens,
+    PropagatingExecutor,
     inject_context,
     logging_context,
     propagate_context,
+    propagating_executor,
     reset_context,
     restore_context,
 )
@@ -29,6 +31,8 @@ __all__ = [
     "JsonFormatter",
     "logging_context",
     "propagate_context",
+    "PropagatingExecutor",
+    "propagating_executor",
     "RedactionFilter",
     "reset_context",
     "restore_context",

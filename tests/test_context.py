@@ -10,6 +10,7 @@ import azure_functions_logging._context as ctx_mod
 from azure_functions_logging._context import (
     _CONTEXT_FACTORY_MARKER,
     ContextFilter,
+    PropagatingExecutor,
     TraceContextParts,
     _check_cold_start,
     _extract_trace_context,
@@ -21,6 +22,7 @@ from azure_functions_logging._context import (
     invocation_id_var,
     logging_context,
     propagate_context,
+    propagating_executor,
     reset_context,
     restore_context,
     span_id_var,
@@ -876,3 +878,117 @@ def test_propagate_context_thread_local_restore_failure_is_silent() -> None:
     wrapped = propagate_context(lambda: None, context=context)
     # Restore raising must not propagate out of the wrapper.
     wrapped()
+
+
+# --- propagating_executor / PropagatingExecutor -------------------------------
+
+
+def test_propagating_executor_pooled_thread_carries_invocation_id() -> None:
+    invocation_id_var.set("inv-pe")
+    function_name_var.set("pe_func")
+
+    with propagating_executor(max_workers=1) as pool:
+        result = pool.submit(invocation_id_var.get).result()
+        name = pool.submit(function_name_var.get).result()
+
+    assert result == "inv-pe"
+    assert name == "pe_func"
+
+
+def test_propagating_executor_unwrapped_pool_loses_invocation_id() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    invocation_id_var.set("inv-plain")
+    # A plain pool proves propagation is opt-in: it must NOT carry context.
+    with ThreadPoolExecutor(max_workers=1) as plain:
+        assert plain.submit(invocation_id_var.get).result() is None
+    # The propagating wrapper over the same construction does carry it.
+    with propagating_executor(max_workers=1) as pool:
+        assert pool.submit(invocation_id_var.get).result() == "inv-plain"
+
+
+def test_propagating_executor_wraps_existing_pool() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    invocation_id_var.set("inv-wrap")
+    inner = ThreadPoolExecutor(max_workers=2)
+    try:
+        pool = propagating_executor(inner)
+        assert pool.pool is inner
+        assert pool.submit(invocation_id_var.get).result() == "inv-wrap"
+    finally:
+        inner.shutdown()
+
+
+def test_propagating_executor_map_propagates_context() -> None:
+    invocation_id_var.set("inv-map")
+
+    def work(n: int) -> tuple[int, str | None]:
+        return n, invocation_id_var.get()
+
+    with propagating_executor(max_workers=2) as pool:
+        results = list(pool.map(work, [1, 2, 3]))
+
+    assert results == [(1, "inv-map"), (2, "inv-map"), (3, "inv-map")]
+
+
+def test_propagating_executor_passes_arguments_through() -> None:
+    def add(a: int, b: int, *, c: int = 0) -> int:
+        return a + b + c
+
+    with propagating_executor(max_workers=1) as pool:
+        assert pool.submit(add, 1, 2, c=3).result() == 6
+
+
+def test_propagating_executor_exceptions_propagate_unchanged() -> None:
+    class Boom(RuntimeError):
+        pass
+
+    def explode() -> None:
+        raise Boom("kaboom")
+
+    with propagating_executor(max_workers=1) as pool:
+        future = pool.submit(explode)
+        with pytest.raises(Boom, match="kaboom"):
+            future.result()
+
+
+def test_propagating_executor_does_not_leak_context_between_tasks() -> None:
+    with propagating_executor(max_workers=1) as pool:
+        invocation_id_var.set("inv-leak")
+        pool.submit(invocation_id_var.get).result()
+        # A subsequent submit without context must observe no leaked value.
+        invocation_id_var.set(None)
+        assert pool.submit(invocation_id_var.get).result() is None
+
+
+def test_propagating_executor_context_sets_thread_local_invocation_id() -> None:
+    tls = SimpleNamespace()
+    context = SimpleNamespace(invocation_id="inv-tls", thread_local_storage=tls)
+
+    def worker() -> str | None:
+        return getattr(tls, "invocation_id", None)
+
+    with propagating_executor(max_workers=1, context=context) as pool:
+        assert pool.submit(worker).result() == "inv-tls"
+
+
+def test_propagating_executor_rejects_pool_kwargs_with_existing_pool() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    inner = ThreadPoolExecutor(max_workers=1)
+    try:
+        with pytest.raises(TypeError, match="only accepted when creating a new pool"):
+            propagating_executor(inner, max_workers=4)
+    finally:
+        inner.shutdown()
+
+
+def test_propagating_executor_returns_instance_and_shutdown_closes_owned_pool() -> None:
+    pool = propagating_executor(max_workers=1)
+    assert isinstance(pool, PropagatingExecutor)
+    inner = pool.pool
+    pool.shutdown()
+    # An owned pool that has been shut down rejects further submissions.
+    with pytest.raises(RuntimeError):
+        inner.submit(lambda: None)

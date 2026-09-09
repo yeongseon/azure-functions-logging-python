@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from contextlib import contextmanager
 import contextvars
 import functools
@@ -373,6 +374,135 @@ def propagate_context(
                 var.reset(token)
 
     return wrapper
+
+
+class PropagatingExecutor(Executor):
+    """An :class:`~concurrent.futures.Executor` that auto-propagates invocation context.
+
+    ``contextvars`` do **not** follow work handed to a
+    :class:`~concurrent.futures.ThreadPoolExecutor` worker, so records emitted from
+    pooled threads lose their ``invocation_id`` unless every submitted callable is
+    wrapped with :func:`propagate_context`. This executor removes that per-submit
+    boilerplate: it wraps each callable passed to :meth:`submit` / :meth:`map` with
+    :func:`propagate_context` **at submission time**, snapshotting the invocation
+    context bound on the submitting thread.
+
+    Propagation stays **explicit and opt-in at the executor boundary** — the library
+    never monkeypatches :mod:`threading` or :mod:`concurrent.futures`. Work submitted
+    to a plain executor is unaffected. Propagation failures never crash the caller
+    (Principle 3): a failed context application degrades to running the callable
+    without context rather than raising.
+
+    The executor either wraps an existing pool or lazily creates a
+    :class:`~concurrent.futures.ThreadPoolExecutor`::
+
+        from azure_functions_logging import logging_context, propagating_executor
+
+        def handler(req, context):
+            with logging_context(context):
+                with propagating_executor(context=context) as pool:
+                    pool.submit(do_work, payload)  # record carries invocation_id
+
+    Passing ``context=`` also propagates the Azure worker's
+    ``thread_local_storage.invocation_id`` for the duration of each call, matching
+    :func:`propagate_context`.
+
+    Args:
+        pool: An existing :class:`~concurrent.futures.Executor` to wrap. When
+            ``None`` (default), a new :class:`~concurrent.futures.ThreadPoolExecutor`
+            is created from ``**pool_kwargs`` and owned by this instance (shut down
+            on :meth:`shutdown` / context-manager exit).
+        context: Optional Azure Functions ``context`` object. When supplied, its
+            ``invocation_id`` is propagated to each worker's
+            ``thread_local_storage`` in addition to the ``contextvars`` snapshot.
+        **pool_kwargs: Forwarded to :class:`~concurrent.futures.ThreadPoolExecutor`
+            when *pool* is ``None``. Rejected (``TypeError``) when wrapping an
+            existing *pool*.
+    """
+
+    def __init__(
+        self,
+        pool: Executor | None = None,
+        *,
+        context: Any = None,
+        **pool_kwargs: Any,
+    ) -> None:
+        if pool is None:
+            self._pool: Executor = ThreadPoolExecutor(**pool_kwargs)
+            self._owns_pool = True
+        else:
+            if pool_kwargs:
+                raise TypeError(
+                    "pool_kwargs are only accepted when creating a new pool; "
+                    "they cannot be applied to an existing executor"
+                )
+            self._pool = pool
+            self._owns_pool = False
+        self._context = context
+
+    @property
+    def pool(self) -> Executor:
+        """The wrapped (or lazily created) underlying executor."""
+        return self._pool
+
+    def submit(self, fn: Callable[..., _R], /, *args: Any, **kwargs: Any) -> Future[_R]:
+        """Submit *fn*, wrapping it so the current invocation context propagates."""
+        wrapped = propagate_context(fn, context=self._context)
+        return self._pool.submit(wrapped, *args, **kwargs)
+
+    def map(
+        self,
+        fn: Callable[..., _R],
+        *iterables: Iterable[Any],
+        timeout: float | None = None,
+        chunksize: int = 1,
+    ) -> Iterator[_R]:
+        """Like :meth:`Executor.map`, wrapping *fn* for context propagation."""
+        wrapped = propagate_context(fn, context=self._context)
+        return self._pool.map(wrapped, *iterables, timeout=timeout, chunksize=chunksize)
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        """Shut down the underlying executor (see :meth:`Executor.shutdown`)."""
+        self._pool.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+
+def propagating_executor(
+    pool: Executor | None = None,
+    *,
+    context: Any = None,
+    **pool_kwargs: Any,
+) -> PropagatingExecutor:
+    """Return a :class:`PropagatingExecutor` wrapping *pool* (or a new pool).
+
+    Ergonomic entry point for background-thread context propagation that removes
+    the per-submit :func:`propagate_context` boilerplate. See
+    :class:`PropagatingExecutor` for full semantics.
+
+    Example::
+
+        from concurrent.futures import ThreadPoolExecutor
+        from azure_functions_logging import logging_context, propagating_executor
+
+        with logging_context(context):
+            # Wrap an existing pool ...
+            pool = propagating_executor(ThreadPoolExecutor(max_workers=4), context=context)
+            # ... or let the helper create and own one:
+            with propagating_executor(max_workers=4, context=context) as pool:
+                pool.submit(do_work, payload)
+
+    Args:
+        pool: Existing executor to wrap, or ``None`` to create a new
+            :class:`~concurrent.futures.ThreadPoolExecutor`.
+        context: Optional Azure Functions ``context`` for worker
+            ``thread_local_storage`` propagation.
+        **pool_kwargs: Forwarded to a newly created pool; rejected when *pool* is
+            provided.
+
+    Returns:
+        A :class:`PropagatingExecutor` ready for :meth:`~PropagatingExecutor.submit`
+        / :meth:`~PropagatingExecutor.map`.
+    """
+    return PropagatingExecutor(pool, context=context, **pool_kwargs)
 
 
 # Process-wide default for OpenTelemetry trace-context activation. Toggled by
