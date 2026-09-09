@@ -33,10 +33,10 @@ updates:
     # Let freshly-published versions age before Dependabot proposes them, so a
     # compromised release has time to be yanked/flagged (supply-chain hardening).
     cooldown:
+      # github-actions does not follow semver the way registry packages do, so
+      # Dependabot only supports a flat default-days cooldown here (the
+      # semver-*-days keys are rejected for this ecosystem).
       default-days: 7
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
       include:
         - "*"
     commit-message:
