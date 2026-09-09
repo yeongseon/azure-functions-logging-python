@@ -1,6 +1,30 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.12.0] - 2026-09-09
+
+### Features
+
+- *(context)* Add propagating_executor for auto worker-thread context propagation (#444) 
+- *(redaction)* Mask secrets embedded in free-text log messages (#441) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump ruff in the python-dependencies group (#442) 
+- *(ci)* Group dependabot updates + auto-merge patch/minor (#392) 
+- Allow test/ and refactor/ branch prefixes to match commit types (#440) 
+- *(deps)* Bump github/codeql-action init+analyze to v4.37.9 (#439) 
+- *(deps)* Bump anchore/sbom-action from 0.24.0 to 0.24.2 (#420) 
+- *(deps)* Bump softprops/action-gh-release from 3.0.2 to 3.0.3 (#419) 
+- *(deps)* Bump ruff from 0.16.3 to 0.16.5 (#418) 
+
+### Other
+
+- Bump version to 0.12.0 
+
+### Testing
+
+- *(otel)* Promote OTel spike suite to formal contract tests (#438) 
 ## [0.11.0] - 2026-09-08
 
 ### Bug Fixes
@@ -15,6 +39,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - 0.11.0 follow-ups (#425, #426, #427) (#430) 
 - Add "How correlation works" mechanism page and cross-links (#409) 
 - *(logging)* Codify setup_logging complexity ceiling (no 9th kwarg) (#397) 
