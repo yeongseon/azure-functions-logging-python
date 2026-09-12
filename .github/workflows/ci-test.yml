@@ -42,6 +42,9 @@ jobs:
       - name: Lint documentation links
         run: python tools/lint_doc_links.py
 
+      - name: Hatch/matrix hygiene lint
+        run: python tools/lint_hatch_matrix.py
+
       - name: Ruff style check
         run: |
           ruff check src tests
