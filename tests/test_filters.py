@@ -1399,3 +1399,79 @@ def test_default_redaction_patterns_is_public_and_nonempty() -> None:
     assert "DEFAULT_REDACTION_PATTERNS" in afl.__all__
     assert len(afl.DEFAULT_REDACTION_PATTERNS) > 0
     assert all(isinstance(p, re.Pattern) for p in afl.DEFAULT_REDACTION_PATTERNS)
+
+
+# ---------------------------------------------------------------------------
+# RedactionFilter — false-positive corpus (#445)
+#
+# Pattern-based free-text masking is opt-in; its dominant failure mode is a
+# *false positive* — a curated pattern accidentally masking a well-formed UUID,
+# a base64-like blob, a git SHA, or a documentation/fake connection string,
+# producing a "the logs are blank / unreadable" incident. This corpus pins the
+# current behavior: every entry is a **non-secret** input asserted to survive
+# ``DEFAULT_REDACTION_PATTERNS`` byte-for-byte, both through ``mask_patterns``
+# and through ``RedactionFilter`` (message + string ``extra`` values). If a
+# future pattern change starts masking one of these, that is a regression the
+# corpus is here to catch (see #445 — pattern tuning is a gated follow-up).
+# ---------------------------------------------------------------------------
+
+# (id, text) — each ``text`` is a benign, non-secret token/string that must be
+# preserved unchanged. IDs double as the parametrize test ids.
+BENIGN_NON_SECRET_CORPUS: tuple[tuple[str, str], ...] = (
+    # Well-formed UUIDs (v4, v1, and the nil UUID).
+    ("uuid_v4", "550e8400-e29b-41d4-a716-446655440000"),
+    ("uuid_v1", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+    ("uuid_nil", "00000000-0000-0000-0000-000000000000"),
+    ("uuid_in_sentence", "processing invocation 706b8e5c-a630-4309-b815-6410526f237a done"),
+    # base64 / base64url-like blobs and hashes that are not secrets.
+    ("sha256_hex", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+    ("md5_hex", "d41d8cd98f00b204e9800998ecf8427e"),
+    ("git_sha_full", "865edee1966f82931fa57b25a5baf858480d38ee"),
+    ("git_sha_short", "865edee"),
+    # base64 starting with the JWT 'eyJ' prefix but not a JWT (no two dots):
+    ("base64_payload", "eyJmb28iOiJiYXIifQ=="),
+    ("base64url_frag", "aGVsbG8td29ybGQtdGhpcy1pcy1maW5l"),
+    # Documentation / obviously-fake connection strings and example ids — the
+    # kind that appear in READMEs and error messages (no sensitive key=value).
+    (
+        "conn_string_no_key",
+        "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;"
+        "EndpointSuffix=core.windows.net",
+    ),
+    ("blob_url", "https://myaccount.blob.core.windows.net/container/blob.txt"),
+    ("http_request_line", "GET /api/logme?correlation_id=demo-123 HTTP/1.1 200"),
+    # Hex ids, timestamps, and other high-entropy-but-benign tokens.
+    ("iso_timestamp", "2026-09-09T11:12:17Z"),
+    ("hex_id", "0x1A2B3C4D5E6F7080"),
+    ("mac_address", "00:1A:2B:3C:4D:5E"),
+    ("ipv6", "fe80::1ff:fe23:4567:890a"),
+    ("semver_pin", "azure-functions-logging==0.12.0"),
+    ("order_ids", "processing order o-42 for user u-1 in region koreacentral"),
+)
+
+
+@pytest.mark.parametrize(
+    "text", [t for _, t in BENIGN_NON_SECRET_CORPUS], ids=[i for i, _ in BENIGN_NON_SECRET_CORPUS]
+)
+def test_mask_patterns_leaves_benign_non_secret_input_unchanged(text: str) -> None:
+    """Byte-for-byte: no default pattern masks a benign non-secret token (#445)."""
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+    from azure_functions_logging._redaction import mask_patterns
+
+    assert mask_patterns(text, DEFAULT_REDACTION_PATTERNS) == text
+
+
+@pytest.mark.parametrize(
+    "text", [t for _, t in BENIGN_NON_SECRET_CORPUS], ids=[i for i, _ in BENIGN_NON_SECRET_CORPUS]
+)
+def test_redaction_filter_leaves_benign_message_and_extra_unchanged(text: str) -> None:
+    """``RedactionFilter`` preserves benign message + string ``extra`` byte-for-byte (#445)."""
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
+
+    flt = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    record = _make_record(msg=text)
+    setattr(record, "detail", text)
+
+    assert flt.filter(record) is True
+    assert record.getMessage() == text
+    assert getattr(record, "detail") == text

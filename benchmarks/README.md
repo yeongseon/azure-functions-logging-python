@@ -46,6 +46,8 @@ table exists to show order-of-magnitude, not to be a fixed contract.
 | `JsonFormatter.format(record)` | ~15 µs | Per emitted record, only when a record is actually formatted |
 | `SamplingFilter.filter(record)` | ~0.8 µs | Per record on a filtered logger |
 | `RedactionFilter.filter(record)` | ~11 µs | Per record (includes record construction); recursive over a nested payload |
+| `RedactionFilter.filter(record)` **[patterns off]** | ~6.4 µs | Per record, key-based redaction only (message/extra *not* pattern-scanned); the opt-in-off baseline. |
+| `RedactionFilter.filter(record)` **[`DEFAULT_REDACTION_PATTERNS` on]** | ~49 µs | Per record with free-text pattern masking enabled: ~7.6× the patterns-off cost. This is the hot-path regex price of the opt-in `patterns=` masking (#445) — enable it deliberately. |
 
 _Environment: CPython 3.10.12, Linux x86_64._
 
