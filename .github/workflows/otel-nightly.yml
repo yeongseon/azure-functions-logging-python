@@ -2,7 +2,7 @@ name: OTel Nightly (latest opentelemetry-*)
 
 # Catches breakage from OpenTelemetry upgrades early — in particular the
 # private `opentelemetry.sdk._logs` import used only by the OTel test suite
-# (tests/test_otel_spike.py). Runtime code imports only stable public APIs.
+# (tests/test_otel_contract.py). Runtime code imports only stable public APIs.
 
 on:
   schedule:
@@ -24,10 +24,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install package with dev extras
+      - name: Install package with dev + otel extras
+        # Install directly onto the job interpreter (NOT the pinned hatch env) so
+        # the latest-opentelemetry upgrade below actually reaches the test run.
         run: |
-          pip install hatch
-          make install
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,otel]"
 
       - name: Upgrade to the latest opentelemetry-* packages
         run: |
@@ -38,8 +40,8 @@ jobs:
 
       - name: Run OTel-focused test suite
         run: |
-          hatch run pytest -q \
+          python -m pytest -q \
             tests/test_otel.py \
-            tests/test_otel_spike.py \
+            tests/test_otel_contract.py \
             tests/test_otel_filters.py \
             tests/test_host_config_otel.py
