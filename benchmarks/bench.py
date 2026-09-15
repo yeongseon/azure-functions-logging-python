@@ -240,8 +240,54 @@ def run_benchmarks() -> list[Result]:
         bench("RedactionFilter.filter(record) [new record]", _redaction, iterations=50_000)
     )
 
-    return results
+    # RedactionFilter masking-overhead: patterns OFF (key-based only) vs the
+    # curated DEFAULT_REDACTION_PATTERNS ON, over a representative free-text
+    # message. Isolates the per-record regex hot-path cost of message/extra
+    # scanning so the opt-in cost of pattern masking is documented (#445).
+    from azure_functions_logging import DEFAULT_REDACTION_PATTERNS
 
+    redaction_no_patterns = RedactionFilter()
+    redaction_patterns = RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)
+    mask_msg = (
+        "processing order o-42 for user u-1 in region koreacentral "
+        "invocation 706b8e5c-a630-4309-b815-6410526f237a"
+    )
+
+    def _make_mask_record() -> logging.LogRecord:
+        record = logging.LogRecord(
+            name="bench",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg=mask_msg,
+            args=(),
+            exc_info=None,
+        )
+        record.detail = mask_msg  # type: ignore[attr-defined]
+        return record
+
+    def _redaction_patterns_off() -> None:
+        redaction_no_patterns.filter(_make_mask_record())
+
+    def _redaction_patterns_on() -> None:
+        redaction_patterns.filter(_make_mask_record())
+
+    results.append(
+        bench(
+            "RedactionFilter.filter(record) [patterns off]",
+            _redaction_patterns_off,
+            iterations=50_000,
+        )
+    )
+    results.append(
+        bench(
+            "RedactionFilter.filter(record) [DEFAULT_REDACTION_PATTERNS on]",
+            _redaction_patterns_on,
+            iterations=50_000,
+        )
+    )
+
+    return results
 
 def _environment() -> dict[str, str]:
     return {
