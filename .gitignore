@@ -34,3 +34,6 @@ site/
 # Agent orchestration state
 .sisyphus/
 .omc/
+
+# Playwright MCP session artifacts
+.playwright-mcp/
