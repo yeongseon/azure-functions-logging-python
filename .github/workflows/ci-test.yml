@@ -51,8 +51,8 @@ jobs:
 
       - name: Ruff style check
         run: |
-          ruff check src tests
-          ruff format --check src tests
+          ruff check src tests tools examples benchmarks scripts
+          ruff format --check src tests tools examples benchmarks scripts
 
       - name: Ruff format check (changed Python files)
         if: github.event_name == 'pull_request'

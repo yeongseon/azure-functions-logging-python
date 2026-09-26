@@ -46,9 +46,8 @@ def version(req: func.HttpRequest) -> func.HttpResponse:
     than whatever is currently published on PyPI.
     """
     installed = importlib.metadata.version("azure-functions-logging")
-    return func.HttpResponse(
-        json.dumps({"version": installed}), mimetype="application/json"
-    )
+    return func.HttpResponse(json.dumps({"version": installed}), mimetype="application/json")
+
 
 # ── BEFORE: plain Python logging, no library context ─────────────────────
 #
@@ -167,9 +166,7 @@ def correlation(req: func.HttpRequest, context: func.Context) -> func.HttpRespon
         # (3) negative control: a background thread with NO propagate_context.
         # Its record must NOT carry the invocation_id.
         def _unpropagated() -> None:
-            logger.warning(
-                "afl correlation certify", extra={"marker": "corr-thread-unpropagated"}
-            )
+            logger.warning("afl correlation certify", extra={"marker": "corr-thread-unpropagated"})
 
         thread = threading.Thread(target=_unpropagated)
         thread.start()
