@@ -21,6 +21,12 @@ def changed_python_files(base: str, head: str) -> list[str]:
 
 
 def main(base: str, head: str) -> int:
+    if not base.strip() or not head.strip():
+        print(
+            "Missing PR base/head revision; refusing to report success.",
+            file=sys.stderr,
+        )
+        return 2
     paths = changed_python_files(base, head)
     if not paths:
         print("No changed Python files to format-check.")
