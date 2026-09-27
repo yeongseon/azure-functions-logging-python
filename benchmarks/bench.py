@@ -289,6 +289,7 @@ def run_benchmarks() -> list[Result]:
 
     return results
 
+
 def _environment() -> dict[str, str]:
     return {
         "python": sys.version.split()[0],
