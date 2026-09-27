@@ -40,7 +40,7 @@ Follow these conventions when opening issues so the backlog stays consistent wit
 - Use Conventional Commit prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `build:`, `perf:`.
 - Add a scope qualifier when it narrows the area: `feat(json):`, `docs(context):`, `refactor(logger):`.
 - Keep the title imperative, under ~80 characters, no trailing period.
-- Do **not** put `[P0]` / `[P1]` / `[P2]` (or any priority marker) in the title — priority is tracked with a `priority:p0` / `priority:p1` / `priority:p2` label.
+- Do **not** put a priority marker in the title — priority is tracked with a `priority:*` label.
 
 ### Body
 
@@ -63,7 +63,8 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 ### Labels
 
 - Apply at least one of `bug`, `enhancement`, `documentation`, `chore`.
-- Apply exactly one `priority:p0` / `priority:p1` / `priority:p2` label to record priority (replaces the old `## Priority` body line).
+- Apply exactly one priority label. The scale in use is `priority:critical` / `priority:high` / `priority:medium` / `priority:low`; `critical` is reserved for defects that reach package users, such as a broken published artifact or wrong product output.
+- Labels are applied by maintainers or authorized triage automation. An external contributor without label permissions should describe urgency in the issue body and leave labelling to triage.
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
 
