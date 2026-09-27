@@ -2,8 +2,10 @@
 
 Closes #
 
-<!-- Required. Open an issue first if one does not exist; a pull request
-     without a linked issue is rejected at review. -->
+<!-- Required for human-authored changes. Open an issue first if one does
+     not exist; a pull request without a linked issue is rejected at review.
+     Automated dependency pull requests are exempt: they are opened without
+     an issue and do not use this template. -->
 
 ## Summary
 
@@ -17,6 +19,10 @@ Closes #
 | Command | Environment | Result |
 | --- | --- | --- |
 | `make check-all` |  |  |
+| `make build` |  |  |
+
+<!-- `check-all` does not build the distribution, so it can pass while the
+     packaged artifact is broken. Run `make build` as well. -->
 
 ## Not run
 
