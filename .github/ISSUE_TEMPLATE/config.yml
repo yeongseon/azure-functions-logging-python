@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://yeongseon.dev/azure-functions-python/logging/
+    about: Check our documentation for usage guides and examples
+  - name: Security Advisories
+    url: https://github.com/yeongseon/azure-functions-logging-python/security/advisories/new
+    about: Report security issues privately via GitHub Security Advisories
