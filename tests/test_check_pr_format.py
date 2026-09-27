@@ -27,7 +27,7 @@ def test_changed_python_files_handles_spaces_and_renames(
     monkeypatch.setattr(subprocess, "run", run)
     assert check_pr_format.main("base", "head") == 0
     assert calls == [
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", "base...head", "--"],
+        ["git", "diff", "--name-only", "--diff-filter=d", "-z", "base...head", "--"],
         ["ruff", "format", "--check", "--", "new name.py", "renamed.py"],
     ]
 

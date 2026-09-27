@@ -47,6 +47,10 @@ format: ensure-hatch
 format-check: ensure-hatch
 	@$(HATCH) run format-check
 
+.PHONY: format-check-changed
+format-check-changed: ensure-hatch
+	@$(HATCH) run python tools/check_pr_format.py "$(BASE)" "$(HEAD)"
+
 .PHONY: style
 style: ensure-hatch
 	@$(HATCH) run style

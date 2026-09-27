@@ -8,7 +8,10 @@ import sys
 
 def changed_python_files(base: str, head: str) -> list[str]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", f"{base}...{head}", "--"],
+        # Exclude deletions rather than allow-listing statuses: an allow-list of
+        # ACMR silently drops T (type changed), so swapping a Python-named
+        # symlink for a real .py file would skip the format check entirely.
+        ["git", "diff", "--name-only", "--diff-filter=d", "-z", f"{base}...{head}", "--"],
         check=True,
         capture_output=True,
     )
