@@ -40,7 +40,11 @@ jobs:
 
       - name: Run OTel-focused test suite
         run: |
-          python -m pytest -q \
+          # This canary runs a four-file subset, but pyproject's addopts force
+          # --cov over the whole package and fail_under=95 applies. Coverage of
+          # a subset is meaningless here and was failing the job at ~49%,
+          # masking the upstream breakage this canary exists to detect.
+          python -m pytest -q --cov-fail-under=0 \
             tests/test_otel.py \
             tests/test_otel_contract.py \
             tests/test_otel_filters.py \

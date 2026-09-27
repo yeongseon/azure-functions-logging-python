@@ -78,3 +78,54 @@ def test_blank_revision_fails_without_running_git(
 
     monkeypatch.setattr(subprocess, "run", run)
     assert check_pr_format.main(base, head) != 0
+
+
+def test_type_changed_python_path_is_detected_against_real_git(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A mocked diff cannot catch a filter regression, so drive real Git here.
+
+    Replacing a Python-named symlink with a regular file is reported by Git as
+    ``T`` and nothing else. An ``ACMR`` allow-list returns an empty list for
+    that change, so this test fails if the filter is ever narrowed again.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+    def rev_parse() -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+
+    (repo / "target.txt").write_text("x\n")
+    (repo / "mod.py").symlink_to("target.txt")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = rev_parse()
+
+    (repo / "mod.py").unlink()
+    (repo / "mod.py").write_text("def f( a ):  return a\n")
+    git("add", "-A")
+    git("commit", "-qm", "swap")
+    head = rev_parse()
+
+    status = subprocess.run(
+        ["git", "-C", str(repo), "diff", "--name-status", f"{base}...{head}", "--"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert status.startswith("T\t"), f"expected a type change, got {status!r}"
+
+    monkeypatch.chdir(repo)
+    assert check_pr_format.changed_python_files(base, head) == ["mod.py"]
