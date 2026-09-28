@@ -23,6 +23,7 @@ per-record cost of context injection, JSON formatting, and the filters.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 import gc
 import json
@@ -31,7 +32,6 @@ import platform
 import statistics
 import sys
 import time
-from typing import Callable
 
 
 # --------------------------------------------------------------------------- #

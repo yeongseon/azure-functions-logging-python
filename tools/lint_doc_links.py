@@ -95,7 +95,7 @@ def _iter_doc_files(root: Path) -> list[Path]:
     return files
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _ref_exists(url: str, *, timeout: float = 10.0) -> tuple[bool | None, str]:
     """Return (exists, note). ``None`` means indeterminate (transient error)."""
     req = Request(url, method="HEAD", headers={"User-Agent": "doc-link-lint"})
