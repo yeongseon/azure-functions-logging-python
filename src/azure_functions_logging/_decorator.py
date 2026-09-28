@@ -8,10 +8,11 @@ Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/22
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import inspect
 import logging
 import time
-from typing import Any, Callable, TypeVar, overload
+from typing import Any, TypeVar, overload
 import warnings
 
 from ._context import logging_context

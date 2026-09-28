@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 import os
 import sys
-from typing import Iterable
 
 from ._constants import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
 from ._redaction import mask_value

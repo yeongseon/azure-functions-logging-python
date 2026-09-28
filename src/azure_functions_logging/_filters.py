@@ -9,11 +9,12 @@ Provides:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 import re
 import threading
 import time
-from typing import Any, Iterable
+from typing import Any
 
 from ._constants import _RESERVED_LOG_RECORD_KEYS
 from ._redaction import MASK as _MASK

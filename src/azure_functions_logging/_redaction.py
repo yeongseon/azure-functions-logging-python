@@ -7,8 +7,9 @@ the same key set and matching rules instead of maintaining separate copies.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import re
-from typing import Any, Iterable
+from typing import Any
 
 MASK = "***"
 

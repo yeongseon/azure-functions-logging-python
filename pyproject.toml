@@ -41,7 +41,7 @@ dev = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ruff==0.16.8",
+    "ruff==0.16.9",
     "requests",
     "types-requests",
 ]
@@ -111,8 +111,20 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+# C4 + UP keep the codebase on modern syntax (PEP 585/604 generics and
+# unions, comprehension forms) instead of the pre-3.10 `typing.List` /
+# `Optional[...]` spellings. target-version = "py310" bounds every fix to
+# syntax the declared floor supports.
+select = ["C4", "E", "F", "I", "UP"]
 fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+# _metadata_helpers.py is hand-synced byte-identically with the sibling
+# azure-functions-validation copy, which pins its sha256 in
+# tests/test_metadata_helpers_drift.py (see #273/#270). UP fixes would rewrite
+# its imports and break that invariant, so the file stays on its frozen
+# spelling; changing it requires the documented lockstep procedure.
+"src/azure_functions_logging/_metadata_helpers.py" = ["UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["azure_functions_logging"]
