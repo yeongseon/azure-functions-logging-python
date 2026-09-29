@@ -1,6 +1,38 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.12.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.12.0...v0.12.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **ci:** unbreak the OTel canary, correct SECURITY URL, release wording and stale inputs ([#466](https://github.com/yeongseon/azure-functions-logging-python/issues/466)) ([3e53755](https://github.com/yeongseon/azure-functions-logging-python/commit/3e53755864be93c741d3c1e927e758feb8c84a24))
+
+
+### Documentation
+
+* align the contributor contract with the actual configuration ([#464](https://github.com/yeongseon/azure-functions-logging-python/issues/464)) ([9343ea0](https://github.com/yeongseon/azure-functions-logging-python/commit/9343ea043cfcad1515951e6c0200095173bf778f))
+
+
+### Testing
+
+* **redaction:** add free-text masking false-positive corpus + benchmark ([#446](https://github.com/yeongseon/azure-functions-logging-python/issues/446)) ([47477b9](https://github.com/yeongseon/azure-functions-logging-python/commit/47477b90c371ec4d5e23d6781a9349dd68e230e9)), closes [#445](https://github.com/yeongseon/azure-functions-logging-python/issues/445)
+
+
+### Miscellaneous Tasks
+
+* adopt release-please and gate PyPI on in-chain Azure e2e ([#474](https://github.com/yeongseon/azure-functions-logging-python/issues/474)) ([7604ca0](https://github.com/yeongseon/azure-functions-logging-python/commit/7604ca0fe85211e3175ed1d7404106ab22f95759))
+* allow build/ branch prefix in branch-naming validation ([#449](https://github.com/yeongseon/azure-functions-logging-python/issues/449)) ([7a636b3](https://github.com/yeongseon/azure-functions-logging-python/commit/7a636b3d880b7faa9e8974dff138ce08fd8b2340))
+* **deps:** bump ruff in the python-dependencies group ([#450](https://github.com/yeongseon/azure-functions-logging-python/issues/450)) ([0c0a5f6](https://github.com/yeongseon/azure-functions-logging-python/commit/0c0a5f65a89569b18729a64bc348d6a2fef73dd9))
+* **deps:** bump the github-actions group with 2 updates ([#451](https://github.com/yeongseon/azure-functions-logging-python/issues/451)) ([8fd80fd](https://github.com/yeongseon/azure-functions-logging-python/commit/8fd80fd801bdaf82e79c045e3508aaa01dede27a))
+* **deps:** bump the github-actions group with 3 updates ([#460](https://github.com/yeongseon/azure-functions-logging-python/issues/460)) ([3639504](https://github.com/yeongseon/azure-functions-logging-python/commit/36395047c2c9de95c71ac77ee9642e7331b29667))
+* gate unformatted changed Python files in the quality job ([#462](https://github.com/yeongseon/azure-functions-logging-python/issues/462)) ([16a6521](https://github.com/yeongseon/azure-functions-logging-python/commit/16a652124e7d75726898f199764006f1c2d3b772))
+* ignore Playwright MCP session artifacts ([376fc8f](https://github.com/yeongseon/azure-functions-logging-python/commit/376fc8f1ea43aebd4090534a393a064562b49459))
+* ignore uv.lock ([#470](https://github.com/yeongseon/azure-functions-logging-python/issues/470)) ([7720875](https://github.com/yeongseon/azure-functions-logging-python/commit/7720875e9b591827d922b89267373bec5828dc23)), closes [#469](https://github.com/yeongseon/azure-functions-logging-python/issues/469)
+* modernize typing and pin ruff, complete AGENTS.md, unify Azure e2e auth ([#472](https://github.com/yeongseon/azure-functions-logging-python/issues/472)) ([61d35cf](https://github.com/yeongseon/azure-functions-logging-python/commit/61d35cf929bb0bf6c3658036849465acbf7e1054))
+* run OTel nightly on the upgraded deps, not the pinned hatch env ([#448](https://github.com/yeongseon/azure-functions-logging-python/issues/448)) ([84ba996](https://github.com/yeongseon/azure-functions-logging-python/commit/84ba996d0d60683b2a0215d70fc61b694242ae0c))
+* wire and harden the hatch default-env-pin lint ([#447](https://github.com/yeongseon/azure-functions-logging-python/issues/447)) ([ec7a1ac](https://github.com/yeongseon/azure-functions-logging-python/commit/ec7a1ac241baeb143ffe671bfed96feb40a58618))
+
 ## [0.12.0] - 2026-09-09
 
 ### Features
