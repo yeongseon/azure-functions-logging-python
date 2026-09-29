@@ -34,7 +34,6 @@ dev = [
     "bandit[toml]",
     "build",
     "coverage",
-    "git-cliff",
     "hatch",
     "mypy==2.3.1",
     "opentelemetry-sdk>=1.24",
