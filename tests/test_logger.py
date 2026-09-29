@@ -299,7 +299,7 @@ def test_log_dispatches_at_arbitrary_level() -> None:
 
     for level in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
         underlying.log.reset_mock()
-        logger.log(level, "msg-%s" % level)
+        logger.log(level, f"msg-{level}")
         underlying.log.assert_called_once()
         args, _ = underlying.log.call_args
         assert args[0] == level

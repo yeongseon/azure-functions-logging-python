@@ -17,8 +17,9 @@ install zero-dependency.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import logging
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 

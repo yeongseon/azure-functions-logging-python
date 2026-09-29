@@ -68,7 +68,7 @@ class _FakeResp:
     def __init__(self, status: int) -> None:
         self.status = status
 
-    def __enter__(self) -> "_FakeResp":
+    def __enter__(self) -> _FakeResp:
         return self
 
     def __exit__(self, *exc: object) -> None:
