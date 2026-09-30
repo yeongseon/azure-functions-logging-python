@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.12.2](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.12.1...v0.12.2) (2026-09-30)
+
+
+### Miscellaneous Tasks
+
+* add a PR title check and unify the title convention ([#477](https://github.com/yeongseon/azure-functions-logging-python/issues/477)) ([8b7943e](https://github.com/yeongseon/azure-functions-logging-python/commit/8b7943e3b651ac1561beb64ba39b233d371f9508))
+
 ## [0.12.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.12.0...v0.12.1) (2026-09-29)
 
 
