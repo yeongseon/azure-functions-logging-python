@@ -78,26 +78,7 @@ Open a pull request against the `main` branch with a clear description of what c
 
 ## Commit Message Format
 
-| Type | When to Use |
-| ---- | ----------- |
-| `feat` | New feature or capability |
-| `fix` | Bug fix |
-| `docs` | Documentation changes only |
-| `style` | Formatting, whitespace, missing semicolons (no code change) |
-| `refactor` | Code restructuring without changing behavior |
-| `test` | Adding or updating tests |
-| `chore` | Build process, CI, dependency updates |
-
-### Examples
-
-```
-feat: add JsonFormatter for structured logging
-fix: handle missing context object in inject_context
-docs: update troubleshooting guide with host.json section
-test: add coverage for cold start edge cases
-refactor: extract environment detection into separate function
-chore: bump mypy to v1.12
-```
+Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](https://github.com/yeongseon/azure-functions-logging-python/blob/main/CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
 
 ## Code Standards
 
