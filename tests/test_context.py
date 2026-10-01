@@ -920,6 +920,19 @@ def test_propagating_executor_wraps_existing_pool() -> None:
         inner.shutdown()
 
 
+def test_propagating_executor_context_exit_leaves_existing_pool_running() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    inner = ThreadPoolExecutor(max_workers=1)
+    try:
+        with propagating_executor(inner) as pool:
+            assert pool.submit(lambda: "wrapped").result() == "wrapped"
+
+        assert inner.submit(lambda: "caller-owned").result() == "caller-owned"
+    finally:
+        inner.shutdown()
+
+
 def test_propagating_executor_map_propagates_context() -> None:
     invocation_id_var.set("inv-map")
 
