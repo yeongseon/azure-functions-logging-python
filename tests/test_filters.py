@@ -187,6 +187,24 @@ def test_redaction_filter_masks_default_sensitive_keys() -> None:
     assert getattr(record, "token") == "***"
 
 
+def test_redaction_filter_masks_cookie_and_api_key_header_forms_by_default() -> None:
+    record = _make_record(msg="headers")
+    record.__dict__.update(
+        {
+            "cookie": "session-secret",
+            "Set-Cookie": "session=secret",
+            "X-API-Key": "api-secret",
+            "api-key": "api-secret",
+            "apikey": "api-secret",
+        }
+    )
+
+    RedactionFilter().filter(record)
+
+    for key in ("cookie", "Set-Cookie", "X-API-Key", "api-key", "apikey"):
+        assert record.__dict__[key] == "***"
+
+
 def test_redaction_filter_leaves_non_sensitive_keys_unchanged() -> None:
     flt = RedactionFilter()
     record = _make_record(msg="safe")
