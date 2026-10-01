@@ -7,7 +7,7 @@
 - Project: `azure-functions-logging`
 - Project type: Python library
 - Runtime scope: Azure Functions Python v2 programming model
-- Minimum supported Python: `3.11`
+- Minimum supported Python: `3.10`
 - Packaging: `pyproject.toml` with Hatch
 
 ## Read First
@@ -22,7 +22,7 @@
 - Any PR that drops coverage below 95% must include additional tests to compensate.
 - In Azure/Core Tools mode, `setup_logging()` installs `ContextFilter` on the root logger's existing handlers (and the root logger itself for late-attaching handlers) but never adds new handlers or changes the root level. When `use_record_factory=True`, no `ContextFilter` is attached; context is injected via the global `LogRecordFactory` instead. In standalone local mode, the root logger is configured by default (`logger_name=None`); pass an explicit `logger_name` to avoid modifying the root logger.
 - No runtime dependency on `azure-functions` — it is an optional import only.
-- Runtime code must remain compatible with Python 3.11+.
+- Runtime code must remain compatible with Python 3.10+.
 - Public APIs must be fully typed.
 - Keep documentation examples and tests synchronized with any behavior changes.
 

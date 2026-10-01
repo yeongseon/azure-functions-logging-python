@@ -102,10 +102,10 @@ jobs:
                 enableAppInsights=true \
                 appInsightsName="${{ steps.names.outputs.ai }}"
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.10
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.10"
 
       # Install Azure Functions Core Tools via npm.
       # We previously installed from packages.microsoft.com via apt, but that feed

@@ -4,7 +4,7 @@ This guide explains how to set up a development environment for `azure-functions
 
 ## Prerequisites
 
-- Python 3.11 or higher
+- Python 3.10 or higher
 - Git
 - Make (for running development commands)
 
@@ -221,7 +221,7 @@ The hooks check formatting, linting, and type safety. If a hook fails, the commi
 CI runs on every push and pull request via GitHub Actions. The pipeline:
 
 1. Runs `make check-all` (format, lint, typecheck, security, tests)
-2. Tests across the Python version matrix: 3.11, 3.12, 3.13, 3.14
+2. Tests across the Python version matrix: 3.10, 3.11, 3.12, 3.13, 3.14
 3. Generates coverage report
 4. Uploads coverage to Codecov
 

@@ -19,7 +19,7 @@ In this guide you will:
 
 Before starting, make sure your environment includes:
 
-- Python 3.11 or newer.
+- Python 3.10 or newer.
 - A virtual environment (recommended).
 - An Azure Functions Python project, or any local Python script for first validation.
 - Optional: Azure Functions Core Tools if you want to run a local function host.

@@ -105,7 +105,7 @@ Titles for issues, pull requests, and commits follow the **Title Convention** in
 
 - All new features must include tests
 - All bug fixes must include a regression test
-- Tests must pass across the full Python version matrix (3.11-3.14)
+- Tests must pass across the full Python version matrix (3.10-3.14)
 - Coverage should not decrease
 
 ### Module Conventions

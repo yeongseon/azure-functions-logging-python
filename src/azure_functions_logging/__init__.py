@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import warnings
+
 from ._context import (
     ContextTokens,
     PropagatingExecutor,
@@ -56,3 +59,13 @@ def get_logger(name: str | None = None) -> FunctionLogger:
     import logging
 
     return FunctionLogger(logging.getLogger(name))
+
+
+if sys.version_info < (3, 11):
+    warnings.warn(
+        "azure-functions-logging will drop support for Python 3.10 in its next minor release. "
+        "Python 3.10 reaches end of life in October 2026; upgrade to Python 3.11 "
+        "or newer to keep receiving updates.",
+        FutureWarning,
+        stacklevel=2,
+    )
