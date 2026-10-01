@@ -80,7 +80,7 @@ def _resolve_positional_index(func: Callable[..., Any], param: str) -> int | Non
     return None
 
 
-def _signature_can_receive_context(func: Callable[..., Any], param: str) -> bool:
+def _signature_can_receive_context(func: Callable[..., Any], param: str, strict: bool) -> bool:
     """Return whether *func*'s signature could ever receive the context argument.
 
     Used at decoration time to detect an *ineffective* ``@with_context``: the
@@ -95,8 +95,8 @@ def _signature_can_receive_context(func: Callable[..., Any], param: str) -> bool
     * the signature cannot be introspected (be conservative — never warn on a
       false positive);
     * a parameter named *param* is present (any kind);
-    * a ``**kwargs`` (``VAR_KEYWORD``) parameter is present, which could carry
-      the context by keyword at call time.
+    * in non-strict mode, a ``**kwargs`` (``VAR_KEYWORD``) parameter is present,
+      which could carry the context by keyword at call time.
 
     Returns ``False`` only when the signature is introspectable and definitively
     cannot receive *param*.
@@ -107,7 +107,9 @@ def _signature_can_receive_context(func: Callable[..., Any], param: str) -> bool
         return True
     if param in parameters:
         return True
-    return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+    return not strict and any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )
 
 
 def _check_context_detectable(func: Callable[..., Any], param: str, strict: bool) -> None:
@@ -117,7 +119,7 @@ def _check_context_detectable(func: Callable[..., Any], param: str, strict: bool
     the misconfiguration is surfaced without breaking the app; raises
     :class:`ValueError` when ``strict=True`` for CI-enforceable safety.
     """
-    if _signature_can_receive_context(func, param):
+    if _signature_can_receive_context(func, param, strict):
         return
     handler_name = getattr(func, "__qualname__", getattr(func, "__name__", repr(func)))
     message = (
