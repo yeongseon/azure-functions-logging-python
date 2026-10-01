@@ -1,6 +1,21 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.13.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.12.1...v0.13.0) (2026-10-01)
+
+
+### Bug Fixes
+
+* **compat:** deprecate Python 3.10 ahead of its removal ([#488](https://github.com/yeongseon/azure-functions-logging-python/issues/488)) ([137e05f](https://github.com/yeongseon/azure-functions-logging-python/commit/137e05f570fc074122c5882b06b9d8fd24452a12))
+* **context:** leave caller-owned executors running on exit ([#490](https://github.com/yeongseon/azure-functions-logging-python/issues/490)) ([da4280d](https://github.com/yeongseon/azure-functions-logging-python/commit/da4280d77ee3bbe3c0e922f7bc73282d14bdf52c))
+* **decorator:** reject kwargs-only handlers in strict context mode ([#491](https://github.com/yeongseon/azure-functions-logging-python/issues/491)) ([4abdf0c](https://github.com/yeongseon/azure-functions-logging-python/commit/4abdf0c00be342143a2f5273c1271fcf9b53b2c2))
+* **redaction:** mask cookie and API-key headers by default ([#489](https://github.com/yeongseon/azure-functions-logging-python/issues/489)) ([92ae5aa](https://github.com/yeongseon/azure-functions-logging-python/commit/92ae5aa5548a3578da36af83a230ce1aeab6858f))
+
+
+### Miscellaneous Tasks
+
+* release 0.13.0 ([83df5e8](https://github.com/yeongseon/azure-functions-logging-python/commit/83df5e84a1b72e4f90439a9da81488170d98d9af))
+
 ## [0.12.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.12.0...v0.12.1) (2026-09-29)
 
 
