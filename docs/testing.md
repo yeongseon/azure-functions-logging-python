@@ -235,6 +235,7 @@ Tests run automatically on every pull request and push to `main`. The CI matrix 
 
 | Python Version | Status |
 | -------------- | ------ |
+| 3.10 | Tested |
 | 3.11 | Tested |
 | 3.12 | Tested |
 | 3.13 | Tested |

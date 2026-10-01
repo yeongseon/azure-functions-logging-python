@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import json
 import logging
@@ -108,20 +108,20 @@ def test_bound_context_is_collected_in_extra_field() -> None:
 def test_timestamp_is_iso8601_with_timezone() -> None:
     formatter = JsonFormatter()
     record = _make_record(msg="time")
-    record.created = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC).timestamp()
+    record.created = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc).timestamp()
 
     payload = json.loads(formatter.format(record))
     parsed = datetime.fromisoformat(payload["timestamp"])
 
     assert parsed.tzinfo is not None
-    assert parsed.utcoffset() == UTC.utcoffset(parsed)
+    assert parsed.utcoffset() == timezone.utc.utcoffset(parsed)
 
 
 def test_unserializable_extra_does_not_drop_log_line() -> None:
     """Issue #77: a logging library must never drop logs because of unserializable extra."""
     formatter = JsonFormatter()
     record = _make_record(msg="payload")
-    record.when = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    record.when = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     record.amount = Decimal("1.23")
     record.request_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
