@@ -462,8 +462,9 @@ class PropagatingExecutor(Executor):
         return self._pool.map(wrapped, *iterables, timeout=timeout, chunksize=chunksize)
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
-        """Shut down the underlying executor (see :meth:`Executor.shutdown`)."""
-        self._pool.shutdown(wait=wait, cancel_futures=cancel_futures)
+        """Shut down the underlying executor when this wrapper owns it."""
+        if self._owns_pool:
+            self._pool.shutdown(wait=wait, cancel_futures=cancel_futures)
 
 
 def propagating_executor(
