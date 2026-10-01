@@ -235,6 +235,13 @@ class TestMissingContextParam:
             def handler(req: object) -> str:  # pragma: no cover - never called
                 return "ok"
 
+    def test_strict_raises_on_kwargs_only_context_handler(self) -> None:
+        with pytest.raises(ValueError, match="ineffective"):
+
+            @with_context(strict=True)
+            def handler(req: object, **kwargs: object) -> str:  # pragma: no cover
+                return "ok"
+
     def test_strict_allows_declared_context_param(self) -> None:
         @with_context(strict=True)
         def handler(req: object, context: object) -> str:
