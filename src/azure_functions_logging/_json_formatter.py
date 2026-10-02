@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import logging
+import math
 from typing import Any
 
 from ._host_instance import get_host_instance_id
@@ -76,6 +77,8 @@ def _to_json_safe(
     """
     if _depth > _MAX_RECURSION_DEPTH:
         return f"<max-depth:{_MAX_RECURSION_DEPTH}>"
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value).replace("inf", "Infinity").replace("nan", "NaN")
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (dict, list, tuple, set, frozenset)):

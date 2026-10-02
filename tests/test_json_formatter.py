@@ -134,6 +134,23 @@ def test_unserializable_extra_does_not_drop_log_line() -> None:
     assert payload["extra"]["request_id"] == "12345678-1234-5678-1234-567812345678"
 
 
+def test_non_finite_float_extras_produce_strict_json() -> None:
+    formatter = JsonFormatter()
+    record = _make_record(msg="metrics")
+    record.metrics = {"nan": float("nan"), "limits": [float("inf"), float("-inf")]}
+
+    output = formatter.format(record)
+
+    payload = json.loads(
+        output,
+        parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
+    )
+    assert payload["extra"]["metrics"] == {
+        "nan": "NaN",
+        "limits": ["Infinity", "-Infinity"],
+    }
+
+
 def test_unserializable_extra_with_dataclass_falls_back_to_str() -> None:
     @dataclass
     class Order:
