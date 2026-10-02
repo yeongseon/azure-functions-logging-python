@@ -161,6 +161,10 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             exception = _safe_format_exception(self, record.exc_info)
 
+        stack_info: str | None = None
+        if record.stack_info:
+            stack_info = self.formatStack(record.stack_info)
+
         excluded_fields = _STANDARD_RECORD_FIELDS | _CONTEXT_FIELDS
         extra = {key: value for key, value in record.__dict__.items() if key not in excluded_fields}
         extra = _to_json_safe(extra)
@@ -181,6 +185,8 @@ class JsonFormatter(logging.Formatter):
             "exception": exception,
             "extra": extra,
         }
+        if stack_info is not None:
+            payload["stack_info"] = stack_info
 
         try:
             return json.dumps(payload, ensure_ascii=False, default=_json_default)

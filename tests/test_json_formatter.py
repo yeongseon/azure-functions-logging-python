@@ -43,6 +43,7 @@ def test_basic_json_output_is_valid_and_has_expected_fields() -> None:
     assert payload["span_id"] is None
     assert payload["cold_start"] is None
     assert payload["exception"] is None
+    assert "stack_info" not in payload
     assert payload["extra"] == {}
 
 
@@ -91,6 +92,16 @@ def test_exception_info_is_formatted_in_exception_field() -> None:
     assert payload["exception"] is not None
     assert "Traceback" in payload["exception"]
     assert "ValueError: boom" in payload["exception"]
+
+
+def test_stack_info_is_formatted_in_stack_info_field() -> None:
+    formatter = JsonFormatter()
+    record = _make_record(logging.INFO, "with stack")
+    record.stack_info = "Stack (most recent call last):\n  example frame"
+
+    payload = json.loads(formatter.format(record))
+
+    assert payload["stack_info"] == "Stack (most recent call last):\n  example frame"
 
 
 def test_bound_context_is_collected_in_extra_field() -> None:
