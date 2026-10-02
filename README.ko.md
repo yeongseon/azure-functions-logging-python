@@ -454,8 +454,6 @@ with logging_context(context):
 | [azure-functions-scaffold-python](https://github.com/yeongseon/azure-functions-scaffold-python) | 프로젝트 스캐폴딩 CLI |
 | **azure-functions-logging-python** | 구조화된 logging 및 관측성 |
 | [azure-functions-doctor-python](https://github.com/yeongseon/azure-functions-doctor-python) | 사전 배포 진단 CLI |
-| [azure-functions-durable-graph-python](https://github.com/yeongseon/azure-functions-durable-graph-python) | Durable Functions 기반 manifest-first 그래프 런타임 *(experimental)* |
-| [azure-functions-knowledge-python](https://github.com/yeongseon/azure-functions-knowledge-python) | 지식 검색 (RAG) 데코레이터 |
 | [azure-functions-cookbook-python](https://github.com/yeongseon/azure-functions-cookbook-python) | 도그푸딩 예제 — 전체 toolkit을 실행하는 실행 가능한 레시피 |
 
 
