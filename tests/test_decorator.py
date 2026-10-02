@@ -15,6 +15,7 @@ Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator, Generator
 import inspect
 import logging
 from types import SimpleNamespace
@@ -150,6 +151,33 @@ class TestAsync:
         result = asyncio.run(handler("req", _MOCK_CONTEXT))
         assert result == "ok"
         # Context reset after return
+        assert invocation_id_var.get() is None
+
+
+class TestGenerators:
+    def test_sync_generator_injects_and_restores_context(self) -> None:
+        @with_context
+        def handler(context: object) -> Generator[str | None, None, None]:
+            yield invocation_id_var.get()
+
+        iterator = handler(_MOCK_CONTEXT)
+
+        assert next(iterator) == "inv-dec"
+        iterator.close()
+        assert invocation_id_var.get() is None
+
+    def test_async_generator_injects_and_restores_context(self) -> None:
+        @with_context
+        async def handler(context: object) -> AsyncGenerator[str | None, None]:
+            yield invocation_id_var.get()
+
+        async def consume() -> str | None:
+            iterator = handler(_MOCK_CONTEXT)
+            value = await anext(iterator)
+            await iterator.aclose()
+            return value
+
+        assert asyncio.run(consume()) == "inv-dec"
         assert invocation_id_var.get() is None
 
     def test_async_handler_resets_on_exception(self) -> None:
