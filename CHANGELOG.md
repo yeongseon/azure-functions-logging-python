@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.13.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.0...v0.13.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **context:** preserve context during generator iteration ([#500](https://github.com/yeongseon/azure-functions-logging-python/issues/500)) ([c26afe5](https://github.com/yeongseon/azure-functions-logging-python/commit/c26afe56d30cf1d56c869bb6bc9e8bc85f1525e4))
+* **json:** include stack_info in JsonFormatter output ([#504](https://github.com/yeongseon/azure-functions-logging-python/issues/504)) ([428f842](https://github.com/yeongseon/azure-functions-logging-python/commit/428f84258c4d63e08012e1c91ea99fedac3b0b28))
+* **json:** serialize non-finite floats as strings ([#501](https://github.com/yeongseon/azure-functions-logging-python/issues/501)) ([200afce](https://github.com/yeongseon/azure-functions-logging-python/commit/200afce9482912d2081e5fe9397175752b280f96))
+
 ## [0.13.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.12.1...v0.13.0) (2026-10-01)
 
 
