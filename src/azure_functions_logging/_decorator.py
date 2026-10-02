@@ -8,7 +8,7 @@ Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/22
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 import inspect
 import logging
 import time
@@ -289,6 +289,48 @@ def _wrap_async(
     return wrapper  # type: ignore[return-value]
 
 
+def _wrap_generator(
+    func: _F,
+    param: str,
+    activate_trace_context: bool | None,
+) -> _F:
+    context_index = _resolve_positional_index(func, param)
+
+    def wrapper(*args: Any, **kwargs: Any) -> Iterator[Any]:
+        ctx = _find_context_arg(param, context_index, args, kwargs)
+        if ctx is not None:
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                yield from func(*args, **kwargs)
+            return
+        yield from func(*args, **kwargs)
+
+    _copy_safe_metadata(wrapper, func)
+    set_logging_metadata(wrapper, func, _build_logging_payload(param))
+    return wrapper  # type: ignore[return-value]
+
+
+def _wrap_async_generator(
+    func: _F,
+    param: str,
+    activate_trace_context: bool | None,
+) -> _F:
+    context_index = _resolve_positional_index(func, param)
+
+    async def wrapper(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        ctx = _find_context_arg(param, context_index, args, kwargs)
+        if ctx is not None:
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                async for item in func(*args, **kwargs):
+                    yield item
+            return
+        async for item in func(*args, **kwargs):
+            yield item
+
+    _copy_safe_metadata(wrapper, func)
+    set_logging_metadata(wrapper, func, _build_logging_payload(param))
+    return wrapper  # type: ignore[return-value]
+
+
 @overload
 def with_context(func: _F) -> _F: ...
 
@@ -370,6 +412,10 @@ def with_context(
 
     def decorator(fn: _F) -> _F:
         _check_context_detectable(fn, param, strict)
+        if inspect.isasyncgenfunction(fn):
+            return _wrap_async_generator(fn, param, activate_trace_context)
+        if inspect.isgeneratorfunction(fn):
+            return _wrap_generator(fn, param, activate_trace_context)
         if inspect.iscoroutinefunction(fn):
             return _wrap_async(fn, param, activate_trace_context, lifecycle, lifecycle_level)
         return _wrap_sync(fn, param, activate_trace_context, lifecycle, lifecycle_level)
