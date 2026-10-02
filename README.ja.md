@@ -454,8 +454,6 @@ with logging_context(context):
 | [azure-functions-scaffold-python](https://github.com/yeongseon/azure-functions-scaffold-python) | プロジェクトスキャフォールディング CLI |
 | **azure-functions-logging-python** | 構造化ロギングとオブザーバビリティ |
 | [azure-functions-doctor-python](https://github.com/yeongseon/azure-functions-doctor-python) | デプロイ前診断 CLI |
-| [azure-functions-durable-graph-python](https://github.com/yeongseon/azure-functions-durable-graph-python) | Durable Functions ベースのマニフェストファーストグラフランタイム *(experimental)* |
-| [azure-functions-knowledge-python](https://github.com/yeongseon/azure-functions-knowledge-python) | 知識検索 (RAG) デコレータ |
 | [azure-functions-cookbook-python](https://github.com/yeongseon/azure-functions-cookbook-python) | ドッグフード例 — toolkit 全体を実行する実行可能なレシピ |
 
 
