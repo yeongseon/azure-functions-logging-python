@@ -34,6 +34,7 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "cookie",
         "set_cookie",
         "subscription_key",
+        "ocp_apim_subscription_key",
         "connection_string",
         "conn_str",
         "sas_token",
@@ -49,12 +50,12 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
 
 
 def normalize_key(key: str) -> str:
-    """Normalize a key for sensitive-key lookup: lowercase, hyphens to underscores.
+    """Normalize camelCase, snake_case, and kebab-case keys for lookup.
 
     This ensures HTTP header forms like ``X-Functions-Key`` match the
     underscore-based entries in the sensitive keys set.
     """
-    return key.lower().replace("-", "_")
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key).lower().replace("-", "_")
 
 
 def is_sensitive(key: str, sensitive_keys: frozenset[str] = SENSITIVE_KEYS) -> bool:
@@ -112,7 +113,8 @@ DEFAULT_PATTERNS: tuple[re.Pattern[str], ...] = (
     # key=value / key: value secrets — keep the key, mask the value.
     re.compile(
         r"(?P<keep>(?i:password|passwd|pwd|token|secret|api[_-]?key|"
-        r"access[_-]?key|client[_-]?secret|refresh[_-]?token|authorization)"
+        r"access[_-]?key|access[_-]?token|client[_-]?secret|connection[_-]?string|"
+        r"refresh[_-]?token|authorization)"
         r"\s*[=:]\s*)[^\s,;'\"]+"
     ),
     # Bearer / auth scheme tokens.
