@@ -79,15 +79,15 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 ## Injecting Invocation Context
 
-Pass the `context` parameter to `inject_context()` so that invocation ID and function
-name are attached to every log record automatically.
+Pass the `context` parameter to `logging_context()` so that invocation ID and function
+name are attached to every log record for the handler scope.
 
 ```python
 from __future__ import annotations
 
 import azure.functions as func
 
-from azure_functions_logging import inject_context
+from azure_functions_logging import logging_context
 
 from app.core.logging import logger
 
@@ -96,10 +96,10 @@ http_blueprint = func.Blueprint()
 
 @http_blueprint.route(route="hello", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    name = req.params.get("name", "world")
-    logger.info("hello invoked", name=name)
-    return func.HttpResponse(f"Hello, {name}!")
+    with logging_context(context):
+        name = req.params.get("name", "world")
+        logger.info("hello invoked", name=name)
+        return func.HttpResponse(f"Hello, {name}!")
 ```
 
 JSON output in Azure Monitor will include `invocation_id` and `function_name` fields.
