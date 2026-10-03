@@ -182,7 +182,7 @@ def test_read_host_telemetry_mode_oserror_on_stat(
 
 
 # --------------------------------------------------------------------------- #
-# 6a — functions_formatter ignored when OTel handler present
+# 6a — functions_formatter skipped when OTel handler present
 # --------------------------------------------------------------------------- #
 
 

@@ -336,9 +336,8 @@ def warn_otel_logging_misconfig(
 
     - **6a** — an OTel handler is present **and** ``functions_formatter`` was
       passed: the OTel handler formats and exports its own records, so the
-      formatter does not affect what OpenTelemetry emits. It still applies to
-      any non-OTel handler that coexists on the root logger, so this is a
-      heads-up rather than an absolute "formatter has no effect" claim.
+      formatter is skipped for that handler. It still applies to any non-OTel
+      handler that coexists on the root logger.
     - **6b** — an OTel handler is present but no export signal is observable
       (no telemetry env var, no generic OTLP exporter, and no Azure Monitor
       connection string): the host may not export these logs. Worded
@@ -356,9 +355,8 @@ def warn_otel_logging_misconfig(
         warnings.warn(
             (
                 "An OpenTelemetry logging handler is attached; the "
-                "'functions_formatter' passed to setup_logging() does not "
-                "affect what OpenTelemetry exports — the OpenTelemetry handler "
-                "formats and exports its records itself. It still applies to "
+                "'functions_formatter' passed to setup_logging() is skipped for "
+                "that handler so exported log bodies remain structured. It still applies to "
                 "any non-OpenTelemetry handler on the root logger."
             ),
             stacklevel=stacklevel,
