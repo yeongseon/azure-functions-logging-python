@@ -237,6 +237,31 @@ def test_setup_logging_warns_on_otel_formatter_conflict() -> None:
         root.filters.clear()
 
 
+def test_setup_logging_leaves_real_otel_handler_body_unformatted() -> None:
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import InMemoryLogExporter, SimpleLogRecordProcessor
+
+    exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = LoggingHandler(logger_provider=provider)
+    root = logging.getLogger()
+    root.handlers = [handler]
+
+    env = {"FUNCTIONS_WORKER_RUNTIME": "python", "PYTHON_ENABLE_OPENTELEMETRY": "1"}
+    try:
+        with patch.dict(os.environ, env, clear=True), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            setup_logging(functions_formatter=logging.Formatter('{"message":"%(message)s"}'))
+        logging.getLogger("afl.test.otel.body").warning("hello")
+
+        assert exporter.get_finished_logs()[0].log_record.body == "hello"
+    finally:
+        provider.shutdown()
+        root.handlers = []
+        root.filters.clear()
+
+
 def test_setup_logging_use_record_factory_installs_factory() -> None:
     """use_record_factory=True installs the global LogRecordFactory."""
     from azure_functions_logging._context import (

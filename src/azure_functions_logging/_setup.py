@@ -232,7 +232,9 @@ def setup_logging(
             for handler in root.handlers:
                 if handler in configured_handlers:
                     continue  # already configured — skip to avoid duplicates
-                if functions_formatter is not None:
+                if functions_formatter is not None and not type(handler).__module__.startswith(
+                    "opentelemetry."
+                ):
                     handler.setFormatter(functions_formatter)
                 if context_filter is not None:
                     handler.addFilter(context_filter)
