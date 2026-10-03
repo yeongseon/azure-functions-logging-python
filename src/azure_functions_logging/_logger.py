@@ -104,6 +104,7 @@ class FunctionLogger:
         level: int,
         msg: object,
         args: tuple[Any, ...],
+        /,
         exc_info: Any = None,
         stack_info: bool = False,
         stacklevel: int = 1,
@@ -125,27 +126,27 @@ class FunctionLogger:
             extra=extra,
         )
 
-    def debug(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def debug(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log a DEBUG message."""
         self._log(logging.DEBUG, msg, args, **kwargs)
 
-    def info(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def info(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log an INFO message."""
         self._log(logging.INFO, msg, args, **kwargs)
 
-    def warning(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def warning(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log a WARNING message."""
         self._log(logging.WARNING, msg, args, **kwargs)
 
-    def error(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def error(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log an ERROR message."""
         self._log(logging.ERROR, msg, args, **kwargs)
 
-    def critical(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def critical(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log a CRITICAL message."""
         self._log(logging.CRITICAL, msg, args, **kwargs)
 
-    def exception(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def exception(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log an ERROR message with exception info."""
         kwargs["exc_info"] = kwargs.get("exc_info", True)
         self._log(logging.ERROR, msg, args, **kwargs)
@@ -162,7 +163,7 @@ class FunctionLogger:
         """Return the effective level of the underlying logger."""
         return self._logger.getEffectiveLevel()
 
-    def log(self, level: int, msg: object, *args: Any, **kwargs: Any) -> None:
+    def log(self, level: int, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Log ``msg`` at the given ``level``, mirroring ``logging.Logger.log``.
 
         Honors the same ``bind`` < ``extra`` < ``kwargs`` merge precedence
@@ -175,7 +176,7 @@ class FunctionLogger:
         """Return whether the underlying logger has any handlers configured."""
         return self._logger.hasHandlers()
 
-    def warn(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def warn(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Deprecated alias for :meth:`warning` (mirrors ``logging.Logger.warn``).
 
         Implemented explicitly rather than delegated so bound context and
@@ -183,7 +184,7 @@ class FunctionLogger:
         """
         self._log(logging.WARNING, msg, args, **kwargs)
 
-    def fatal(self, msg: object, *args: Any, **kwargs: Any) -> None:
+    def fatal(self, msg: object, /, *args: Any, **kwargs: Any) -> None:
         """Alias for :meth:`critical` (mirrors ``logging.Logger.fatal``).
 
         Implemented explicitly rather than delegated so bound context and

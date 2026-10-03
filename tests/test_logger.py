@@ -108,6 +108,20 @@ def test_arbitrary_kwargs_are_merged_into_extra() -> None:
     }
 
 
+def test_wrapper_parameter_names_are_accepted_as_structured_fields() -> None:
+    underlying = _mock_underlying_logger()
+    logger = FunctionLogger(underlying)
+
+    logger.info("event", level="gold", msg="domain-message", args=("domain-arg",))
+
+    _, kwargs = underlying.log.call_args
+    assert kwargs["extra"] == {
+        "level": "gold",
+        "extra_msg": "domain-message",
+        "extra_args": ("domain-arg",),
+    }
+
+
 def test_is_enabled_for_get_effective_level_and_set_level() -> None:
     underlying = _mock_underlying_logger()
     logger = FunctionLogger(underlying)
