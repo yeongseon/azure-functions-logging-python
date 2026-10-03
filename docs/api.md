@@ -264,7 +264,7 @@ handler.addFilter(AttributeFlattenFilter())
 
 ```python
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging(format="json")
 logger = get_logger(__name__)
@@ -274,15 +274,15 @@ app = func.FunctionApp()
 
 @app.route(route="status")
 def status(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    logger.info("status request")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        logger.info("status request")
+        return func.HttpResponse("ok")
 ```
 
 ### Example: Safe with Partial Context Object
 
 ```python
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 class PartialContext:
     invocation_id = "local-123"
@@ -291,8 +291,8 @@ class PartialContext:
 setup_logging(format="json")
 logger = get_logger("partial")
 
-inject_context(PartialContext())
-logger.info("partial context accepted")
+with logging_context(PartialContext()):
+    logger.info("partial context accepted")
 ```
 
 ## with_context

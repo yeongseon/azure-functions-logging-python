@@ -147,14 +147,14 @@ Use this baseline:
 
 ```python
 import logging
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging(level=logging.INFO, format="json")
 logger = get_logger(__name__)
 
 def handler(context) -> None:
-    inject_context(context)
-    logger.info("invocation started")
+    with logging_context(context):
+        logger.info("invocation started")
 ```
 
 Then tune host-level settings and ingestion rules.
