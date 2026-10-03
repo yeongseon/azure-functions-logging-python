@@ -199,9 +199,9 @@ class MockContext:
         trace_parent = "00-abcdef1234567890abcdef1234567890-1234567890abcdef-01"
 
 def test_inject_context_sets_fields():
-    inject_context(MockContext())
-    logger = get_logger(__name__)
-    # Verify context fields appear in output
+    with logging_context(MockContext()):
+        logger = get_logger(__name__)
+        # Verify context fields appear in output
 ```
 
 ### Testing Formatters

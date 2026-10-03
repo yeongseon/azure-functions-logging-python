@@ -106,7 +106,7 @@ def payments(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 If your object does not contain expected attributes, fields are set to `None` and execution continues.
 
 ```python
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 class DummyContext:
     invocation_id = "local-1"
@@ -116,8 +116,8 @@ class DummyContext:
 setup_logging(format="json")
 logger = get_logger("local")
 
-inject_context(DummyContext())
-logger.info("local simulation")
+with logging_context(DummyContext()):
+    logger.info("local simulation")
 ```
 
 ## Recommended Request Flow

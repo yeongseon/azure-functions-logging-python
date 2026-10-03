@@ -100,12 +100,12 @@ This warning is informational but usually points to real missing telemetry.
 
 ### Resolution
 
-Call `inject_context(context)` first in every handler:
+Scope every handler with `logging_context(context)`:
 
 ```python
 def main(req, context):
-    inject_context(context)
-    logger.info("invocation started")
+    with logging_context(context):
+        logger.info("invocation started")
 ```
 
 To observe cold start locally:
