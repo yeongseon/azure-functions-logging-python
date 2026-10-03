@@ -180,6 +180,18 @@ class TestGenerators:
         assert asyncio.run(consume()) == "inv-dec"
         assert invocation_id_var.get() is None
 
+    def test_async_generator_closes_from_another_task(self) -> None:
+        @with_context
+        async def handler(context: object) -> AsyncGenerator[str | None, None]:
+            yield invocation_id_var.get()
+
+        async def consume() -> None:
+            iterator = handler(_MOCK_CONTEXT)
+            assert await asyncio.create_task(anext(iterator)) == "inv-dec"
+            await asyncio.create_task(iterator.aclose())
+
+        asyncio.run(consume())
+
     def test_async_handler_resets_on_exception(self) -> None:
         @with_context
         async def handler(req: object, context: object) -> str:

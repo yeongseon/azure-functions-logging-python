@@ -319,10 +319,18 @@ def _wrap_async_generator(
     async def wrapper(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
         ctx = _find_context_arg(param, context_index, args, kwargs)
         if ctx is not None:
-            with logging_context(ctx, activate_trace_context=activate_trace_context):
-                async for item in func(*args, **kwargs):
+            iterator = func(*args, **kwargs)
+            try:
+                while True:
+                    try:
+                        with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            item = await anext(iterator)
+                    except StopAsyncIteration:
+                        return
                     yield item
-            return
+            finally:
+                with logging_context(ctx, activate_trace_context=activate_trace_context):
+                    await iterator.aclose()
         async for item in func(*args, **kwargs):
             yield item
 
