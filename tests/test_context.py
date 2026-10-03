@@ -475,6 +475,34 @@ def test_install_context_factory_injects_extra_context_vars() -> None:
         tenant_var.reset(token)
 
 
+def test_install_context_factory_explicit_extra_overrides_custom_context() -> None:
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    tenant_var = contextvars.ContextVar("tenant", default="bound")
+    captured: list[logging.LogRecord] = []
+
+    class CapturingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    logger = logging.getLogger("test.factory.custom-collision")
+    handler = CapturingHandler()
+    logger.handlers = [handler]
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+    try:
+        _install_context_factory({"tenant": tenant_var})
+
+        logger.info("event", extra={"tenant": "explicit"})
+
+        assert captured[0].tenant == "explicit"  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        logger.handlers.clear()
+        logger.propagate = True
+
+
 def test_install_context_factory_extra_collision_raises_value_error() -> None:
     """extra_context_vars colliding with a built-in field raises ValueError and
     installs no factory (#380)."""

@@ -17,6 +17,16 @@ from ._host_instance import get_host_instance_id
 # Type alias for the token mapping returned by inject_context()
 ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
 
+
+class _ContextRecordDict(dict[str, Any]):
+    def __init__(self, values: dict[str, Any], overridable: frozenset[str]) -> None:
+        super().__init__(values)
+        self._overridable = overridable
+
+    def __contains__(self, key: object) -> bool:
+        return key not in self._overridable and super().__contains__(key)
+
+
 # Context variables for invocation context
 invocation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "invocation_id", default=None
@@ -653,6 +663,8 @@ def _install_context_factory(
         record.host_instance_id = get_host_instance_id()
         for field_name, var in extra.items():
             setattr(record, field_name, var.get())
+        if extra:
+            record.__dict__ = _ContextRecordDict(record.__dict__, frozenset(extra))
         return record
 
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)
