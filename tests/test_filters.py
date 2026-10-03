@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 import time
 
 import pytest
@@ -835,6 +836,25 @@ def test_redaction_filter_normalizes_ocp_apim_subscription_key() -> None:
     assert getattr(record, "Ocp-Apim-Subscription-Key") == "***"
 
 
+@pytest.mark.parametrize("key", ["accessToken", "clientSecret", "connectionString"])
+def test_redaction_filter_normalizes_camel_case_sensitive_keys(key: str) -> None:
+    record = _make_record()
+    setattr(record, key, "secret-value")
+
+    RedactionFilter().filter(record)
+
+    assert getattr(record, key) == "***"
+
+
+def test_redaction_filter_masks_apim_subscription_header_by_default() -> None:
+    record = _make_record()
+    setattr(record, "headers", {"Ocp-Apim-Subscription-Key": "secret-value"})
+
+    RedactionFilter().filter(record)
+
+    assert getattr(record, "headers")["Ocp-Apim-Subscription-Key"] == "***"
+
+
 def test_redaction_filter_hyphenated_key_in_nested_dict() -> None:
     """Hyphenated keys inside nested dicts are also normalized."""
     flt = RedactionFilter()
@@ -1366,6 +1386,32 @@ def test_redaction_filter_without_patterns_leaves_message_unchanged() -> None:
     flt.filter(record)
 
     assert record.getMessage() == "connecting with token=ghp_abcdef0123456789ABCDEF"
+
+
+def test_redaction_filter_masks_sensitive_keys_in_json_message_by_default() -> None:
+    record = _make_record(
+        msg='{"accessToken":"access-value","nested":{"clientSecret":"client-value"}}'
+    )
+
+    RedactionFilter().filter(record)
+
+    assert record.getMessage() == '{"accessToken":"***","nested":{"clientSecret":"***"}}'
+
+
+def test_redaction_filter_masks_sensitive_value_in_exception_traceback_by_default() -> None:
+    try:
+        raise RuntimeError("connectionString=secret-value")
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    record = _make_record(msg="failed")
+    record.exc_info = exc_info
+
+    RedactionFilter().filter(record)
+
+    rendered = logging.Formatter().format(record)
+    assert "secret-value" not in rendered
+    assert "connectionString=***" in rendered
 
 
 def test_redaction_filter_accepts_regex_string_patterns() -> None:

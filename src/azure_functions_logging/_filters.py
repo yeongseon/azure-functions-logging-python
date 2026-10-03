@@ -10,13 +10,16 @@ Provides:
 from __future__ import annotations
 
 from collections.abc import Iterable
+import json
 import logging
 import re
 import threading
 import time
+import traceback
 from typing import Any
 
 from ._constants import _RESERVED_LOG_RECORD_KEYS
+from ._redaction import DEFAULT_PATTERNS as _DEFAULT_PATTERNS
 from ._redaction import MASK as _MASK
 from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
 from ._redaction import is_sensitive as _is_sensitive
@@ -322,8 +325,8 @@ class RedactionFilter(logging.Filter):
                         setattr(record, key, _mask_patterns(value, self._patterns))
                 except Exception:  # nosec B110 — one broken field must not stop others
                     pass
-            if self._patterns:
-                self._mask_message(record)
+            self._mask_message(record)
+            self._mask_exception(record)
         except Exception:  # nosec B110 — filter must never raise
             pass
         return True
@@ -337,11 +340,32 @@ class RedactionFilter(logging.Filter):
         """
         try:
             rendered = record.getMessage()
-            masked = _mask_patterns(rendered, self._patterns)
+            masked = rendered
+            try:
+                parsed = json.loads(rendered)
+                if isinstance(parsed, (dict, list)):
+                    masked = json.dumps(
+                        _redact_value(parsed, self._sensitive_keys), separators=(",", ":")
+                    )
+            except (json.JSONDecodeError, TypeError):
+                pass
+            if self._patterns:
+                masked = _mask_patterns(masked, self._patterns)
             if masked != rendered:
                 record.msg = masked
                 record.args = ()
         except Exception:  # nosec B110 — message masking must never raise
+            pass
+
+    def _mask_exception(self, record: logging.LogRecord) -> None:
+        """Render and mask exception text before a formatter can expose it."""
+        if record.exc_info is None:
+            return
+        try:
+            rendered = "".join(traceback.format_exception(*record.exc_info))
+            record.exc_text = _mask_patterns(rendered, _DEFAULT_PATTERNS)
+            record.exc_info = None
+        except Exception:  # nosec B110 — exception masking must never raise
             pass
 
 
