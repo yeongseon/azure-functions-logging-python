@@ -1,6 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.13.2](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.1...v0.13.2) (2026-10-03)
+
+
+### Bug Fixes
+
+* **context:** avoid KeyError when extra keys collide with context vars ([#517](https://github.com/yeongseon/azure-functions-logging-python/issues/517)) ([12ba17e](https://github.com/yeongseon/azure-functions-logging-python/commit/12ba17e72a48d3352d2050470a2471695ae136c0))
+* **decorator:** restore context safely when a generator closes in another task ([#518](https://github.com/yeongseon/azure-functions-logging-python/issues/518)) ([346cf44](https://github.com/yeongseon/azure-functions-logging-python/commit/346cf44d096f7d1e0f5f578938d4ceea6ea34505))
+* **logger:** accept level, msg and args as extra keys ([#516](https://github.com/yeongseon/azure-functions-logging-python/issues/516)) ([47deb60](https://github.com/yeongseon/azure-functions-logging-python/commit/47deb60c3d9a6509d926a696bab8ad859f100651))
+* **redaction:** cover camelCase secret keys, APIM keys and exception text ([#513](https://github.com/yeongseon/azure-functions-logging-python/issues/513)) ([b19c284](https://github.com/yeongseon/azure-functions-logging-python/commit/b19c284613fb2a26f9681cc6000bd47c42ced87e))
+* **setup:** leave OpenTelemetry handlers unformatted ([#515](https://github.com/yeongseon/azure-functions-logging-python/issues/515)) ([25a70d5](https://github.com/yeongseon/azure-functions-logging-python/commit/25a70d5dcd295962f666a15b08b5d4ba6ead326e))
+
 ## [0.13.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.0...v0.13.1) (2026-10-02)
 
 
