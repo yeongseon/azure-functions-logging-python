@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.13.3](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.2...v0.13.3) (2026-10-04)
+
+
+### Bug Fixes
+
+* **decorator:** resolve postponed annotations against the handler module ([#521](https://github.com/yeongseon/azure-functions-logging-python/issues/521)) ([535a377](https://github.com/yeongseon/azure-functions-logging-python/commit/535a3771ad8161bd7a621d4a0db0c04f1a580024))
+
 ## [0.13.2](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.1...v0.13.2) (2026-10-03)
 
 
