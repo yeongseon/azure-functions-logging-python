@@ -30,6 +30,7 @@ Issues = "https://github.com/yeongseon/azure-functions-logging-python/issues"
 
 [project.optional-dependencies]
 dev = [
+    "azure-functions",
     "bandit==1.9.4",
     "bandit[toml]",
     "build",

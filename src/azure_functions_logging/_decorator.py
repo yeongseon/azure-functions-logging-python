@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Callable, Iterator
 import inspect
 import logging
 import time
-from typing import Any, TypeVar, overload
+from typing import Any, TypeVar, get_type_hints, overload
 import warnings
 
 from ._context import logging_context
@@ -44,7 +44,11 @@ def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -
         wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
     except (TypeError, ValueError):  # pragma: no cover
         pass
-    wrapper.__annotations__ = dict(getattr(func, "__annotations__", {}) or {})
+    try:
+        annotations = get_type_hints(func, include_extras=True)
+    except (NameError, TypeError):
+        annotations = dict(getattr(func, "__annotations__", {}) or {})
+    wrapper.__annotations__ = annotations
 
 
 def _build_logging_payload(param: str) -> LoggingMetadata:
