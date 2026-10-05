@@ -9,7 +9,6 @@ import tomllib
 from zipfile import ZipFile
 
 from packaging.specifiers import SpecifierSet
-from packaging.version import Version
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -55,10 +54,22 @@ def test_requires_python_declares_supported_range() -> None:
     # When the declared Python range is parsed semantically
     declared = SpecifierSet(project["requires-python"])
 
-    # Then only the supported minor versions are accepted
-    for minor in range(10, 16):
-        version = Version(f"3.{minor}")
-        assert (version in declared) is (version in SUPPORTED_PYTHON)
+    # Then the complete normalized range is exactly the supported range
+    assert declared == SUPPORTED_PYTHON
+
+
+@pytest.mark.parametrize(
+    "mutant",
+    [">=3.11,<3.14.1", ">=3.11,<3.15,!=3.12.5"],
+    ids=["narrow-upper-bound", "excluded-patch"],
+)
+def test_supported_range_rejects_semantically_different_mutants(mutant: str) -> None:
+    # Given a range that agrees at each supported minor's .0 release
+    mutated = SpecifierSet(mutant)
+
+    # When the complete normalized range is compared
+    # Then hidden boundary and interior exclusions are rejected
+    assert mutated != SUPPORTED_PYTHON
 
 
 def test_classifiers_match_supported_python_minors() -> None:
@@ -89,7 +100,5 @@ def test_built_artifact_requires_python_matches_supported_range(
     # When its Python requirement is parsed semantically
     declared = SpecifierSet(metadata["Requires-Python"])
 
-    # Then only the supported minor versions are accepted
-    for minor in range(10, 16):
-        version = Version(f"3.{minor}")
-        assert (version in declared) is (version in SUPPORTED_PYTHON)
+    # Then the complete normalized range is exactly the supported range
+    assert declared == SUPPORTED_PYTHON
