@@ -128,12 +128,12 @@ Development dependencies (not installed at runtime):
 
 ## Python Version Policy
 
-`azure-functions-logging` requires Python >= 3.10. This ensures:
+`azure-functions-logging` requires Python >= 3.11. This ensures:
 
 - Active CPython support with security patches
 - `contextvars` support for async-safe context propagation
 - Type annotation features (`str | None` union syntax)
-- Match statement support (Python 3.10+)
+- Modern standard-library and typing support (Python 3.11+)
 
 Older Python versions are not supported and may contain known vulnerabilities.
 
