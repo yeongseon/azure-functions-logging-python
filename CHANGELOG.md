@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.13.4](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.3...v0.13.4) (2026-10-05)
+
+
+### Bug Fixes
+
+* **decorator:** keep concrete Context annotations for None-defaulted parameters ([#531](https://github.com/yeongseon/azure-functions-logging-python/issues/531)) ([c890c6b](https://github.com/yeongseon/azure-functions-logging-python/commit/c890c6b38679218fd4fafe552ebc17d04b6aebc8))
+* **deps:** align azure-functions floor at 1.21.0 ([#528](https://github.com/yeongseon/azure-functions-logging-python/issues/528)) ([2133818](https://github.com/yeongseon/azure-functions-logging-python/commit/213381803f5f8dce62724afa3a2a41649562f084))
+
 ## [0.13.3](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.2...v0.13.3) (2026-10-04)
 
 
