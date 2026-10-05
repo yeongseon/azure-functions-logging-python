@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import json
 import logging
 import math
@@ -213,7 +213,7 @@ def _safe_get_message(record: logging.LogRecord) -> str:
 def _safe_timestamp(record: logging.LogRecord) -> str:
     """Format the record timestamp without ever raising."""
     try:
-        return datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(record.created, tz=UTC).isoformat()
     except Exception:
         return "1970-01-01T00:00:00+00:00"
 
