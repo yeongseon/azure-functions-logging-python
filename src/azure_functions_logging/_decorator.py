@@ -12,7 +12,8 @@ from collections.abc import AsyncIterator, Callable, Iterator
 import inspect
 import logging
 import time
-from typing import Any, TypeVar, get_type_hints, overload
+from types import FunctionType
+from typing import Any, TypeVar, overload
 import warnings
 
 from ._context import logging_context
@@ -44,10 +45,27 @@ def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -
         wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
     except (TypeError, ValueError):  # pragma: no cover
         pass
+    raw_annotations = dict(getattr(func, "__annotations__", {}) or {})
     try:
-        annotations = get_type_hints(func, include_extras=True)
-    except (NameError, TypeError):
-        annotations = dict(getattr(func, "__annotations__", {}) or {})
+        annotations = inspect.get_annotations(func, eval_str=True)
+    except (NameError, TypeError, ValueError):
+        annotations = {}
+        for name, annotation in raw_annotations.items():
+            if not isinstance(annotation, str):
+                annotations[name] = annotation
+                continue
+            try:
+                annotation_source = FunctionType(
+                    func.__code__,
+                    func.__globals__,
+                    func.__name__,
+                    func.__defaults__,
+                    func.__closure__,
+                )
+                annotation_source.__annotations__ = {name: annotation}
+                annotations[name] = inspect.get_annotations(annotation_source, eval_str=True)[name]
+            except (AttributeError, KeyError, NameError, SyntaxError, TypeError, ValueError):
+                annotations[name] = annotation
     wrapper.__annotations__ = annotations
 
 
