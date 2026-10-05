@@ -11,14 +11,14 @@ permissions:
 
 jobs:
   # Lint, type-check and security run once on a single pinned interpreter
-  # (Python 3.10, matching the ruff/mypy target-version in pyproject). These
+  # (Python 3.11, matching the ruff/mypy target-version in pyproject). These
   # checks are interpreter-agnostic, so fanning them across the matrix would
   # only duplicate work. Installed with a plain `pip install -e '.[dev]'` so the
   # checks run on the interpreter this job provisions (NOT through the
-  # Python-3.10-pinned hatch env, which is what silently forced the whole test
-  # matrix onto 3.10 before this fix).
+  # Python-pinned Hatch env, which previously silently forced the whole test
+  # matrix onto its default interpreter).
   quality:
-    name: Lint, type-check & security (Py 3.10)
+    name: Lint, type-check & security (Py 3.11)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -28,10 +28,10 @@ jobs:
           # which a shallow clone does not contain.
           fetch-depth: 0
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install package with dev extras
         run: |
@@ -77,7 +77,7 @@ jobs:
         # the full test suite is honestly installable and runnable on every
         # supported interpreter. Python 3.14 is stable and required in this
         # matrix (not allow-fail).
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout code
@@ -90,7 +90,7 @@ jobs:
 
       - name: Assert the runtime interpreter matches the matrix cell
         # Tests must run on the interpreter this cell claims to exercise. Before
-        # this fix the whole matrix ran through the Python-3.10-pinned hatch env,
+        # this fix the whole matrix ran through the default pinned Hatch env,
         # so 3.11-3.14 were never actually tested. This guard fails loudly if the
         # running interpreter ever drifts from matrix.python-version again.
         env:
@@ -111,12 +111,12 @@ jobs:
 
       - name: Run tests on the matrix interpreter
         # Raw pytest on the interpreter provisioned above (NOT through the
-        # Python-3.10-pinned hatch env). The repo pytest config enables --cov
-        # with fail_under=95; enforce that gate on the canonical 3.10 cell and
+        # default pinned Hatch env). The repo pytest config enables --cov
+        # with fail_under=95; enforce that gate on the canonical 3.11 cell and
         # run the other cells with --no-cov so a version-variant cell cannot
         # fail the build on a spurious coverage dip.
         env:
-          IS_COVERAGE_CELL: ${{ matrix.python-version == '3.10' }}
+          IS_COVERAGE_CELL: ${{ matrix.python-version == '3.11' }}
         run: |
           if [ "$IS_COVERAGE_CELL" = "true" ]; then
             pytest tests/
@@ -125,11 +125,11 @@ jobs:
           fi
 
       - name: Verify coverage output
-        if: matrix.python-version == '3.10'
+        if: matrix.python-version == '3.11'
         run: ls -lh coverage.xml
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.10' && github.actor != 'dependabot[bot]'
+        if: matrix.python-version == '3.11' && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -139,18 +139,154 @@ jobs:
         env:
           CODECOV_RETRIES: 3
 
-  host-smoke:
-    name: Real Functions host smoke (Py 3.10)
+  minimum-dependencies:
+    name: Minimum dependencies (Py 3.11)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install minimum runtime and pinned development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "azure-functions==1.21.0"
+          pip install -e ".[dev]"
+
+      - name: Report and assert resolved runtime dependencies
+        run: |
+          pip show azure-functions azure-functions-logging
+          python - <<'PY'
+          from importlib.metadata import version
+
+          resolved = version("azure-functions")
+          print(f"resolved azure-functions={resolved}")
+          assert resolved == "1.21.0"
+          PY
+
+      - name: Run full suite against minimum runtime dependencies
+        run: pytest tests/ --no-cov
+
+  artifact-build:
+    name: Build compatibility artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Upload compatibility artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: compatibility-dist
+          path: dist/
+          if-no-files-found: error
+
+  artifact-python310-negative:
+    name: Wheel install rejection (Py 3.10, negative test)
+    needs: artifact-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python 3.10 for negative install test
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.10"
+
+      - name: Download built artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: compatibility-dist
+          path: compatibility-dist
+
+      - name: Require wheel rejection by Requires-Python
+        run: |
+          wheel=$(find compatibility-dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$wheel"
+          if output=$(python -m pip install --no-deps "$wheel" 2>&1); then
+            echo "::error ::Python 3.10 unexpectedly installed the candidate wheel"
+            exit 1
+          fi
+          printf '%s\n' "$output"
+          grep -F "requires a different Python" <<<"$output"
+          grep -F "3.10" <<<"$output"
+          grep -F ">=3.11" <<<"$output"
+
+  artifact-python311:
+    name: Wheel install and smoke (Py 3.11)
+    needs: artifact-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Download built artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: compatibility-dist
+          path: compatibility-dist
+
+      - name: Install wheel with runtime dependencies
+        run: |
+          wheel=$(find compatibility-dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$wheel"
+          python -m pip install "$wheel"
+
+      - name: Check installed wheel outside the checkout
+        working-directory: /tmp
+        env:
+          CHECKOUT: ${{ github.workspace }}
+        run: |
+          python -m pip check
+          python - <<'PY'
+          import logging
+          import os
+          from pathlib import Path
+
+          import azure_functions_logging
+          from azure_functions_logging import JsonFormatter, get_logger
+
+          module_path = Path(azure_functions_logging.__file__).resolve()
+          checkout = Path(os.environ["CHECKOUT"]).resolve()
+          print(f"imported module: {module_path}")
+          assert not module_path.is_relative_to(checkout)
+          assert get_logger("artifact-smoke").name == "artifact-smoke"
+          record = logging.LogRecord(
+              "artifact-smoke", logging.INFO, __file__, 1, "installed wheel smoke", (), None
+          )
+          assert "installed wheel smoke" in JsonFormatter().format(record)
+          PY
+
+  host-smoke:
+    name: Real Functions host smoke (Py ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Functions Core Tools v4 and Azurite
         run: |
@@ -193,7 +329,14 @@ jobs:
   # reports, and it reads every dependency's result, so a skipped or cancelled
   # job cannot pass by not being a failure.
   ci-required:
-    needs: [quality, test, host-smoke]
+    needs:
+      - quality
+      - test
+      - minimum-dependencies
+      - artifact-build
+      - artifact-python310-negative
+      - artifact-python311
+      - host-smoke
     if: always()
     runs-on: ubuntu-latest
     steps:

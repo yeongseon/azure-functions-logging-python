@@ -1,6 +1,6 @@
 # Installation
 
-Installing `azure-functions-logging` requires Python 3.10 or higher. The package has no external runtime dependencies.
+Installing `azure-functions-logging` requires Python 3.11 or higher. The package has no external runtime dependencies.
 
 ## Using pip
 
@@ -54,7 +54,7 @@ This installs the package in editable mode along with development tools (pytest,
 
 ## Prerequisites
 
-- **Python**: >= 3.10 (tested on 3.10, 3.11, 3.12, 3.13, 3.14)
+- **Python**: >= 3.11 (tested on 3.11, 3.12, 3.13, 3.14)
 - **External Dependencies**: None. This package uses only the Python standard library at runtime.
 - **Build System**: [Hatch](https://hatch.pypa.io/) (for development and publishing)
 
