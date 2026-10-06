@@ -55,7 +55,7 @@ Both read the same bound context and produce the same `invocation_id` on the rec
 
 ## 4. Why background threads lose the id
 
-`contextvars` are bound to the running thread. Python does **not** automatically copy the current context into a new `threading.Thread` or a `ThreadPoolExecutor` worker — see the [CPython `contextvars` documentation](https://docs.python.org/3.12/library/contextvars.html). So a record emitted from a thread you spawned inside the handler will have **no** `invocation_id`, even though the parent invocation had one.
+`contextvars` are bound to the running thread. Python does **not** automatically copy the current context into a new `threading.Thread` or a `ThreadPoolExecutor` worker — see the [CPython `contextvars` documentation](https://docs.python.org/3.12/library/contextvars.html). So a record created in a thread you spawned inside the handler has **no** `invocation_id`, even though the parent invocation had one. On an Azure Functions host, the Python worker may also drop that out-of-invocation record instead of forwarding it to the host log; absence from the host log alone therefore does not prove which fields the record carried.
 
 The fix is explicit propagation:
 
