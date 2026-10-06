@@ -16,23 +16,26 @@ def _load_assertion() -> ModuleType:
     return module
 
 
-def _host_log(invocation_id: str) -> str:
+def _host_log(invocation_id: str, propagated_id: str | None = None) -> str:
     records = (
         {"invocation_id": invocation_id, "extra": {"marker": "corr-main-1"}},
         {"invocation_id": invocation_id, "extra": {"marker": "corr-main-2"}},
+        {
+            "invocation_id": propagated_id or invocation_id,
+            "extra": {"marker": "corr-thread-propagated"},
+        },
     )
     return "\n".join(json.dumps(record) for record in records)
 
 
-def _response(invocation_id: str, propagated_id: str | None = None) -> str:
+def _response(invocation_id: str | None = None) -> str:
     return json.dumps(
         {
             "thread_records": [
-                {"invocation_id": None, "extra": {"marker": "corr-thread-unpropagated"}},
                 {
-                    "invocation_id": propagated_id or invocation_id,
-                    "extra": {"marker": "corr-thread-propagated"},
-                },
+                    "invocation_id": invocation_id,
+                    "extra": {"marker": "corr-thread-unpropagated"},
+                }
             ]
         }
     )
@@ -44,7 +47,7 @@ def test_check_accepts_unpropagated_and_propagated_thread_controls() -> None:
     invocation_id = "03550af5-127c-4b41-a9a5-c3a0a990c518"
 
     # When
-    failures = assertion.check(_host_log(invocation_id), _response(invocation_id))
+    failures = assertion.check(_host_log(invocation_id), _response())
 
     # Then
     assert failures == []
@@ -54,11 +57,8 @@ def test_check_rejects_unpropagated_thread_with_invocation_id() -> None:
     # Given
     assertion = _load_assertion()
     invocation_id = "03550af5-127c-4b41-a9a5-c3a0a990c518"
-    response = json.loads(_response(invocation_id))
-    response["thread_records"][0]["invocation_id"] = invocation_id
-
     # When
-    failures = assertion.check(_host_log(invocation_id), json.dumps(response))
+    failures = assertion.check(_host_log(invocation_id), _response(invocation_id))
 
     # Then
     assert failures == [
@@ -74,10 +74,8 @@ def test_check_rejects_propagated_thread_with_different_invocation_id() -> None:
     invocation_id = "03550af5-127c-4b41-a9a5-c3a0a990c518"
 
     # When
-    failures = assertion.check(
-        _host_log(invocation_id),
-        _response(invocation_id, "b80e6edc-d175-4bc3-a5ef-e24d05a24e08"),
-    )
+    host_log = _host_log(invocation_id, "b80e6edc-d175-4bc3-a5ef-e24d05a24e08")
+    failures = assertion.check(host_log, _response())
 
     # Then
     assert failures == [
@@ -85,3 +83,16 @@ def test_check_rejects_propagated_thread_with_different_invocation_id() -> None:
         "'b80e6edc-d175-4bc3-a5ef-e24d05a24e08' != "
         "'03550af5-127c-4b41-a9a5-c3a0a990c518'"
     ]
+
+
+def test_check_rejects_missing_propagated_host_record() -> None:
+    # Given
+    assertion = _load_assertion()
+    invocation_id = "03550af5-127c-4b41-a9a5-c3a0a990c518"
+    host_log = "\n".join(_host_log(invocation_id).splitlines()[:2])
+
+    # When
+    failures = assertion.check(host_log, _response())
+
+    # Then
+    assert failures == ["no record found with marker 'corr-thread-propagated'"]

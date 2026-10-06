@@ -116,7 +116,7 @@ def check(host_text: str, response_text: str) -> list[str]:
     main_1 = _find(records, MAIN_1)
     main_2 = _find(records, MAIN_2)
     thread = _find(response_records, THREAD)
-    propagated_thread = _find(response_records, PROPAGATED_THREAD)
+    propagated_thread = _find(records, PROPAGATED_THREAD)
 
     if main_1 is None:
         failures.append(f"no record found with marker '{MAIN_1}'")
