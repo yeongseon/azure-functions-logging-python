@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.14.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.4...v0.14.0) (2026-10-06)
+
+
+### Features
+
+* **python:** require Python 3.11 or newer ([a0efd9a](https://github.com/yeongseon/azure-functions-logging-python/commit/a0efd9a061c31ac8889de99deb2ebccab23611bd))
+
 ## [0.13.4](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.3...v0.13.4) (2026-10-05)
 
 
