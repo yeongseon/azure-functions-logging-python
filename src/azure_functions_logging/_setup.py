@@ -27,7 +27,7 @@ _configured_lock = threading.Lock()
 # when the host replaces a handler — preventing both false 'already configured'
 # hits from id reuse and unbounded set growth in long-lived workers.
 _AzureStateKey = tuple[str | None, bool]
-_AzureStateValue = tuple[ContextFilter | None, "weakref.WeakSet[logging.Handler]"]
+_AzureStateValue = tuple[ContextFilter | None, weakref.WeakSet[logging.Handler]]
 _azure_state: dict[_AzureStateKey, _AzureStateValue] = {}
 
 
