@@ -80,5 +80,5 @@ def read_logging_metadata(func: Any) -> LoggingMetadata | None:
     if isinstance(md, dict):
         entry = md.get(NAMESPACE)
         if isinstance(entry, dict):
-            return cast("LoggingMetadata", entry)
+            return cast(LoggingMetadata, entry)
     return None
