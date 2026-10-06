@@ -15,6 +15,7 @@ Exposes these endpoints:
 from __future__ import annotations
 
 import importlib.metadata
+import io
 import json
 import logging
 import threading
@@ -25,7 +26,7 @@ import azure_functions_logging as afl
 
 # AFTER setup: installs JsonFormatter on host handlers and enables
 # invocation_id / function_name / cold_start injection.
-afl.setup_logging(functions_formatter=afl.JsonFormatter())
+afl.setup_logging(functions_formatter=afl.JsonFormatter(), use_record_factory=True)
 
 app = func.FunctionApp()
 
@@ -145,8 +146,8 @@ def logme(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 #
 #   1. invocation_id on a bound record parses as a UUID (§1–§2).
 #   2. Two records from the same invocation share one invocation_id (§2).
-#   3. A background thread WITHOUT propagate_context loses the invocation_id
-#      (§4, negative control) — proving the contextvars boundary is real.
+#   3. A background thread WITHOUT propagate_context loses the invocation_id,
+#      while one WITH propagation keeps it (§4, negative and positive controls).
 #
 # Every record carries a stable "marker" extra field so the assertion script can
 # locate the exact lines regardless of ordering or interleaving.
@@ -163,17 +164,45 @@ def correlation(req: func.HttpRequest, context: func.Context) -> func.HttpRespon
         logger.info("afl correlation certify", extra={"marker": "corr-main-1"})
         logger.info("afl correlation certify", extra={"marker": "corr-main-2"})
 
-        # (3) negative control: a background thread with NO propagate_context.
-        # Its record must NOT carry the invocation_id.
-        def _unpropagated() -> None:
-            logger.warning("afl correlation certify", extra={"marker": "corr-thread-unpropagated"})
+        stream = io.StringIO()
+        observer = logging.Logger("correlation-thread-observer", level=logging.INFO)
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(afl.JsonFormatter())
+        observer.addHandler(handler)
 
-        thread = threading.Thread(target=_unpropagated)
-        thread.start()
-        thread.join()
+        def _emit_observer_record() -> None:
+            observer.info(
+                "afl correlation certify",
+                extra={"marker": "corr-thread-unpropagated"},
+            )
+
+        def _emit_host_record() -> None:
+            logger.info(
+                "afl correlation certify",
+                extra={"marker": "corr-thread-propagated"},
+            )
+
+        unpropagated = threading.Thread(
+            target=_emit_observer_record,
+        )
+        propagated = threading.Thread(
+            target=afl.propagate_context(_emit_host_record, context=context),
+        )
+        unpropagated.start()
+        propagated.start()
+        unpropagated.join()
+        propagated.join()
+
+        thread_records = [json.loads(line) for line in stream.getvalue().splitlines()]
 
         return func.HttpResponse(
-            json.dumps({"endpoint": "correlation", "invocation_id": context.invocation_id}),
+            json.dumps(
+                {
+                    "endpoint": "correlation",
+                    "invocation_id": context.invocation_id,
+                    "thread_records": thread_records,
+                }
+            ),
             mimetype="application/json",
         )
     finally:
