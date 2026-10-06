@@ -23,11 +23,10 @@ import threading
 import azure.functions as func
 
 import azure_functions_logging as afl
-from azure_functions_logging._context import ContextFilter
 
 # AFTER setup: installs JsonFormatter on host handlers and enables
 # invocation_id / function_name / cold_start injection.
-afl.setup_logging(functions_formatter=afl.JsonFormatter())
+afl.setup_logging(functions_formatter=afl.JsonFormatter(), use_record_factory=True)
 
 app = func.FunctionApp()
 
@@ -168,20 +167,26 @@ def correlation(req: func.HttpRequest, context: func.Context) -> func.HttpRespon
         stream = io.StringIO()
         observer = logging.Logger("correlation-thread-observer", level=logging.INFO)
         handler = logging.StreamHandler(stream)
-        handler.addFilter(ContextFilter())
         handler.setFormatter(afl.JsonFormatter())
         observer.addHandler(handler)
 
-        def _emit_thread_record(marker: str) -> None:
-            observer.info("afl correlation certify", extra={"marker": marker})
+        def _emit_observer_record() -> None:
+            observer.info(
+                "afl correlation certify",
+                extra={"marker": "corr-thread-unpropagated"},
+            )
+
+        def _emit_host_record() -> None:
+            logger.info(
+                "afl correlation certify",
+                extra={"marker": "corr-thread-propagated"},
+            )
 
         unpropagated = threading.Thread(
-            target=_emit_thread_record,
-            args=("corr-thread-unpropagated",),
+            target=_emit_observer_record,
         )
         propagated = threading.Thread(
-            target=afl.propagate_context(_emit_thread_record, context=context),
-            args=("corr-thread-propagated",),
+            target=afl.propagate_context(_emit_host_record, context=context),
         )
         unpropagated.start()
         propagated.start()

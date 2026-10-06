@@ -119,11 +119,12 @@ jobs:
           printf '%s' "$CORR" > "$RUNNER_TEMP/correlation-response.json"
 
           # Worker log records reach the host log asynchronously; wait until the
-          # two in-context markers have flushed (or fail loudly with the log).
+          # three in-context markers have flushed (or fail loudly with the log).
           markers=""
           for i in $(seq 1 24); do
             if grep -q 'corr-main-1' "$RUNNER_TEMP/func-host.log" \
-               && grep -q 'corr-main-2' "$RUNNER_TEMP/func-host.log"; then
+               && grep -q 'corr-main-2' "$RUNNER_TEMP/func-host.log" \
+               && grep -q 'corr-thread-propagated' "$RUNNER_TEMP/func-host.log"; then
               markers="yes"
               break
             fi
