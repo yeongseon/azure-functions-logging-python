@@ -10,7 +10,7 @@ You have little or no Azure experience and want a copy-paste path to deploy and 
 
 ## What you are deploying
 
-You are deploying the `examples/e2e_app` sample from `azure-functions-logging` v0.4.1.
+You are deploying the `examples/e2e_app` sample from this repository, built against the current release of `azure-functions-logging`.
 The sample exposes two HTTP functions:
 
 - `GET /api/health` for basic health checks
@@ -57,7 +57,7 @@ This deployment is logging-focused:
 Start in the sample app directory:
 
 ```bash
-cd /data/GitHub/azure-functions-logging/examples/e2e_app
+cd examples/e2e_app   # from the root of your clone of azure-functions-logging-python
 python3 -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -478,8 +478,8 @@ az group show --name "$RESOURCE_GROUP" --query "properties.provisioningState" --
 ## See Also
 
 - [Choose an Azure Functions Hosting Plan](choose-a-plan.md) — Plan selection guide with decision tree
-- [`azure-functions-scaffold`](https://github.com/yeongseon/azure-functions-scaffold)
-- [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation)
-- [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi)
-- [`azure-functions-doctor`](https://github.com/yeongseon/azure-functions-doctor)
-- [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph)
+- [`azure-functions-scaffold`](https://github.com/yeongseon/azure-functions-scaffold-python)
+- [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)
+- [`azure-functions-openapi`](https://github.com/yeongseon/azure-functions-openapi-python)
+- [`azure-functions-doctor`](https://github.com/yeongseon/azure-functions-doctor-python)
+- [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph-python)

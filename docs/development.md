@@ -4,7 +4,7 @@ This guide explains how to set up a development environment for `azure-functions
 
 ## Prerequisites
 
-- Python 3.11 or higher
+- Python 3.11-3.14 (`>=3.11,<3.15`)
 - Git
 - Make (for running development commands)
 

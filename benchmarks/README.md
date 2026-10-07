@@ -49,7 +49,9 @@ table exists to show order-of-magnitude, not to be a fixed contract.
 | `RedactionFilter.filter(record)` **[patterns off]** | ~6.4 µs | Per record, key-based redaction only (message/extra *not* pattern-scanned); the opt-in-off baseline. |
 | `RedactionFilter.filter(record)` **[`DEFAULT_REDACTION_PATTERNS` on]** | ~49 µs | Per record with free-text pattern masking enabled: ~7.6× the patterns-off cost. This is the hot-path regex price of the opt-in `patterns=` masking (#445) — enable it deliberately. |
 
-_Environment: CPython 3.10.12, Linux x86_64._
+_Environment: CPython 3.10.12, Linux x86_64. **Historical run** — CPython 3.10 predates this
+package's supported range (`>=3.11,<3.15`). Treat the absolute numbers as an order-of-magnitude
+reference and re-run the suite on a supported interpreter for anything load-bearing._
 
 ### Reading the table
 

@@ -276,7 +276,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 {"logged": true, "correlation_id": "demo-123"}
 ```
 
-> koreacentral リージョンの一時的な Azure Functions デプロイで検証 (Python 3.12, Consumption plan)。レスポンスをキャプチャし、URL は匿名化されています。
+> koreacentral リージョンの一時的な Azure Functions デプロイ (Python 3.12、従来の Linux Consumption プラン) で検証しました。この実行は履歴として残しています。Linux Consumption プランは 2028 年 9 月 30 日にサポート終了となり、新しい Python バージョンも追加されないため、新規デプロイには [Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan) を推奨します。レスポンスをキャプチャし、URL は匿名化されています。
 
 ## 主要機能
 

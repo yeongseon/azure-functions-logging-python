@@ -276,7 +276,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 {"logged": true, "correlation_id": "demo-123"}
 ```
 
-> 已在 koreacentral 区域的临时 Azure Functions 部署上验证 (Python 3.12, Consumption plan)。已捕获响应，并对 URL 进行匿名化。
+> 已在 koreacentral 区域的临时 Azure Functions 部署上验证 (Python 3.12，传统 Linux Consumption 计划)。该次运行作为历史记录保留：Linux Consumption 计划将于 2028 年 9 月 30 日停止支持，且不再新增 Python 版本，因此新部署推荐使用 [Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)。已捕获响应，并对 URL 进行匿名化。
 
 ## 核心功能
 

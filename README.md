@@ -304,7 +304,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 {"logged": true, "correlation_id": "demo-123"}
 ```
 
-> Verified against a temporary Azure Functions deployment in koreacentral (Python 3.12, Consumption plan). Response captured and URL anonymized.
+> Verified against a temporary Azure Functions deployment in koreacentral (Python 3.12) on the classic Linux Consumption plan. That run is kept as a historical record: Linux Consumption retires on 30 September 2028 and receives no new Python versions, so [Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan) is the recommended plan for new deployments. Response captured and URL anonymized.
 
 ## Core capabilities
 

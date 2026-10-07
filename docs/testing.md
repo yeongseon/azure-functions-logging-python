@@ -276,11 +276,23 @@ The project includes a real Azure end-to-end test workflow that deploys an actua
 ### Workflow
 
 - **File**: `.github/workflows/e2e-azure.yml`
-- **Trigger**: Manual (`workflow_dispatch`) or weekly schedule (Mondays 02:00 UTC)
-- **Infrastructure**: Azure Consumption plan, `koreacentral` region
+- **Trigger**: a release gate, not a schedule. `publish-pypi.yml` calls it as a reusable workflow
+  (`workflow_call`) at the exact ref being published, so every published commit is certified by
+  construction. `workflow_dispatch` is kept for standalone verification and debugging.
+- **Infrastructure**: provisioned from `infra/main.bicep` — classic Linux Consumption (`Y1`/Dynamic),
+  Python 3.12, in the region from the `AZURE_LOCATION` variable (default `koreacentral`)
 - **Cleanup**: Resource group deleted immediately after tests (`if: always()`)
 
+!!! note "Hosting plan"
+    This workflow still provisions the classic Linux Consumption plan. That plan retires on
+    30 September 2028 and will not receive Python versions beyond 3.12, so
+    [Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan) is
+    the plan recommended for new deployments — and the one the
+    [deployment guide](deployment.md) uses. Migrating the e2e infrastructure is tracked separately.
+
 ### Running E2E Tests
+
+Standalone run (certification normally happens inside `publish-pypi.yml`):
 
 ```bash
 gh workflow run e2e-azure.yml --ref main
