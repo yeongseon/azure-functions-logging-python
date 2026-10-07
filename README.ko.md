@@ -276,7 +276,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/logme?correlation_id=demo-123"
 {"logged": true, "correlation_id": "demo-123"}
 ```
 
-> koreacentral 리전의 임시 Azure Functions 배포로 검증되었습니다 (Python 3.12, Consumption plan). 응답은 캡처되었으며 URL은 익명화되었습니다.
+> koreacentral 리전의 임시 Azure Functions 배포(Python 3.12, 기존 Linux Consumption 플랜)로 검증되었습니다. 이 실행 결과는 히스토리 기록으로 남겨 둡니다. Linux Consumption 플랜은 2028년 9월 30일에 지원이 종료되며 새로운 Python 버전도 추가되지 않으므로, 신규 배포에는 [Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)을 권장합니다. 응답은 캡처되었으며 URL은 익명화되었습니다.
 
 ## 핵심 기능
 

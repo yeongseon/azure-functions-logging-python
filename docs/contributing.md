@@ -149,37 +149,32 @@ The hooks run formatting and linting checks. This catches issues before they rea
 
 ## Version Management
 
-Version is stored in `src/azure_functions_logging/__init__.py`:
+Versioning is automated. [Release Please](https://github.com/googleapis/release-please) derives the
+next version from Conventional Commits on `main` and maintains all three version writers:
 
-```python
-__version__ = "0.2.1"
-```
+- `src/azure_functions_logging/__init__.py` (`__version__`)
+- `CHANGELOG.md`
+- `.release-please-manifest.json`
 
-Before creating a release:
-
-1. Update `__version__` in `__init__.py`
-2. Document all changes in `docs/changelog.md`
-3. Verify `make check-all` passes
-4. Commit, tag, and push
+**Do not hand-edit any of them**, and do not create release tags by hand. As a contributor, the only
+thing you control is your commit message: `fix:` yields a patch bump, `feat:` a minor one. While the
+package is pre-1.0, a breaking change moves to the next minor rather than to `1.0.0`.
 
 ## Release Process
 
-Releases are triggered by pushing a version tag to GitHub:
+Maintainers cut a release by merging the open Release PR (titled `chore(main): release X.Y.Z`), which
+Release Please keeps up to date. Merging it tags the commit and publishes the GitHub Release.
 
-```bash
-# Update version
-# Update changelog
-git add -A && git commit -m "chore: release v0.3.0"
-git tag v0.3.0
-git push origin main --tags
+Publishing to PyPI is a separate, gated workflow (`publish-pypi.yml`) that runs the full chain before
+anything is uploaded:
+
+```
+build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> publish
 ```
 
-The release workflow:
-
-1. Runs CI (lint, typecheck, security, tests) across the Python version matrix
-2. Builds the package
-3. Publishes to PyPI
-4. Creates a GitHub Release
+The full procedure, the retired Makefile targets, and the recovery playbook live in the
+[Release Process](release_process.md) guide. `AGENTS.md` in the repository root is the canonical
+short-form reference.
 
 ## Architecture Overview
 
@@ -193,4 +188,4 @@ Before making changes, familiarize yourself with the module structure in the [Ar
 
 ## Questions?
 
-Open an issue on [GitHub](https://github.com/yeongseon/azure-functions-logging/issues).
+Open an issue on [GitHub](https://github.com/yeongseon/azure-functions-logging-python/issues).

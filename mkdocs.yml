@@ -23,6 +23,10 @@ nav:
       - Architecture: architecture.md
       - OpenTelemetry: opentelemetry.md
       - How Correlation Works: how-correlation-works.md
+      - Agent Playbook: agent-playbook.md
+  - Deploy:
+      - Choose a Plan: choose-a-plan.md
+      - Deploy to Azure: deployment.md
   - Examples:
       - Basic Setup: examples/basic_setup.md
       - JSON Output: examples/json_output.md
@@ -38,6 +42,7 @@ nav:
       - Development: development.md
       - Testing: testing.md
       - Guidelines: contributing.md
+      - Release Process: release_process.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
   - Security: security.md

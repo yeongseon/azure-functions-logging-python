@@ -10,7 +10,7 @@ If you discover a security vulnerability, please report it responsibly.
 
 Use GitHub's private vulnerability reporting feature:
 
-[Report a vulnerability](https://github.com/yeongseon/azure-functions-logging/security/advisories/new)
+[Report a vulnerability](https://github.com/yeongseon/azure-functions-logging-python/security/advisories/new)
 
 ### Alternative Method
 
@@ -139,4 +139,4 @@ Older Python versions are not supported and may contain known vulnerabilities.
 
 ## License
 
-MIT License. See the [LICENSE](https://github.com/yeongseon/azure-functions-logging/blob/main/LICENSE) file for details.
+MIT License. See the [LICENSE](https://github.com/yeongseon/azure-functions-logging-python/blob/main/LICENSE) file for details.

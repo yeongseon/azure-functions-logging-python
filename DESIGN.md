@@ -160,7 +160,7 @@ bound.info("Processing")  # includes user_id + operation + invocation_id (from f
 
 ## Compatibility Policy
 
-- Minimum supported Python version: `3.11`
+- Supported Python versions: 3.11-3.14 (`requires-python = ">=3.11,<3.15"`)
 - Supported runtime target: Azure Functions Python v2 programming model
 - Public APIs follow semantic versioning expectations
 - No runtime dependency on `azure-functions` (optional import only)
@@ -181,8 +181,8 @@ bound.info("Processing")  # includes user_id + operation + invocation_id (from f
 
 ## See Also
 
-- [azure-functions-validation — Architecture](https://github.com/yeongseon/azure-functions-validation) — Request/response validation pipeline
-- [azure-functions-openapi — Architecture](https://github.com/yeongseon/azure-functions-openapi) — OpenAPI spec generation
-- [azure-functions-doctor — Architecture](https://github.com/yeongseon/azure-functions-doctor) — Pre-deploy diagnostic CLI
-- [azure-functions-scaffold — Architecture](https://github.com/yeongseon/azure-functions-scaffold) — Project scaffolding CLI
-- [azure-functions-langgraph — Architecture](https://github.com/yeongseon/azure-functions-langgraph) — LangGraph agent deployment
+- [azure-functions-validation — Architecture](https://github.com/yeongseon/azure-functions-validation-python) — Request/response validation pipeline
+- [azure-functions-openapi — Architecture](https://github.com/yeongseon/azure-functions-openapi-python) — OpenAPI spec generation
+- [azure-functions-doctor — Architecture](https://github.com/yeongseon/azure-functions-doctor-python) — Pre-deploy diagnostic CLI
+- [azure-functions-scaffold — Architecture](https://github.com/yeongseon/azure-functions-scaffold-python) — Project scaffolding CLI
+- [azure-functions-langgraph — Architecture](https://github.com/yeongseon/azure-functions-langgraph-python) — LangGraph agent deployment
