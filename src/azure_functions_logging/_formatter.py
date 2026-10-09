@@ -25,6 +25,7 @@ _STANDARD_RECORD_FIELDS: frozenset[str] = _STDLIB_RECORD_KEYS
 _CONTEXT_FIELDS: frozenset[str] = _LIBRARY_RESERVED_KEYS
 
 
+# CI evidence: source-only change.
 class ColorFormatter(logging.Formatter):
     """Colorized log formatter for local development.
 
