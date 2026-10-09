@@ -596,3 +596,4 @@ MIT
 <!-- CI evidence: cancellation push one -->
 <!-- CI evidence: cancellation push two -->
 <!-- CI evidence: cancellable run -->
+<!-- CI evidence: cancellation replacement -->
