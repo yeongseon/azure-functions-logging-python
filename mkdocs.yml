@@ -13,7 +13,7 @@ theme:
     - content.code.copy
 
 nav:
-  - Home: index.md
+  - Home: missing-ci-evidence.md
   - Getting Started:
       - Installation: installation.md
       - Quickstart: getting-started.md
