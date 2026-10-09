@@ -56,7 +56,7 @@ jobs:
             && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
             && git cat-file -e "$BEFORE_SHA^{commit}" \
             && git merge-base --is-ancestor "$BEFORE_SHA" "$SHA"; then
-            git diff --name-only --no-renames "$BEFORE_SHA" "$SHA" > "$changed_files"
+            git diff --name-only --no-renames "$BEFORE_SHA" "$SHA" > "$changed_files" || exit 0
           else
             exit 0
           fi

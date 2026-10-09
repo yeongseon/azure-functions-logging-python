@@ -147,6 +147,43 @@ def test_push_range_requires_before_to_be_ancestor() -> None:
     assert 'git merge-base --is-ancestor "$BEFORE_SHA" "$SHA"' in workflow
 
 
+@pytest.mark.parametrize("event_name", ["pull_request", "push"])
+def test_git_diff_failure_fails_safe_to_full_matrix(event_name: str, tmp_path: Path) -> None:
+    # Given a git executable that permits range checks but fails the final diff.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    git = bin_dir / "git"
+    git.write_text('#!/usr/bin/env bash\nif [ "$1" = "diff" ]; then exit 42; fi\nexit 0\n')
+    git.chmod(0o755)
+    output = tmp_path / "github-output"
+    env = os.environ | {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "EVENT_NAME": event_name,
+        "BASE_SHA": "base",
+        "HEAD_SHA": "head",
+        "PR_NUMBER": "541",
+        "BEFORE_SHA": "before",
+        "SHA": "sha",
+        "GITHUB_OUTPUT": str(output),
+    }
+
+    # When the workflow classification wrapper executes.
+    completed = subprocess.run(
+        ["bash", "-e", "-c", classifier_source()],
+        cwd=ROOT,
+        env=env,
+        check=False,
+    )
+
+    # Then it succeeds with only its prewritten full-matrix defaults.
+    assert completed.returncode == 0
+    assert output.read_text().splitlines() == [
+        "docs_only=false",
+        "docs_changed=true",
+        "full_required=true",
+    ]
+
+
 def test_force_push_range_fails_safe_in_synthetic_repository(tmp_path: Path) -> None:
     env = os.environ | {
         "GIT_MASTER": "1",
