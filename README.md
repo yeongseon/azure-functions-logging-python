@@ -593,3 +593,4 @@ Azure and Azure Functions are trademarks of Microsoft Corporation.
 MIT
 
 <!-- CI evidence: README-only -->
+<!-- CI evidence: cancellation push one -->
