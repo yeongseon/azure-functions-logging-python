@@ -271,8 +271,6 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.10"
-          cache: pip
-          cache-dependency-path: pyproject.toml
 
       - name: Download built artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -306,8 +304,6 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: pyproject.toml
 
       - name: Download built artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -475,13 +471,32 @@ jobs:
           import json, os, sys
 
           results = json.loads(os.environ["RESULTS"])
+          outputs = {
+              "full_required": os.environ["FULL_REQUIRED"],
+              "docs_changed": os.environ["DOCS_CHANGED"],
+          }
+          invalid_outputs = {
+              name: value for name, value in outputs.items()
+              if value not in {"true", "false"}
+          }
+          if invalid_outputs:
+              sys.exit(f"::error::Invalid classifier outputs: {invalid_outputs}")
+          if outputs == {"full_required": "false", "docs_changed": "false"}:
+              sys.exit("::error::Classifier did not require any CI work")
+
           full_jobs = {
               "quality", "test", "minimum-dependencies", "artifact-build",
               "artifact-python310-negative", "artifact-python311", "host-smoke",
           }
-          expected = {job: "success" if os.environ["FULL_REQUIRED"] == "true" else "skipped" for job in full_jobs}
+          expected = {
+              job: "success" if outputs["full_required"] == "true" else "skipped"
+              for job in full_jobs
+          }
           expected["changes"] = "success"
-          expected["docs-check"] = "success" if os.environ["DOCS_CHANGED"] == "true" else "skipped"
+          expected["docs-check"] = (
+              "success" if outputs["docs_changed"] == "true" else "skipped"
+          )
+          expected.update({job: "success" for job in results.keys() - expected.keys()})
           failed = []
           for job, wanted in sorted(expected.items()):
               actual = results[job]["result"]
