@@ -411,7 +411,7 @@ def handler(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 
 ## ContextTokens
 
-::: azure_functions_logging.ContextTokens
+azure_functions_logging.ContextTokens
 
 ## End-to-End API Example
 
