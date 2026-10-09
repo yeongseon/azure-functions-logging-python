@@ -1,9 +1,6 @@
 name: Docs (strict build check)
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:

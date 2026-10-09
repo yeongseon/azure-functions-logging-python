@@ -6,13 +6,6 @@ name: Doc Link Tag-Integrity
 # See tools/lint_doc_links.py.
 
 on:
-  pull_request:
-    paths:
-      - "README*.md"
-      - "DESIGN.md"
-      - "docs/**/*.md"
-      - "tools/lint_doc_links.py"
-      - ".github/workflows/doc-link-integrity.yml"
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
@@ -32,10 +25,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
-      - name: Check external links are immutably pinned
-        run: python tools/lint_doc_links.py
-
-      - name: Verify external link refs exist (scheduled / manual)
-        if: github.event_name != 'pull_request'
+      - name: Verify external links are pinned and exist
         run: python tools/lint_doc_links.py --verify-refs
