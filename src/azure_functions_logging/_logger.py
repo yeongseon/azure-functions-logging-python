@@ -49,6 +49,7 @@ def _sanitize_extra(extra: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
+# CI evidence: source change exercises docs generation.
 class FunctionLogger:
     """Wrapper around a standard ``logging.Logger`` with context binding.
 
