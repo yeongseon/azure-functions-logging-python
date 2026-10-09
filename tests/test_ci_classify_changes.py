@@ -79,6 +79,8 @@ def test_anything_that_may_affect_code_runs_the_full_matrix(files: list[str]) ->
         ["scripts/render_mermaid.py"],
         ["scripts/puppeteer-config.json"],
         ["tools/lint_doc_links.py"],
+        ["tests/test_public_api.py"],
+        ["tests/test_doc_link_tag_integrity.py"],
         [".github/workflows/ci-test.yml"],
     ],
 )

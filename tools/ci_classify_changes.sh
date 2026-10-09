@@ -27,6 +27,7 @@ while IFS= read -r f || [ -n "$f" ]; do
     # 1. Docs build inputs that are not documentation themselves: full matrix AND docs build.
     mkdocs.yml | pyproject.toml | src/* | scripts/render_mermaid.py | \
     scripts/puppeteer-config.json | tools/lint_doc_links.py | \
+    tests/test_public_api.py | tests/test_doc_link_tag_integrity.py | \
     .github/workflows/ci-test.yml | docs/*.py | docs/*.yml | docs/*.yaml | \
     docs/*.json | docs/*.toml | docs/*.js | docs/*.css | docs/*.html | docs/*.txt)
       docs_only=false
