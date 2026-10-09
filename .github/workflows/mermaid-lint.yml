@@ -6,14 +6,6 @@ name: Mermaid Render Lint
 # invalid syntax that the text-only label linter cannot catch (see issue #214).
 
 on:
-  pull_request:
-    paths:
-      - "README*.md"
-      - "DESIGN.md"
-      - "docs/**/*.md"
-      - "scripts/render_mermaid.py"
-      - "scripts/puppeteer-config.json"
-      - ".github/workflows/mermaid-lint.yml"
   workflow_dispatch:
 
 permissions:
