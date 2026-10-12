@@ -1,5 +1,8 @@
 # Azure Functions Logging
 
+> [!NOTE]
+> このドキュメントは[英語の原文](README.md)の翻訳であり、コミュニティが維持管理しています。英語の原文が更新された後は、内容が少し遅れることがあります。
+
 > **Azure Functions Python DX Toolkit** の一部 — [azure-functions-cookbook-python](https://github.com/yeongseon/azure-functions-cookbook-python) によりドッグフーディング検証済み。
 
 [![PyPI](https://img.shields.io/pypi/v/azure-functions-logging.svg)](https://pypi.org/project/azure-functions-logging/)
