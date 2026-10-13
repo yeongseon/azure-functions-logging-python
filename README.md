@@ -239,6 +239,8 @@ pip install azure-functions-logging
 
 ## Quick Start
 
+Add the following to your Azure Functions app's `function_app.py`:
+
 ```python
 import azure.functions as func
 from azure_functions_logging import get_logger, logging_context, setup_logging
