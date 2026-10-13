@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.15.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.14.0...v0.15.0) (2026-10-13)
+
+
+### Features
+
+* **filters:** add handler-local LogRecord isolation ([#555](https://github.com/yeongseon/azure-functions-logging-python/issues/555)) ([02335d3](https://github.com/yeongseon/azure-functions-logging-python/commit/02335d3e0569b84ef4975c07a91472802d9d056d))
+
 ## [0.14.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.13.4...v0.14.0) (2026-10-06)
 
 
