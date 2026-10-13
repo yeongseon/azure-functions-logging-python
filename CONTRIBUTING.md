@@ -32,6 +32,28 @@ Recommended branch prefixes:
    git push origin feat/your-feature-name
    ```
 
+## Local development quickstart
+
+Local development requires Python 3.11, 3.12, 3.13, or 3.14. No repo-specific services or
+tools such as Azure Functions Core Tools, Azurite, or Docker are required for the standard
+local checks. The `make install` target creates `.venv`, installs Hatch into it, creates the
+Hatch environment, and installs the pre-commit hook:
+
+```bash
+git clone https://github.com/yeongseon/azure-functions-logging-python.git
+cd azure-functions-logging-python
+make install
+```
+
+Run the standard verification commands from the repository root:
+
+```bash
+make test
+make lint
+make typecheck
+make build
+```
+
 ## Project Commands
 
 ```bash
