@@ -91,6 +91,7 @@ def test_public_api_exports() -> None:
         "get_logging_metadata",
         "get_logger",
         "inject_context",
+        "IsolatedHandler",
         "logging_context",
         "propagate_context",
         "PropagatingExecutor",

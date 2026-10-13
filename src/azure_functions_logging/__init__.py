@@ -14,6 +14,7 @@ from ._context import (
 )
 from ._decorator import get_logging_metadata, with_context
 from ._filters import AttributeFlattenFilter, RedactionFilter, SamplingFilter
+from ._isolated_handler import IsolatedHandler
 from ._json_formatter import JsonFormatter
 from ._logger import FunctionLogger
 from ._redaction import DEFAULT_PATTERNS as DEFAULT_REDACTION_PATTERNS
@@ -28,6 +29,7 @@ __all__ = [
     "get_logger",
     "get_logging_metadata",
     "inject_context",
+    "IsolatedHandler",
     "JsonFormatter",
     "logging_context",
     "propagate_context",
