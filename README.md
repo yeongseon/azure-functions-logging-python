@@ -382,6 +382,15 @@ handler.addFilter(RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS))
 
 → [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
+### Handler-local transformations
+
+Wrap a handler with `IsolatedHandler` when mutating filters such as
+`AttributeFlattenFilter` must affect only that output. Attach the filters to the
+wrapper and register only the wrapper; sibling handlers continue to receive the
+original nested record regardless of handler order.
+
+→ [OpenTelemetry: handler-local isolation](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/#handler-local-filter-isolation)
+
 ### Context binding
 
 `logger.bind(key=value)` returns a logger that attaches request-scoped metadata to every subsequent log without threading it through each call. Create bound loggers per-invocation; don't cache them at module level.
