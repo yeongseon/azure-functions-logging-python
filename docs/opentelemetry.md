@@ -107,6 +107,8 @@ of via handler filters.
 
 ## Filters in OpenTelemetry mode
 
+### Handler-local filter isolation
+
 In OTel mode the entire `extra` mapping is exported as log **attributes**, which
 makes `RedactionFilter` and `SamplingFilter` *more* important, not less — attach
 them to the OTel handler. Nested `dict` values in `extra` are silently dropped by
@@ -118,14 +120,22 @@ import logging
 
 from azure_functions_logging import (
     AttributeFlattenFilter,
+    IsolatedHandler,
     RedactionFilter,
     setup_logging,
 )
 
 setup_logging()
-for handler in logging.getLogger().handlers:
-    handler.addFilter(RedactionFilter())        # mask PII before export
-    handler.addFilter(AttributeFlattenFilter())  # keep nested dicts from being dropped
+otel_handler = next(
+    handler
+    for handler in logging.getLogger().handlers
+    if type(handler).__module__.startswith("opentelemetry.")
+)
+logging.getLogger().removeHandler(otel_handler)
+isolated = IsolatedHandler(otel_handler)
+isolated.addFilter(RedactionFilter())
+isolated.addFilter(AttributeFlattenFilter())
+logging.getLogger().addHandler(isolated)
 ```
 
 > **Scope `AttributeFlattenFilter` to the OTel handler.** The filter mutates the
@@ -136,13 +146,17 @@ for handler in logging.getLogger().handlers:
 > not for local/standalone JSON logs — attach it to the specific OTel handler
 > rather than the root logger when both kinds of handler are present.
 
-> **Handler scoping reduces blast radius but does not isolate mutation.** stdlib
-> `logging` passes the *same* `LogRecord` object to every handler in sequence, so
-> if the OTel handler runs **before** a JSON/stdout handler on the same logger,
-> that later handler still sees the flattened record. Scoping the filter to the
-> OTel handler shrinks the window but cannot fully isolate in-place mutation when
-> multiple handlers process one record. To keep plain JSON output nested, emit it
-> on a separate logger (not sharing handlers with the OTel path).
+`IsolatedHandler` clones each record and its mutable extra values before its own
+filters run. This keeps a sibling JSON handler's nested structure intact in either
+handler order while the wrapped OTel handler receives flattened, redacted
+attributes. Register the wrapper instead of the wrapped handler; registering both
+would emit each record twice. The wrapped handler remains caller-owned: closing
+the wrapper does not close it, though flushing the wrapper flushes the target.
+
+Isolation covers mutations performed by filters attached to the wrapper. It does
+not make arbitrary side effects inside the wrapped handler safe, and copying a
+large mutable payload adds per-record cost, so use it only where one handler needs
+a different record shape.
 
 ## Known limitation: thread boundaries
 
