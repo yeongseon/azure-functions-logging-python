@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import Context, copy_context
 import io
 import json
 import logging
@@ -134,6 +135,61 @@ def test_isolated_handler_prevents_recursive_forwarding() -> None:
 
     # Then
     assert [record.getMessage() for record in target.records] == ["outer"]
+
+
+def test_isolated_handler_uses_live_target_level() -> None:
+    # Given
+    target = _CollectingHandler()
+    target.setLevel(logging.WARNING)
+    handler = IsolatedHandler(target)
+    logger = logging.getLogger("isolated.live-level")
+    logger.handlers = [handler]
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    target.setLevel(logging.INFO)
+
+    # When
+    logger.info("accepted")
+
+    # Then
+    assert [record.getMessage() for record in target.records] == ["accepted"]
+
+
+def test_isolated_handler_does_not_leak_guard_into_copied_context() -> None:
+    # Given
+    target = _CollectingHandler()
+    copied_contexts: list[Context] = []
+
+    def capture_context(_record: logging.LogRecord) -> bool:
+        copied_contexts.append(copy_context())
+        return True
+
+    target.addFilter(capture_context)
+    handler = IsolatedHandler(target)
+    first = logging.makeLogRecord({"msg": "first", "levelno": logging.INFO})
+    second = logging.makeLogRecord({"msg": "second", "levelno": logging.INFO})
+
+    # When
+    handler.handle(first)
+    copied_contexts[0].run(handler.handle, second)
+
+    # Then
+    assert len(copied_contexts) == 2
+
+
+def test_isolated_handler_preserves_tuple_list_cycle() -> None:
+    # Given
+    logger, target, _ = _pipeline("isolated.tuple-cycle", True)
+    child: list[tuple[object, ...]] = []
+    cycle: tuple[object, ...] = (child,)
+    child.append(cycle)
+
+    # When
+    logger.info("cycle", extra={"cycle": cycle})
+
+    # Then
+    cloned_cycle = target.records[0].__dict__["cycle"]
+    assert cloned_cycle is cloned_cycle[0][0]
 
 
 def test_isolated_handler_applies_dotted_redaction_without_sibling_side_effects() -> None:

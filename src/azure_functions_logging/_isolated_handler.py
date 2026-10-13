@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 import copy
+from dataclasses import dataclass
 import logging
 from typing import Any
 
-_active_handlers: ContextVar[frozenset[int]] = ContextVar(
-    "azure_functions_logging_active_isolated_handlers", default=frozenset()
+
+@dataclass(slots=True)
+class _ForwardingState:
+    handler_id: int
+    active: bool = True
+
+
+_forwarding_state: ContextVar[_ForwardingState | None] = ContextVar(
+    "azure_functions_logging_isolated_forwarding_state", default=None
 )
 
 
@@ -29,7 +37,10 @@ def _copy_mutable(value: Any, memo: dict[int, Any]) -> Any:
         copied_list.extend(_copy_mutable(item, memo) for item in value)
         return copied_list
     if isinstance(value, tuple):
-        copied_tuple = tuple(_copy_mutable(item, memo) for item in value)
+        copied_items = [_copy_mutable(item, memo) for item in value]
+        if value_id in memo:
+            return memo[value_id]
+        copied_tuple = tuple(copied_items)
         memo[value_id] = copied_tuple
         return copied_tuple
     return value
@@ -51,16 +62,21 @@ class IsolatedHandler(logging.Handler):
     """
 
     def __init__(self, target: logging.Handler) -> None:
-        super().__init__(target.level)
+        super().__init__(logging.NOTSET)
         self.target = target
 
     def handle(self, record: logging.LogRecord) -> bool:
         handler_id = id(self)
-        active = _active_handlers.get()
-        if handler_id in active:
+        inherited_state = _forwarding_state.get()
+        if (
+            inherited_state is not None
+            and inherited_state.active
+            and inherited_state.handler_id == handler_id
+        ):
             return False
 
-        token = _active_handlers.set(active | {handler_id})
+        state = _ForwardingState(handler_id)
+        token = _forwarding_state.set(state)
         try:
             cloned = _copy_record(record)
             if not self.filter(cloned):
@@ -72,7 +88,8 @@ class IsolatedHandler(logging.Handler):
                 self.release()
             return True
         finally:
-            _active_handlers.reset(token)
+            state.active = False
+            _forwarding_state.reset(token)
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.levelno >= self.target.level:
