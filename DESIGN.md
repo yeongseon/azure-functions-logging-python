@@ -151,6 +151,19 @@ bound.info("Processing")  # includes user_id + operation + invocation_id (from f
 - `setup_logging()` only installs `ContextFilter` on the root logger (safe — filters don't affect message routing)
 - In standalone local dev, adds one `StreamHandler` with `ColorFormatter` to the package logger
 
+### Handler-local record isolation
+
+`IsolatedHandler` is an explicit wrapper for outputs that need mutating filters
+without changing the shared `LogRecord` seen by sibling handlers. It copies the
+record and mutable extra values, runs filters attached to the wrapper, and then
+forwards once through the caller-owned target handler. A `ContextVar` recursion
+guard keeps forwarding state local to each thread and async context. The wrapper
+forwards `flush()` but does not close the target, so handler ownership does not
+change.
+
+This path is opt-in. Existing filters retain their in-place behavior, and
+`setup_logging()` does not add, remove, or replace handlers to enable isolation.
+
 ## Integration Boundaries
 
 - Invocation context belongs to `azure-functions-logging`
