@@ -510,3 +510,19 @@ traces
 
 **Q: Does this work without azure-functions?**
 - Yes, pass any object with invocation_id, function_name attributes to inject_context().
+### Handler-local filter isolation
+
+Use `IsolatedHandler(target)` when mutating filters must affect one handler only:
+
+```python
+from azure_functions_logging import AttributeFlattenFilter, IsolatedHandler, RedactionFilter
+
+isolated = IsolatedHandler(target)
+isolated.addFilter(RedactionFilter())
+isolated.addFilter(AttributeFlattenFilter())
+logger.addHandler(isolated)
+```
+
+Register only the wrapper, not `target`. Wrapper filters receive a cloned record
+and mutable extras, so sibling handlers retain the original structure. `flush()`
+forwards to the caller-owned target; `close()` does not close it.
