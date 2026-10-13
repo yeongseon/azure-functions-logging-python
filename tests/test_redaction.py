@@ -16,6 +16,17 @@ def test_is_sensitive_when_key_uses_header_case() -> None:
     assert result is True
 
 
+def test_is_sensitive_when_key_uses_camel_case() -> None:
+    # Given
+    key = "xFunctionsKey"
+
+    # When
+    result = is_sensitive(key)
+
+    # Then
+    assert result is True
+
+
 def test_mask_value_when_nested_segment_is_sensitive() -> None:
     # Given
     payload = {"hint": "first pet"}
