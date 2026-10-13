@@ -441,3 +441,9 @@ def orders(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 - [Configuration](configuration.md)
 - [Usage Guide](usage.md)
 - [Troubleshooting](troubleshooting.md)
+## IsolatedHandler
+
+::: azure_functions_logging.IsolatedHandler
+    options:
+      show_root_heading: true
+      show_source: false
