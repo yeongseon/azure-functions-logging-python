@@ -410,6 +410,10 @@ original nested record regardless of handler order.
 On Python 3.12+, replacement `LogRecord` values returned by wrapper and target
 filters are forwarded according to the standard logging filter contract.
 
+Isolation copies supported `dict`, `list`, and `tuple` values up to 32 levels
+and 4,096 visited nodes. Values beyond either bound become `<copy-limit>`; the
+original record is never used as an unredacted fallback.
+
 → [OpenTelemetry: handler-local isolation](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/#handler-local-filter-isolation)
 
 ### Context binding
