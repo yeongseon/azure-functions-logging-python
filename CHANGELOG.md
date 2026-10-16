@@ -1,6 +1,18 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.15.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.0...v0.15.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **context:** restore context at generator suspension ([#570](https://github.com/yeongseon/azure-functions-logging-python/issues/570)) ([112c6a2](https://github.com/yeongseon/azure-functions-logging-python/commit/112c6a25d6c0e18feeed82eaa6d5c993611b4b71))
+* **handlers:** bound isolated record copying ([#571](https://github.com/yeongseon/azure-functions-logging-python/issues/571)) ([50a44aa](https://github.com/yeongseon/azure-functions-logging-python/commit/50a44aa6a04dfae8621989d4315566ab508029d5))
+* **handlers:** forward replacement filter records ([#568](https://github.com/yeongseon/azure-functions-logging-python/issues/568)) ([3a34f64](https://github.com/yeongseon/azure-functions-logging-python/commit/3a34f64259affbc3640237902c70bccf846ced6b))
+* **redaction:** mask complete authorization bearer values ([#565](https://github.com/yeongseon/azure-functions-logging-python/issues/565)) ([54fda4f](https://github.com/yeongseon/azure-functions-logging-python/commit/54fda4f3d71b22a1cc2b04ae9a85d6343d012f90))
+* **redaction:** mask supported nested values consistently ([#569](https://github.com/yeongseon/azure-functions-logging-python/issues/569)) ([200b264](https://github.com/yeongseon/azure-functions-logging-python/commit/200b264f5be91713ab7fd64d9df382f7e511511b))
+* **redaction:** preserve sanitized exception diagnostics ([#567](https://github.com/yeongseon/azure-functions-logging-python/issues/567)) ([53b4cd8](https://github.com/yeongseon/azure-functions-logging-python/commit/53b4cd8137d817fdf7fea25c11b87eb8b711efbe))
+
 ## [0.15.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.14.0...v0.15.0) (2026-10-13)
 
 
