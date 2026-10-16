@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Iterator
 import inspect
 import logging
+import sys
 import time
 from types import FunctionType
 from typing import Any, TypeVar, overload
@@ -321,9 +322,28 @@ def _wrap_generator(
     def wrapper(*args: Any, **kwargs: Any) -> Iterator[Any]:
         ctx = _find_context_arg(param, context_index, args, kwargs)
         if ctx is not None:
-            with logging_context(ctx, activate_trace_context=activate_trace_context):
-                yield from func(*args, **kwargs)
-            return
+            iterator = func(*args, **kwargs)
+            try:
+                with logging_context(ctx, activate_trace_context=activate_trace_context):
+                    item = next(iterator)
+                while True:
+                    try:
+                        sent = yield item
+                    except GeneratorExit:
+                        with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            iterator.close()
+                        raise
+                    except BaseException:
+                        with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            item = iterator.throw(*sys.exc_info())
+                    else:
+                        with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            item = iterator.send(sent)
+            except StopIteration:
+                return
+            finally:
+                with logging_context(ctx, activate_trace_context=activate_trace_context):
+                    iterator.close()
         yield from func(*args, **kwargs)
 
     _copy_safe_metadata(wrapper, func)

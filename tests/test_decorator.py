@@ -166,6 +166,25 @@ class TestGenerators:
         iterator.close()
         assert invocation_id_var.get() is None
 
+    def test_sync_generators_restore_context_between_interleaved_resumes(self) -> None:
+        @with_context
+        def stream(context: object) -> Generator[str | None, None, None]:
+            yield invocation_id_var.get()
+            yield invocation_id_var.get()
+
+        first = stream(SimpleNamespace(invocation_id="A"))
+        second = stream(SimpleNamespace(invocation_id="B"))
+
+        assert next(first) == "A"
+        assert invocation_id_var.get() is None
+        assert next(second) == "B"
+        assert invocation_id_var.get() is None
+        assert next(first) == "A"
+        assert invocation_id_var.get() is None
+        first.close()
+        second.close()
+        assert invocation_id_var.get() is None
+
     def test_async_generator_injects_and_restores_context(self) -> None:
         @with_context
         async def handler(context: object) -> AsyncGenerator[str | None, None]:
