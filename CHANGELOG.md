@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.15.2](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.1...v0.15.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **release:** make the cookbook collection guard runnable ([#573](https://github.com/yeongseon/azure-functions-logging-python/issues/573)) ([5a5b44b](https://github.com/yeongseon/azure-functions-logging-python/commit/5a5b44b1fcc68eec4780b6633b9004b865aca84d))
+
 ## [0.15.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.0...v0.15.1) (2026-10-16)
 
 

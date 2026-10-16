@@ -43,7 +43,7 @@ __all__ = [
     "with_context",
 ]
 
-__version__ = "0.15.1"
+__version__ = "0.15.2"
 
 
 def get_logger(name: str | None = None) -> FunctionLogger:
