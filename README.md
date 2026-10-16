@@ -380,6 +380,10 @@ handler.addFilter(RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS))
 
 `DEFAULT_REDACTION_PATTERNS` is a curated high-confidence set (bearer tokens, `key=value` secrets, Azure connection-string keys / SAS `sig=`, AWS access-key IDs, GitHub tokens, JWTs). It is **off by default** — pattern scanning adds hot-path cost and can produce false positives — so enable it deliberately; you can also supply your own regex strings or compiled patterns. Substitution failures never raise.
 
+Authentication headers are matched as a complete credential value. Both
+`Authorization: Bearer <value>` and `authorization=Bearer <value>` preserve the
+header name and authentication scheme while masking the entire token.
+
 → [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### Handler-local transformations
