@@ -389,6 +389,11 @@ serializes the sanitized traceback, and OpenTelemetry `LoggingHandler` records
 retain sanitized `exception.type`, `exception.message`, and
 `exception.stacktrace` attributes. Raw exception values are not forwarded.
 
+Configured patterns apply consistently to messages, exception text, and string
+leaves inside supported `dict`, `list`, and `tuple` extras. Sensitive keys are
+still masked before their values are inspected. Cycles and values beyond the
+redaction depth limit use the fail-closed mask rather than a raw representation.
+
 → [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### Handler-local transformations
