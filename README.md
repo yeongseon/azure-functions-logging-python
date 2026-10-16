@@ -384,6 +384,11 @@ Authentication headers are matched as a complete credential value. Both
 `Authorization: Bearer <value>` and `authorization=Bearer <value>` preserve the
 header name and authentication scheme while masking the entire token.
 
+Exception diagnostics remain available after redaction. `JsonFormatter`
+serializes the sanitized traceback, and OpenTelemetry `LoggingHandler` records
+retain sanitized `exception.type`, `exception.message`, and
+`exception.stacktrace` attributes. Raw exception values are not forwarded.
+
 → [API: `SamplingFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#samplingfilter) · [API: `RedactionFilter`](https://yeongseon.dev/azure-functions-python/logging/api/#redactionfilter)
 
 ### Handler-local transformations
