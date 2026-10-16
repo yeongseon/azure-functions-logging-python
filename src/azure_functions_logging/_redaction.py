@@ -110,11 +110,17 @@ def mask_value(
 # ``MASK``. Patterns that define a ``keep`` named group preserve that captured
 # prefix (e.g. ``token=``) so the log stays readable while the value is masked.
 DEFAULT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Match the full Authorization value before generic key/value rules can
+    # consume the Bearer scheme and leave its credential behind.
+    re.compile(
+        r"(?P<keep>(?i:authorization)\s*[=:]\s*(?:(?i:bearer)\s+)?)"
+        r"[^\s,;'\"]+"
+    ),
     # key=value / key: value secrets — keep the key, mask the value.
     re.compile(
         r"(?P<keep>(?i:password|passwd|pwd|token|secret|api[_-]?key|"
         r"access[_-]?key|access[_-]?token|client[_-]?secret|connection[_-]?string|"
-        r"refresh[_-]?token|authorization)"
+        r"refresh[_-]?token)"
         r"\s*[=:]\s*)[^\s,;'\"]+"
     ),
     # Bearer / auth scheme tokens.
