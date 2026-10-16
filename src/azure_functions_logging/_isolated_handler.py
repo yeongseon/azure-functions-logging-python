@@ -79,8 +79,11 @@ class IsolatedHandler(logging.Handler):
         token = _forwarding_state.set(state)
         try:
             cloned = _copy_record(record)
-            if not self.filter(cloned):
+            filtered = self.filter(cloned)
+            if not filtered:
                 return False
+            if isinstance(filtered, logging.LogRecord):
+                cloned = filtered
             self.acquire()
             try:
                 self.emit(cloned)

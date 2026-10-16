@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import Context, copy_context
+import copy
 import io
 import json
 import logging
+import sys
 from typing import TypedDict
 
 import anyio
@@ -43,6 +46,16 @@ class _Cycle(TypedDict):
 
 class _PipelineFailure(RuntimeError):
     pass
+
+
+def _replace_message(message: str) -> Callable[[logging.LogRecord], logging.LogRecord]:
+    def replace(record: logging.LogRecord) -> logging.LogRecord:
+        replacement = copy.copy(record)
+        replacement.msg = message
+        replacement.args = ()
+        return replacement
+
+    return replace
 
 
 def _pipeline(
@@ -229,6 +242,38 @@ def test_isolated_handler_preserves_record_metadata_and_target_filters() -> None
     assert record.getMessage() == "failure detail"
     assert record.exc_info is not None
     assert record.stack_info is not None
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="replacement filters require Python 3.12")
+def test_isolated_handler_forwards_replacement_records_through_filter_chains() -> None:
+    target = _CollectingHandler()
+    target.addFilter(_replace_message("target-safe"))  # type: ignore[arg-type]
+    handler = IsolatedHandler(target)
+    handler.addFilter(_replace_message("wrapper-safe"))  # type: ignore[arg-type]
+    logger = logging.Logger("isolated.replacement", logging.INFO)
+    logger.addHandler(handler)
+
+    logger.info("REVIEWOPAQUE123456", extra={"invocation_id": "inv-1"})
+
+    assert len(target.records) == 1
+    assert target.records[0].getMessage() == "target-safe"
+    assert target.records[0].__dict__["invocation_id"] == "inv-1"
+
+
+def test_isolated_handler_rejects_false_filter_and_keeps_in_place_filter() -> None:
+    target = _CollectingHandler()
+    handler = IsolatedHandler(target)
+
+    def mutate(record: logging.LogRecord) -> bool:
+        record.msg = "mutated"
+        return True
+
+    handler.addFilter(mutate)
+    handler.handle(logging.makeLogRecord({"msg": "original", "levelno": logging.INFO}))
+    handler.addFilter(lambda _record: False)
+    handler.handle(logging.makeLogRecord({"msg": "rejected", "levelno": logging.INFO}))
+
+    assert [record.getMessage() for record in target.records] == ["mutated"]
 
 
 def test_isolated_handler_flushes_without_owning_target_close() -> None:
