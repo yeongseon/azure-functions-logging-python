@@ -226,9 +226,9 @@ jobs:
 
       - name: Verify logging-specific collection
         run: |
-          hatch run pytest --collect-only -q -m "e2e and package_logging" tests/e2e/test_package_runtime.py \
+          hatch run pytest --collect-only --no-cov -m "e2e and package_logging" tests/e2e/test_package_runtime.py \
             | tee /tmp/logging-collection.txt
-          grep -Eq "[1-9][0-9]* tests? collected" /tmp/logging-collection.txt
+          grep -Eq "^[1-9][0-9]*(/[0-9]+)? tests? collected" /tmp/logging-collection.txt
 
       - name: Boot cookbook func host with candidate wheel (host-smoke)
         run: hatch run pytest -v -m "e2e and package_logging" \

@@ -21,3 +21,17 @@ def test_cookbook_checkout_and_failure_evidence_are_reproducible() -> None:
     assert "sha256sum candidate-dist/*.whl" in workflow
     assert "Verify logging-specific collection" in workflow
     assert "Upload sanitized host diagnostics" in workflow
+
+
+def test_collection_guard_skips_coverage_and_rejects_zero_collection() -> None:
+    import re
+
+    workflow = WORKFLOW.read_text()
+    pattern = r"^[1-9][0-9]*(/[0-9]+)? tests? collected"
+
+    assert "--collect-only --no-cov" in workflow
+    assert f'grep -Eq "{pattern}"' in workflow
+    assert re.search(pattern, "1/3 tests collected (2 deselected) in 0.04s", re.MULTILINE)
+    assert re.search(pattern, "3 tests collected in 0.04s", re.MULTILINE)
+    assert not re.search(pattern, "0/3 tests collected (3 deselected) in 0.04s", re.MULTILINE)
+    assert not re.search(pattern, "no tests collected in 0.04s", re.MULTILINE)
