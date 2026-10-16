@@ -359,11 +359,22 @@ class RedactionFilter(logging.Filter):
 
     def _mask_exception(self, record: logging.LogRecord) -> None:
         """Render and mask exception text before a formatter can expose it."""
-        if record.exc_info is None:
+        if record.exc_info is None and record.exc_text is None:
             return
         try:
-            rendered = "".join(traceback.format_exception(*record.exc_info))
-            record.exc_text = _mask_patterns(rendered, _DEFAULT_PATTERNS)
+            patterns = (*_DEFAULT_PATTERNS, *self._patterns)
+            if record.exc_info is not None:
+                exc_type, exc_value, _ = record.exc_info
+                if exc_type is None:
+                    return
+                rendered = "".join(traceback.format_exception(*record.exc_info))
+                message = "".join(traceback.format_exception_only(exc_type, exc_value)).strip()
+                record.exc_text = _mask_patterns(rendered, patterns)
+                setattr(record, "exception.type", exc_type.__name__)
+                setattr(record, "exception.message", _mask_patterns(message, patterns))
+                setattr(record, "exception.stacktrace", record.exc_text)
+            elif record.exc_text is not None:
+                record.exc_text = _mask_patterns(record.exc_text, patterns)
             record.exc_info = None
         except Exception:  # nosec B110 — exception masking must never raise
             pass

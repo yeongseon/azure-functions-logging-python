@@ -160,6 +160,8 @@ class JsonFormatter(logging.Formatter):
         exception: str | None = None
         if record.exc_info:
             exception = _safe_format_exception(self, record.exc_info)
+        elif record.exc_text:
+            exception = record.exc_text
 
         stack_info: str | None = None
         if record.stack_info:
