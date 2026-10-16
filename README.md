@@ -398,6 +398,9 @@ Wrap a handler with `IsolatedHandler` when mutating filters such as
 wrapper and register only the wrapper; sibling handlers continue to receive the
 original nested record regardless of handler order.
 
+On Python 3.12+, replacement `LogRecord` values returned by wrapper and target
+filters are forwarded according to the standard logging filter contract.
+
 → [OpenTelemetry: handler-local isolation](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/#handler-local-filter-isolation)
 
 ### Context binding
