@@ -13,6 +13,9 @@ on:
 permissions:
   contents: read
 
+env:
+  COOKBOOK_REF: 3b78ff2373d4f4dd5e8209c3324c4df245ed4665
+
 # Verify-before-publish gate (see AGENTS.md):
 #   build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
 #         -> azure-e2e -> publish
@@ -113,7 +116,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yeongseon/azure-functions-cookbook-python
-          ref: main
+          ref: ${{ env.COOKBOOK_REF }}
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -164,7 +167,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yeongseon/azure-functions-cookbook-python
-          ref: main
+          ref: ${{ env.COOKBOOK_REF }}
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -210,9 +213,39 @@ jobs:
             exit 1
           fi
 
+      - name: Record reproducibility evidence
+        run: |
+          echo "Logging candidate SHA: ${{ github.sha }}"
+          echo "Logging candidate version: ${{ needs.build.outputs.version }}"
+          echo "Cookbook SHA: $(git rev-parse HEAD)"
+          echo "Python: $(python --version)"
+          echo "Core Tools: $(func --version)"
+          echo "Azurite: $(azurite --version)"
+          sha256sum candidate-dist/*.whl
+          hatch run python -m pip freeze
+
+      - name: Verify logging-specific collection
+        run: |
+          hatch run pytest --collect-only -q -m "e2e and package_logging" tests/e2e/test_package_runtime.py \
+            | tee /tmp/logging-collection.txt
+          grep -Eq "[1-9][0-9]* tests? collected" /tmp/logging-collection.txt
+
       - name: Boot cookbook func host with candidate wheel (host-smoke)
-        run: hatch run e2e tests/e2e/test_http_examples.py
+        run: hatch run pytest -v -m "e2e and package_logging" \
+          tests/e2e/test_package_runtime.py --no-cov --junitxml=pytest-results.xml
         timeout-minutes: 15
+
+      - name: Upload sanitized host diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cookbook-logging-host-diagnostics
+          path: |
+            pytest-results.xml
+            /tmp/azurite-*.log
+            /tmp/func-*.log
+          if-no-files-found: warn
+          retention-days: 5
 
   azure-e2e:
     name: Azure release certification

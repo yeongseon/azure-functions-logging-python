@@ -133,7 +133,7 @@ Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the
 | `build` | tag/`__version__` mismatch; produces the one artifact that is later uploaded |
 | `lib-tests` | library unit regressions |
 | `cookbook-smoke` | downstream import/registration drift |
-| `cookbook-host-smoke` | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, no cloud. NOTE: the cookbook HTTP examples do not import this package, so this is a host-boot smoke, **not** proof of this package's own runtime behavior (tracked separately) |
+| `cookbook-host-smoke` | package-specific runtime and host-boot compatibility: installs the candidate wheel, collects only the cookbook's existing `package_logging` E2E selection, and exercises logging output/correlation through a real `func` host + Azurite. The pinned cookbook SHA, tool versions, dependency resolution, wheel digest, selection, JUnit output, and sanitized host diagnostics make the attempt reproducible. |
 | `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
