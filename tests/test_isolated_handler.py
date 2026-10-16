@@ -322,3 +322,21 @@ def test_isolated_handler_is_async_task_safe() -> None:
 
     # Then
     assert sorted(record.__dict__["item.id"] for record in target.records) == list(range(20))
+
+
+def test_isolated_handler_bounds_deep_record_copy_without_raising() -> None:
+    payload: dict[str, object] = {}
+    tail = payload
+    for _ in range(sys.getrecursionlimit() + 100):
+        child: dict[str, object] = {}
+        tail["next"] = child
+        tail = child
+    stream = io.StringIO()
+    target = logging.StreamHandler(stream)
+    target.setFormatter(JsonFormatter())
+    logger = logging.Logger("isolated.deep-copy", logging.INFO)
+    logger.addHandler(IsolatedHandler(target))
+
+    logger.info("nested payload", extra={"payload": payload})
+
+    assert json.loads(stream.getvalue())["extra"]["payload"]

@@ -8,6 +8,10 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
+_COPY_MAX_DEPTH = 32
+_COPY_MAX_NODES = 4096
+_COPY_LIMIT_SENTINEL = "<copy-limit>"
+
 
 @dataclass(slots=True)
 class _ForwardingState:
@@ -20,7 +24,15 @@ _forwarding_state: ContextVar[_ForwardingState | None] = ContextVar(
 )
 
 
-def _copy_mutable(value: Any, memo: dict[int, Any]) -> Any:
+def _copy_mutable(
+    value: Any,
+    memo: dict[int, Any],
+    budget: list[int],
+    depth: int = 0,
+) -> Any:
+    if depth > _COPY_MAX_DEPTH or budget[0] >= _COPY_MAX_NODES:
+        return _COPY_LIMIT_SENTINEL
+    budget[0] += 1
     value_id = id(value)
     if value_id in memo:
         return memo[value_id]
@@ -28,16 +40,20 @@ def _copy_mutable(value: Any, memo: dict[int, Any]) -> Any:
         copied: dict[Any, Any] = {}
         memo[value_id] = copied
         copied.update(
-            (_copy_mutable(key, memo), _copy_mutable(item, memo)) for key, item in value.items()
+            (
+                _copy_mutable(key, memo, budget, depth + 1),
+                _copy_mutable(item, memo, budget, depth + 1),
+            )
+            for key, item in value.items()
         )
         return copied
     if isinstance(value, list):
         copied_list: list[Any] = []
         memo[value_id] = copied_list
-        copied_list.extend(_copy_mutable(item, memo) for item in value)
+        copied_list.extend(_copy_mutable(item, memo, budget, depth + 1) for item in value)
         return copied_list
     if isinstance(value, tuple):
-        copied_items = [_copy_mutable(item, memo) for item in value]
+        copied_items = [_copy_mutable(item, memo, budget, depth + 1) for item in value]
         if value_id in memo:
             return memo[value_id]
         copied_tuple = tuple(copied_items)
@@ -49,7 +65,10 @@ def _copy_mutable(value: Any, memo: dict[int, Any]) -> Any:
 def _copy_record(record: logging.LogRecord) -> logging.LogRecord:
     cloned = copy.copy(record)
     memo: dict[int, Any] = {}
-    cloned.__dict__ = {key: _copy_mutable(value, memo) for key, value in record.__dict__.items()}
+    budget = [0]
+    cloned.__dict__ = {
+        key: _copy_mutable(value, memo, budget) for key, value in record.__dict__.items()
+    }
     return cloned
 
 
