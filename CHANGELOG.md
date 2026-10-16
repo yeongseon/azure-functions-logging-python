@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.15.3](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.2...v0.15.3) (2026-10-16)
+
+
+### Bug Fixes
+
+* **release:** pass exact arguments to the cookbook host-smoke pytest ([#575](https://github.com/yeongseon/azure-functions-logging-python/issues/575)) ([cfbafb7](https://github.com/yeongseon/azure-functions-logging-python/commit/cfbafb7c5fdee6ce483d91eaa1cb09fd723543c6))
+
 ## [0.15.2](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.1...v0.15.2) (2026-10-16)
 
 
