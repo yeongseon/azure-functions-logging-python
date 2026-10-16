@@ -81,6 +81,7 @@ def _redact_value(
     value: Any,
     sensitive_keys: frozenset[str],
     mask: str = _MASK,
+    patterns: tuple[re.Pattern[str], ...] = (),
     *,
     _seen: set[int] | None = None,
     _depth: int = 0,
@@ -97,6 +98,8 @@ def _redact_value(
     try:
         if _depth >= _REDACT_MAX_DEPTH:
             return mask  # treat over-deep structures as potentially sensitive
+        if isinstance(value, str):
+            return _mask_patterns(value, patterns) if patterns else value
         if isinstance(value, dict):
             seen = _seen if _seen is not None else set()
             obj_id = id(value)
@@ -107,20 +110,35 @@ def _redact_value(
                 key: (
                     mask
                     if isinstance(key, str) and _is_sensitive(key, sensitive_keys)
-                    else _redact_value(item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1)
+                    else _redact_value(
+                        item,
+                        sensitive_keys,
+                        mask,
+                        patterns,
+                        _seen=seen,
+                        _depth=_depth + 1,
+                    )
                 )
                 for key, item in value.items()
             }
-        if isinstance(value, list):
+        if isinstance(value, (list, tuple)):
             seen = _seen if _seen is not None else set()
             obj_id = id(value)
             if obj_id in seen:
                 return mask
             seen = seen | {obj_id}
-            return [
-                _redact_value(item, sensitive_keys, mask, _seen=seen, _depth=_depth + 1)
+            redacted = [
+                _redact_value(
+                    item,
+                    sensitive_keys,
+                    mask,
+                    patterns,
+                    _seen=seen,
+                    _depth=_depth + 1,
+                )
                 for item in value
             ]
+            return tuple(redacted) if isinstance(value, tuple) else redacted
         return value
     except Exception:  # nosec B110 — filter must never raise
         return value
@@ -319,8 +337,14 @@ class RedactionFilter(logging.Filter):
                         setattr(record, key, _MASK)
                         continue
                     value = record.__dict__[key]
-                    if isinstance(value, (dict, list)):
-                        setattr(record, key, _redact_value(value, self._sensitive_keys))
+                    if isinstance(value, (dict, list)) or (
+                        self._patterns and isinstance(value, tuple)
+                    ):
+                        setattr(
+                            record,
+                            key,
+                            _redact_value(value, self._sensitive_keys, patterns=self._patterns),
+                        )
                     elif self._patterns and isinstance(value, str):
                         setattr(record, key, _mask_patterns(value, self._patterns))
                 except Exception:  # nosec B110 — one broken field must not stop others
