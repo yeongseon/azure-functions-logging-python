@@ -35,3 +35,19 @@ def test_collection_guard_skips_coverage_and_rejects_zero_collection() -> None:
     assert re.search(pattern, "3 tests collected in 0.04s", re.MULTILINE)
     assert not re.search(pattern, "0/3 tests collected (3 deselected) in 0.04s", re.MULTILINE)
     assert not re.search(pattern, "no tests collected in 0.04s", re.MULTILINE)
+
+
+def test_host_smoke_command_arguments_are_exact() -> None:
+    import shlex
+
+    import yaml
+
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    steps = workflow["jobs"]["cookbook-host-smoke"]["steps"]
+    command = next(
+        step["run"] for step in steps if step.get("name", "").startswith("Boot cookbook func host")
+    )
+    arguments = shlex.split(command.replace("\\\n", " "), posix=True)
+
+    assert "tests/e2e/test_package_runtime.py" in arguments
+    assert "--junitxml=pytest-results.xml" in arguments

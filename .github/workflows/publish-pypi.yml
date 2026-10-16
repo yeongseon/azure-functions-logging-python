@@ -231,8 +231,9 @@ jobs:
           grep -Eq "^[1-9][0-9]*(/[0-9]+)? tests? collected" /tmp/logging-collection.txt
 
       - name: Boot cookbook func host with candidate wheel (host-smoke)
-        run: hatch run pytest -v -m "e2e and package_logging" \
-          tests/e2e/test_package_runtime.py --no-cov --junitxml=pytest-results.xml
+        run: |
+          hatch run pytest -v -m "e2e and package_logging" \
+            tests/e2e/test_package_runtime.py --no-cov --junitxml=pytest-results.xml
         timeout-minutes: 15
 
       - name: Upload sanitized host diagnostics
