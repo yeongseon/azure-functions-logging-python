@@ -262,6 +262,48 @@ def test_setup_logging_leaves_real_otel_handler_body_unformatted() -> None:
         root.filters.clear()
 
 
+def test_setup_logging_leaves_inherited_otel_handler_body_unformatted() -> None:
+    """Regression (#581): an application subclass of the real SDK
+    LoggingHandler is still a genuine OTel handler and must keep its
+    structured body -- detection must not be limited to the exact
+    concrete-class module, which misses inheritance entirely."""
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import InMemoryLogExporter, SimpleLogRecordProcessor
+
+    class ApplicationLoggingHandler(LoggingHandler):
+        pass
+
+    exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    handler = ApplicationLoggingHandler(logger_provider=provider)
+    assert (
+        type(handler).__module__ != "opentelemetry.sdk._logs._internal"
+    )  # defined here, not in OTel
+
+    plain_stream = logging.StreamHandler()
+    root = logging.getLogger()
+    root.handlers = [handler, plain_stream]
+
+    env = {"FUNCTIONS_WORKER_RUNTIME": "python", "PYTHON_ENABLE_OPENTELEMETRY": "1"}
+    try:
+        with patch.dict(os.environ, env, clear=True), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            setup_logging(functions_formatter=logging.Formatter('{"message":"%(message)s"}'))
+        logging.getLogger("afl.test.otel.inherited.body").warning({"event": "after", "count": 1})
+
+        # The inherited OTel handler's native structured body survives --
+        # it must NOT have been formatted into a JSON string.
+        assert exporter.get_finished_logs()[0].log_record.body == {"event": "after", "count": 1}
+        # A coexisting normal (non-OTel) handler on the same root logger
+        # still receives the Functions formatter.
+        assert plain_stream.formatter is not None
+    finally:
+        provider.shutdown()
+        root.handlers = []
+        root.filters.clear()
+
+
 def test_setup_logging_use_record_factory_installs_factory() -> None:
     """use_record_factory=True installs the global LogRecordFactory."""
     from azure_functions_logging._context import (

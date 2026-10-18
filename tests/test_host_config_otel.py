@@ -114,6 +114,22 @@ def test_has_otel_logging_handler_false_for_plain_handler(clean_root: logging.Lo
     assert _has_otel_logging_handler(clean_root) is False
 
 
+def test_has_otel_logging_handler_detects_application_subclass(
+    clean_root: logging.Logger,
+) -> None:
+    """Regression (#581): an application subclass of an OTel handler is
+    still a genuine OTel handler. Detection must walk the MRO, not just
+    the concrete class's own module -- a subclass defined in this test
+    module would otherwise be missed entirely."""
+
+    class ApplicationHandler(_FakeOtelHandler):
+        pass
+
+    assert ApplicationHandler.__module__ == __name__  # defined here, not in OTel
+    clean_root.addHandler(ApplicationHandler())
+    assert _has_otel_logging_handler(clean_root) is True
+
+
 def test_has_otel_logging_handler_false_when_no_handlers(clean_root: logging.Logger) -> None:
     assert _has_otel_logging_handler(clean_root) is False
 

@@ -230,19 +230,39 @@ def warn_host_json_level_conflict(
     )
 
 
+def _is_otel_logging_handler(handler: logging.Handler) -> bool:
+    """Return True if *handler*'s class, or any class it inherits from, is
+    defined in an OpenTelemetry module.
+
+    MRO-aware (not just the concrete class): an application subclass of
+    e.g. ``opentelemetry.sdk._logs.LoggingHandler`` is still recognized,
+    where checking only ``type(handler).__module__`` would miss it (the
+    subclass itself lives in the application's own module). Import-free:
+    this inspects ``__module__`` strings on the existing MRO, it never
+    imports OpenTelemetry, so detection stays a no-op when OTel is absent.
+    Narrow by design -- only a module path starting with
+    ``"opentelemetry."`` counts, so unrelated logging handlers are never
+    misclassified as OTel handlers.
+
+    Shared by :func:`_has_otel_logging_handler` (diagnostics) and
+    ``setup_logging()``'s formatter-assignment loop in ``_setup.py``, so
+    both use the identical recognition rule (#581).
+    """
+    return any(
+        (klass.__module__ or "").startswith("opentelemetry.") for klass in type(handler).__mro__
+    )
+
+
 def _has_otel_logging_handler(logger: logging.Logger) -> bool:
     """Return True if *logger* has an OpenTelemetry logging handler attached.
 
-    Detection is **import-free**: it inspects each handler's defining module
-    name rather than importing OpenTelemetry. This covers both
+    Detection is **import-free**: it inspects each handler's class hierarchy
+    module names rather than importing OpenTelemetry. This covers both
     ``opentelemetry.sdk._logs`` and ``opentelemetry.instrumentation.logging``
-    handlers, and stays a no-op when OpenTelemetry is not installed.
+    handlers (including application subclasses of either), and stays a
+    no-op when OpenTelemetry is not installed.
     """
-    for handler in logger.handlers:
-        module = type(handler).__module__ or ""
-        if module.startswith("opentelemetry."):
-            return True
-    return False
+    return any(_is_otel_logging_handler(handler) for handler in logger.handlers)
 
 
 def _any_otel_logging_handler() -> bool:
