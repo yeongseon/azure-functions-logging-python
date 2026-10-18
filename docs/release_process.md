@@ -14,7 +14,7 @@ gated step.
 |---|---|
 | `release-please.yml` | version calculation, `CHANGELOG.md`, the Release PR, the tag, the GitHub Release |
 | `e2e-azure.yml` | real-Azure certification of one exact commit |
-| `publish-pypi.yml` | the only path that uploads to PyPI (`workflow_dispatch` only) |
+| `publish-pypi.yml` | the only path that uploads to PyPI (starts automatically on `v*` tag pushes; `workflow_dispatch` is its recovery path for re-running that same trigger manually) |
 
 **Do not hand-edit** `src/azure_functions_logging/__init__.py` version strings, `CHANGELOG.md`, or
 `.release-please-manifest.json`. Release Please maintains all three.
@@ -82,7 +82,7 @@ build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> publ
 | `build` | tag/`__version__` mismatch; produces the one artifact that is later uploaded |
 | `lib-tests` | library unit regressions |
 | `cookbook-smoke` | downstream import/registration drift |
-| `cookbook-host-smoke` | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, no cloud. NOTE: the cookbook HTTP examples do not import this package, so this is a host-boot smoke, **not** proof of this package's own runtime behavior (tracked separately) |
+| `cookbook-host-smoke` | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, exercising the cookbook's package-specific `package_logging` E2E selection (logging output/correlation through a real host), no cloud |
 | `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
@@ -92,11 +92,19 @@ step to dispatch and no freshness window to expire.
 
 Publication uses PyPI Trusted Publishing (OIDC); there is no API token to manage.
 
-To re-run after a failed gate (nothing was uploaded, so the version is still free):
+Publication starts automatically on `v*` tag pushes. `workflow_dispatch` takes no inputs; the
+workflow reads the version to verify from `github.ref_name`, so its only valid use is retrying the
+*same unchanged* tagged candidate after a transient or environmental failure (a flaky Azure deploy,
+a PyPI outage, a runner hiccup) — nothing was uploaded, so the version is still free:
 
 ```bash
-gh workflow run publish-pypi.yml --ref main -f tag=v0.13.0
+gh workflow run publish-pypi.yml --ref v0.13.0
 ```
+
+Here `v0.13.0` is the existing, already-created tag being retried — not `main`, and the workflow has
+no `tag=` input to supply separately. If the failure instead requires a code or workflow correction,
+fix forward on `main` and let the next Release PR cut a new version. Never move or reuse a tag to
+make a changed commit appear to be the same release candidate.
 
 ---
 
