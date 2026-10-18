@@ -76,21 +76,39 @@ def _copy_mutable(
     if isinstance(value, dict):
         copied: dict[Any, Any] = {}
         memo[value_id] = copied
-        copied.update(
-            (
-                _copy_mutable(key, memo, budget, depth + 1),
-                _copy_mutable(item, memo, budget, depth + 1),
+        for key, item in value.items():
+            if budget[0] >= _COPY_MAX_NODES:
+                # The budget bounds breadth (elements visited), not just
+                # container nesting -- a wide, shallow payload (e.g. a
+                # million scalar keys) must not bypass it just because
+                # none of its leaves are themselves containers (#611).
+                # Remaining entries are collapsed under one marker key
+                # rather than copied one by one.
+                copied[_COPY_LIMIT_SENTINEL] = _COPY_LIMIT_SENTINEL
+                break
+            budget[0] += 1
+            copied[_copy_mutable(key, memo, budget, depth + 1)] = _copy_mutable(
+                item, memo, budget, depth + 1
             )
-            for key, item in value.items()
-        )
         return copied
     if isinstance(value, list):
         copied_list: list[Any] = []
         memo[value_id] = copied_list
-        copied_list.extend(_copy_mutable(item, memo, budget, depth + 1) for item in value)
+        for item in value:
+            if budget[0] >= _COPY_MAX_NODES:
+                copied_list.append(_COPY_LIMIT_SENTINEL)
+                break
+            budget[0] += 1
+            copied_list.append(_copy_mutable(item, memo, budget, depth + 1))
         return copied_list
     if isinstance(value, tuple):  # pragma: no branch — the only remaining case after dict/list
-        copied_items = [_copy_mutable(item, memo, budget, depth + 1) for item in value]
+        copied_items: list[Any] = []
+        for item in value:
+            if budget[0] >= _COPY_MAX_NODES:
+                copied_items.append(_COPY_LIMIT_SENTINEL)
+                break
+            budget[0] += 1
+            copied_items.append(_copy_mutable(item, memo, budget, depth + 1))
         if value_id in memo:
             return memo[value_id]
         copied_tuple = tuple(copied_items)
