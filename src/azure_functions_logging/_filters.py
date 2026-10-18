@@ -423,6 +423,11 @@ class AttributeFlattenFilter(logging.Filter):
     - Empty dicts contribute no keys (the attribute is removed).
     - Cyclic references are dropped; over-deep structures (beyond
       ``max_depth``) are emitted as-is at the depth boundary.
+    - A generated dotted key never overwrites a pre-existing record
+      attribute — whether that is standard ``LogRecord`` metadata or a
+      separate, literal ``extra`` key that already uses the same dotted
+      name (e.g. ``extra={"a": {"b": 1}, "a.b": 999}``) — regardless of
+      which one appeared first in ``extra``'s insertion order.
 
     .. note::
 
@@ -474,6 +479,17 @@ class AttributeFlattenFilter(logging.Filter):
                     flattened = _flatten_dict(key, value, self._separator, self._max_depth)
                     del record.__dict__[key]
                     for flat_key, flat_value in flattened.items():
+                        if flat_key in record.__dict__:
+                            # A pre-existing record attribute -- standard
+                            # metadata or a separate literal extra key --
+                            # always wins over a generated flattened path,
+                            # regardless of which appeared first in the
+                            # original extra= insertion order (#280): every
+                            # original key is already present in
+                            # record.__dict__ by the time this filter runs,
+                            # since extra= is applied in one update() before
+                            # any filter executes.
+                            continue
                         setattr(record, flat_key, flat_value)
                 except Exception:  # nosec B110 — one broken field must not stop others
                     pass

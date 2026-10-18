@@ -1057,6 +1057,102 @@ def test_flatten_filter_keeps_first_on_key_collision() -> None:
     assert getattr(record, "meta.a.b") == 1
 
 
+def test_flatten_filter_never_overwrites_pre_existing_record_attribute_nested_first() -> None:
+    """Regression (#280): a SEPARATE top-level extra key already on the
+    record (not nested inside the dict being flattened) must never be
+    overwritten by a generated flattened path -- here the nested source
+    ("a") is inserted before the literal destination ("a.b")."""
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "a", {"b": 1})
+    setattr(record, "a.b", 999)
+
+    flt.filter(record)
+
+    assert getattr(record, "a.b") == 999
+
+
+def test_flatten_filter_never_overwrites_pre_existing_record_attribute_literal_first() -> None:
+    """Regression (#280): the same guarantee holds in the opposite
+    insertion order -- the literal destination ("a.b") is inserted before
+    the nested source ("a"). Both orders must preserve a.b == 999, since
+    extra= applies the whole mapping via one dict update before this
+    filter ever runs."""
+    flt = AttributeFlattenFilter()
+    record = _make_record()
+    setattr(record, "a.b", 999)
+    setattr(record, "a", {"b": 1})
+
+    flt.filter(record)
+
+    assert getattr(record, "a.b") == 999
+
+
+def test_flatten_filter_preserves_pre_existing_attribute_through_logger_and_json() -> None:
+    """Regression (#280): verified through the full public pipeline (a real
+    logger call with extra=, JsonFormatter) and repeated filter application,
+    not just direct attribute inspection."""
+    import io
+    import json
+
+    from azure_functions_logging import JsonFormatter
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    flt = AttributeFlattenFilter()
+    handler.addFilter(flt)
+    logger = logging.getLogger("flatten.pre-existing.e2e")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    logger.addHandler(handler)
+    try:
+        logger.info("collision", extra={"a": {"b": 1}, "a.b": 999})
+        payload = json.loads(stream.getvalue())["extra"]
+        assert payload == {"a.b": 999}
+
+        # Repeated filter application on a fresh record must be equally safe.
+        stream.truncate(0)
+        stream.seek(0)
+        logger.info("collision", extra={"a.b": 999, "a": {"b": 1}})
+        payload2 = json.loads(stream.getvalue())["extra"]
+        assert payload2 == {"a.b": 999}
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def test_flatten_filter_preserves_pre_existing_attribute_with_isolated_handler() -> None:
+    """Regression (#280 acceptance): the guarantee holds when composed with
+    IsolatedHandler too -- caller-owned input and sibling-handler isolation
+    are unaffected by this fix."""
+    import io
+    import json
+
+    from azure_functions_logging import IsolatedHandler, JsonFormatter
+
+    stream = io.StringIO()
+    target = logging.StreamHandler(stream)
+    target.setFormatter(JsonFormatter())
+    isolated = IsolatedHandler(target)
+    isolated.addFilter(AttributeFlattenFilter())
+    logger = logging.getLogger("flatten.pre-existing.isolated")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    logger.addHandler(isolated)
+    try:
+        original_extra = {"a": {"b": 1}, "a.b": 999}
+        logger.info("collision", extra=original_extra)
+
+        assert json.loads(stream.getvalue())["extra"] == {"a.b": 999}
+        # Caller-owned input is never mutated by the isolated copy or the filter.
+        assert original_extra == {"a": {"b": 1}, "a.b": 999}
+    finally:
+        logger.removeHandler(isolated)
+        isolated.close()
+        target.close()
+
+
 def test_flatten_filter_skips_non_string_keys() -> None:
     """Non-string dict keys cannot form a queryable dotted path and are
     skipped rather than coerced into unqueryable keys (issue #281)."""
