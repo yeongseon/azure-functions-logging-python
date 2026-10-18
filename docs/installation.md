@@ -1,6 +1,8 @@
 # Installation
 
-Installing `azure-functions-logging` requires Python 3.11-3.14 (`>=3.11,<3.15`). The package has no external runtime dependencies.
+Installing `azure-functions-logging` requires Python 3.11-3.14 (`>=3.11,<3.15`). The package
+declares one required runtime dependency, `azure-functions>=1.21.0`, and uses the standard library
+(`logging`, `json`, `contextvars`, `os`) for everything else.
 
 ## Using pip
 
@@ -58,7 +60,10 @@ This installs the package in editable mode along with development tools (pytest,
 ## Prerequisites
 
 - **Python**: >= 3.11 (tested on 3.11, 3.12, 3.13, 3.14)
-- **External Dependencies**: None. This package uses only the Python standard library at runtime.
+- **Required dependency**: `azure-functions>=1.21.0`. Everything else the package uses at runtime
+  comes from the Python standard library. The OpenTelemetry trace-correlation feature is an
+  optional `[otel]` extra (`pip install azure-functions-logging[otel]`), only needed if you pass
+  `activate_trace_context=True`.
 - **Build System**: [Hatch](https://hatch.pypa.io/) (for development and publishing)
 
 ## Verifying the Installation

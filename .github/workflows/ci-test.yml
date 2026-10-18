@@ -126,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # This package declares no runtime dependency on `azure-functions`, so
+        # This package's only runtime dependency is `azure-functions>=1.21.0`, so
         # the full test suite is honestly installable and runnable on every
         # supported interpreter. Python 3.14 is stable and required in this
         # matrix (not allow-fail).

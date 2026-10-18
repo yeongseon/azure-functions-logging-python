@@ -176,7 +176,7 @@ This path is opt-in. Existing filters retain their in-place behavior, and
 - Supported Python versions: 3.11-3.14 (`requires-python = ">=3.11,<3.15"`)
 - Supported runtime target: Azure Functions Python v2 programming model
 - Public APIs follow semantic versioning expectations
-- No runtime dependency on `azure-functions` (optional import only)
+- No runtime dependency beyond the required `azure-functions` floor (OpenTelemetry is an optional `[otel]` extra, imported only when `activate_trace_context=True` is used)
 
 ## Change Discipline
 

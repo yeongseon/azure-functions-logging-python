@@ -21,7 +21,7 @@
 - Run `hatch run pytest --cov --cov-report=term-missing -q` to verify before submitting changes.
 - Any PR that drops coverage below 95% must include additional tests to compensate.
 - In Azure/Core Tools mode, `setup_logging()` installs `ContextFilter` on the root logger's existing handlers (and the root logger itself for late-attaching handlers) but never adds new handlers or changes the root level. When `use_record_factory=True`, no `ContextFilter` is attached; context is injected via the global `LogRecordFactory` instead. In standalone local mode, the root logger is configured by default (`logger_name=None`); pass an explicit `logger_name` to avoid modifying the root logger.
-- No runtime dependency on `azure-functions` — it is an optional import only.
+- `azure-functions>=1.21.0` is a required runtime dependency (declared in `pyproject.toml`, added deliberately in #528 to align the toolkit floor). OpenTelemetry support remains an optional `[otel]` extra, imported only when `activate_trace_context=True` is used.
 - Runtime code must remain compatible with Python 3.11-3.14 (`>=3.11,<3.15`).
 - Public APIs must be fully typed.
 - Keep documentation examples and tests synchronized with any behavior changes.
@@ -193,7 +193,7 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 - In Azure environments, behavior is safe by default — no forced colors, no excessive handler additions, no interference with the worker's `AsyncLoggingHandler`.
 - Context injection failures never cause application failures.
 - The API surface stays as close to standard `logging` as possible.
-- No runtime dependency on `azure-functions` — optional import only.
+- `azure-functions>=1.21.0` is a required runtime dependency; OpenTelemetry remains an optional `[otel]` extra, imported only when `activate_trace_context=True` is used.
 
 ## Commit Rules
 

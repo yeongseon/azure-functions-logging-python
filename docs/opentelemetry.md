@@ -27,8 +27,8 @@ recording, or exporting any spans**.
 
 ## Installation
 
-The base install stays zero-dependency. Trace-context activation requires the
-optional `[otel]` extra:
+The base install requires only `azure-functions>=1.21.0`; OpenTelemetry stays out of it entirely.
+Trace-context activation requires the optional `[otel]` extra:
 
 ```bash
 pip install "azure-functions-logging[otel]"

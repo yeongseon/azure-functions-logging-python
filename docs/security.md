@@ -90,7 +90,10 @@ These fields are attached to log records. They do not contain user data or secre
 
 ### Dependencies
 
-This package has **zero runtime dependencies**. It uses only the Python standard library (`logging`, `json`, `contextvars`, `os`).
+This package declares one required runtime dependency, `azure-functions>=1.21.0` (added
+deliberately in #528 to align the toolkit floor), and otherwise uses only the Python standard
+library (`logging`, `json`, `contextvars`, `os`). OpenTelemetry trace correlation is an optional
+`[otel]` extra, imported only when `activate_trace_context=True` is used.
 
 Development dependencies (not installed at runtime):
 
@@ -119,7 +122,8 @@ Development dependencies (not installed at runtime):
 
 ### For contributors
 
-- Do not add external runtime dependencies
+- Do not add new runtime dependencies beyond the established `azure-functions` floor without a
+  deliberate, documented decision
 - Do not add network calls to the library
 - Do not store or cache log data
 - Run `make security` (bandit) before submitting pull requests

@@ -40,7 +40,8 @@ azure-functions-logging>=0.10,<1
 ```
 
 !!! note
-    The library has no external runtime dependencies. It builds on Python's standard `logging` module.
+    `azure-functions>=1.21.0` is the one required runtime dependency, matching the
+    `requirements.txt` entry above. Everything else builds on Python's standard `logging` module.
 
 ## Five-Second Setup
 
