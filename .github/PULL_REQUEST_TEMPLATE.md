@@ -30,6 +30,17 @@ Closes #
 
 <!-- Checks you did not run, and why. Leave this honest rather than empty. -->
 
+## Review Evidence
+
+<!-- See docs/review-evidence-policy.md (advisory, not a required check).
+     Record review source/SHA so evidence can be checked against the
+     commit it actually evaluated, not just the PR as a whole. -->
+
+- Review source and reviewed commit SHA:
+- Material findings and disposition (fixed / acknowledged-wont-fix / deferred-with-issue), or "none":
+- Unresolved blockers, or "none":
+- R3 (workflow permissions, release/publishing, security-sensitive redaction/exposure, telemetry trust boundaries, review-policy files): yes/no — if yes, human authorization record:
+
 ## Compatibility and documentation
 
 - [ ] This change affects the public API, supported versions, or output format
