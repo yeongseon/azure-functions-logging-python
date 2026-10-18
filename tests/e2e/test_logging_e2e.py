@@ -107,33 +107,84 @@ def _query_app_insights(query: str) -> list[dict]:  # type: ignore[type-arg]
     return [dict(zip(cols, row)) for row in rows]
 
 
+def _extract_structured_fields(row: dict) -> dict | None:  # type: ignore[type-arg]
+    """Extract invocation_id/function_name/cold_start/correlation_id from an
+    App Insights traces row, recognizing both documented ingestion shapes
+    (README): structured JSON retained whole in ``message``, or individual
+    fields promoted into ``customDimensions``.
+
+    Returns None only when NEITHER shape yields any parseable structured
+    payload at all -- e.g. a plain, non-JSON message (#590's own repro). The
+    caller is responsible for validating individual extracted field values;
+    this function only reports whether a structured payload was found.
+    """
+    try:
+        parsed = json.loads(row.get("message", ""))
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    if isinstance(parsed, dict) and "invocation_id" in parsed:
+        extra = parsed.get("extra")
+        return {
+            "invocation_id": parsed.get("invocation_id"),
+            "function_name": parsed.get("function_name"),
+            "cold_start": parsed.get("cold_start"),
+            "correlation_id": extra.get("correlation_id") if isinstance(extra, dict) else None,
+        }
+
+    custom_dimensions = row.get("customDimensions")
+    if isinstance(custom_dimensions, str):
+        try:
+            custom_dimensions = json.loads(custom_dimensions)
+        except json.JSONDecodeError:
+            custom_dimensions = None
+    if isinstance(custom_dimensions, dict) and "invocation_id" in custom_dimensions:
+        return {
+            "invocation_id": custom_dimensions.get("invocation_id"),
+            "function_name": custom_dimensions.get("function_name"),
+            "cold_start": custom_dimensions.get("cold_start"),
+            "correlation_id": custom_dimensions.get("correlation_id"),
+        }
+    return None
+
+
 @pytest.mark.skipif(not BASE_URL, reason=SKIP_REASON)
 @pytest.mark.skipif(not APPINSIGHTS_NAME, reason=SKIP_AI_REASON)
 def test_structured_log_appears_in_app_insights() -> None:
-    """Invoke /api/logme and then poll App Insights until the log entry appears."""
+    """Invoke /api/logme and then poll App Insights until a row with
+    structured invocation context matching our unique correlation ID
+    appears -- not merely a row whose plain message happens to contain the
+    correlation string (#590)."""
     # Ensure a fresh invocation with our unique correlation ID
     r = _get("/api/logme", correlation_id=CORRELATION_ID)
     assert r.status_code == 200
 
     # App Insights ingestion latency can be up to ~2-5 min
     query = (
-        f"traces | where timestamp > ago(10m) | where message contains '{CORRELATION_ID}' | limit 5"
+        f"traces | where timestamp > ago(10m) | where message contains '{CORRELATION_ID}' "
+        "| project message, customDimensions | limit 5"
     )
     deadline = time.time() + 360  # wait up to 6 minutes
+    matched: dict | None = None  # type: ignore[type-arg]
     while time.time() < deadline:
         rows = _query_app_insights(query)
-        if rows:
+        for row in rows:
+            fields = _extract_structured_fields(row)
+            if fields is not None and fields.get("correlation_id") == CORRELATION_ID:
+                matched = fields
+                break
+        if matched is not None:
             break
         time.sleep(15)
     else:
         pytest.fail(
-            f"Structured log with correlation_id={CORRELATION_ID!r} "
-            "did not appear in App Insights within 6 minutes"
+            f"No row with structured fields matching correlation_id={CORRELATION_ID!r} "
+            "appeared in App Insights within 6 minutes"
         )
 
-    assert len(rows) > 0
-    row = rows[0]
-    assert CORRELATION_ID in row.get("message", "")
+    assert matched is not None
+    assert matched["invocation_id"], "invocation_id must be present and non-empty"
+    assert matched["function_name"] == "logme"
+    assert isinstance(matched["cold_start"], bool)
 
 
 @pytest.mark.skipif(not BASE_URL, reason=SKIP_REASON)
