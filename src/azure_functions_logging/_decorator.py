@@ -332,40 +332,95 @@ def _wrap_generator(
     func: _F,
     param: str,
     activate_trace_context: bool | None,
+    lifecycle: bool,
+    lifecycle_level: int,
 ) -> _F:
     context_index = _resolve_positional_index(func, param)
+    lifecycle_logger = _lifecycle_logger_for(func) if lifecycle else None
 
     def wrapper(*args: Any, **kwargs: Any) -> Generator[Any, Any, Any]:
         ctx = _find_context_arg(param, context_index, args, kwargs)
-        if ctx is not None:
-            iterator = func(*args, **kwargs)
+
+        if ctx is None:
+            # No context to carry lifecycle records inside -- matches
+            # _wrap_sync's own lifecycle-without-context behavior. Emit
+            # start/end around a plain delegation; `yield from` already
+            # forwards send/throw/close and the return value unchanged.
+            if lifecycle_logger is None:
+                return (yield from func(*args, **kwargs))
+            start_time = time.perf_counter()
+            _log_lifecycle_start(lifecycle_logger, lifecycle_level)
             try:
-                with logging_context(ctx, activate_trace_context=activate_trace_context):
-                    generator_cold_start = cold_start_var.get()
-                    item = next(iterator)
-                while True:
-                    try:
-                        sent = yield item
-                    except GeneratorExit:
-                        with logging_context(ctx, activate_trace_context=activate_trace_context):
-                            cold_start_var.set(generator_cold_start)
-                            iterator.close()
-                        raise
-                    except BaseException:
-                        with logging_context(ctx, activate_trace_context=activate_trace_context):
-                            cold_start_var.set(generator_cold_start)
-                            item = iterator.throw(*sys.exc_info())
-                    else:
-                        with logging_context(ctx, activate_trace_context=activate_trace_context):
-                            cold_start_var.set(generator_cold_start)
-                            item = iterator.send(sent)
-            except StopIteration as stop:
-                return stop.value
-            finally:
-                with logging_context(ctx, activate_trace_context=activate_trace_context):
-                    cold_start_var.set(generator_cold_start)
-                    iterator.close()
-        return (yield from func(*args, **kwargs))
+                result = yield from func(*args, **kwargs)
+            except GeneratorExit:
+                _log_lifecycle_end(lifecycle_logger, lifecycle_level, start_time, "closed", None)
+                raise
+            except Exception as exc:
+                _log_lifecycle_end(lifecycle_logger, lifecycle_level, start_time, "error", exc)
+                raise
+            _log_lifecycle_end(lifecycle_logger, lifecycle_level, start_time, "success", None)
+            return result
+
+        # Lifecycle start/end records must carry invocation context, so each
+        # must be emitted from inside one of the per-resume
+        # logging_context() windows below -- there is no single contiguous
+        # window spanning the whole invocation like _wrap_sync has, because
+        # #562 deliberately restores the caller's own context between
+        # resumes. _end_once guards against firing twice: natural
+        # exhaustion, an unhandled error, and an early close are three
+        # different code paths below that must each be capable of being the
+        # terminal event, but never more than one of them for a given
+        # invocation.
+        lifecycle_start_time = 0.0
+        lifecycle_ended = False
+
+        def _end_once(outcome: str, exc: Exception | None) -> None:
+            nonlocal lifecycle_ended
+            if lifecycle_logger is not None and not lifecycle_ended:
+                lifecycle_ended = True
+                _log_lifecycle_end(
+                    lifecycle_logger, lifecycle_level, lifecycle_start_time, outcome, exc
+                )
+
+        iterator = func(*args, **kwargs)
+        try:
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                generator_cold_start = cold_start_var.get()
+                if lifecycle_logger is not None:
+                    lifecycle_start_time = time.perf_counter()
+                    _log_lifecycle_start(lifecycle_logger, lifecycle_level)
+                item = next(iterator)
+            while True:
+                try:
+                    sent = yield item
+                except GeneratorExit:
+                    with logging_context(ctx, activate_trace_context=activate_trace_context):
+                        cold_start_var.set(generator_cold_start)
+                        iterator.close()
+                        _end_once("closed", None)
+                    raise
+                except BaseException:
+                    with logging_context(ctx, activate_trace_context=activate_trace_context):
+                        cold_start_var.set(generator_cold_start)
+                        item = iterator.throw(*sys.exc_info())
+                else:
+                    with logging_context(ctx, activate_trace_context=activate_trace_context):
+                        cold_start_var.set(generator_cold_start)
+                        item = iterator.send(sent)
+        except StopIteration as stop:
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                cold_start_var.set(generator_cold_start)
+                _end_once("success", None)
+            return stop.value
+        except Exception as exc:
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                cold_start_var.set(generator_cold_start)
+                _end_once("error", exc)
+            raise
+        finally:
+            with logging_context(ctx, activate_trace_context=activate_trace_context):
+                cold_start_var.set(generator_cold_start)
+                iterator.close()
 
     _copy_safe_metadata(wrapper, func)
     set_logging_metadata(wrapper, func, _build_logging_payload(param))
@@ -376,8 +431,11 @@ def _wrap_async_generator(
     func: _F,
     param: str,
     activate_trace_context: bool | None,
+    lifecycle: bool,
+    lifecycle_level: int,
 ) -> _F:
     context_index = _resolve_positional_index(func, param)
+    lifecycle_logger = _lifecycle_logger_for(func) if lifecycle else None
 
     async def wrapper(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
         ctx = _find_context_arg(param, context_index, args, kwargs)
@@ -387,7 +445,11 @@ def _wrap_async_generator(
         # the original per-advance context strategy from #510. With no
         # context available, asend/athrow/aclose must still reach the inner
         # generator (#585) -- contextlib.nullcontext lets the same pump loop
-        # serve both cases instead of duplicating it.
+        # serve both cases instead of duplicating it. The same unification
+        # lets lifecycle records (#587) be emitted uniformly too: with no
+        # context, nullcontext is a no-op, so the records just carry no
+        # injected context fields -- matching _wrap_async's own
+        # lifecycle-without-context behavior.
         scope: Callable[[], contextlib.AbstractContextManager[None]] = (
             (lambda: logging_context(ctx, activate_trace_context=activate_trace_context))
             if ctx is not None
@@ -404,10 +466,28 @@ def _wrap_async_generator(
             if ctx is not None:
                 cold_start_var.set(generator_cold_start)
 
+        lifecycle_start_time = 0.0
+        lifecycle_ended = False
+
+        def _end_once(outcome: str, exc: Exception | None) -> None:
+            # Guard against firing twice: natural exhaustion, an unhandled
+            # error, and an early close are three different code paths below
+            # that must each be capable of being the terminal event, but
+            # never more than one of them for a given invocation (#587).
+            nonlocal lifecycle_ended
+            if lifecycle_logger is not None and not lifecycle_ended:
+                lifecycle_ended = True
+                _log_lifecycle_end(
+                    lifecycle_logger, lifecycle_level, lifecycle_start_time, outcome, exc
+                )
+
         try:
             with scope():
                 if ctx is not None:
                     generator_cold_start = cold_start_var.get()
+                if lifecycle_logger is not None:
+                    lifecycle_start_time = time.perf_counter()
+                    _log_lifecycle_start(lifecycle_logger, lifecycle_level)
                 item = await anext(iterator)
             while True:
                 try:
@@ -416,6 +496,7 @@ def _wrap_async_generator(
                     with scope():
                         _reapply_cold_start()
                         await iterator.aclose()
+                        _end_once("closed", None)
                     raise
                 except BaseException:
                     with scope():
@@ -426,7 +507,15 @@ def _wrap_async_generator(
                         _reapply_cold_start()
                         item = await iterator.asend(sent)
         except StopAsyncIteration:
+            with scope():
+                _reapply_cold_start()
+                _end_once("success", None)
             return
+        except Exception as exc:
+            with scope():
+                _reapply_cold_start()
+                _end_once("error", exc)
+            raise
         finally:
             with scope():
                 _reapply_cold_start()
@@ -519,9 +608,11 @@ def with_context(
     def decorator(fn: _F) -> _F:
         _check_context_detectable(fn, param, strict)
         if inspect.isasyncgenfunction(fn):
-            return _wrap_async_generator(fn, param, activate_trace_context)
+            return _wrap_async_generator(
+                fn, param, activate_trace_context, lifecycle, lifecycle_level
+            )
         if inspect.isgeneratorfunction(fn):
-            return _wrap_generator(fn, param, activate_trace_context)
+            return _wrap_generator(fn, param, activate_trace_context, lifecycle, lifecycle_level)
         if inspect.iscoroutinefunction(fn):
             return _wrap_async(fn, param, activate_trace_context, lifecycle, lifecycle_level)
         return _wrap_sync(fn, param, activate_trace_context, lifecycle, lifecycle_level)

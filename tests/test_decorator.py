@@ -945,3 +945,262 @@ class TestLifecycleLogging:
 
         events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
         assert [r.message for r in events] == ["invocation start"]
+
+
+class TestGeneratorLifecycleLogging:
+    """Regression (#587): lifecycle=True was silently ignored for both
+    generator kinds -- with_context() dispatched generator functions to
+    wrappers that never received the lifecycle/lifecycle_level options."""
+
+    def test_disabled_by_default_emits_no_generator_lifecycle_records(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "item"
+
+        with caplog.at_level(logging.DEBUG):
+            list(stream(_MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert events == []
+
+    def test_sync_generator_fully_consumed_emits_start_and_end(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "item"
+
+        with caplog.at_level(logging.INFO):
+            list(stream(_MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        end = events[1]
+        assert end.__dict__["outcome"] == "success"
+        assert isinstance(end.__dict__["duration_ms"], float)
+
+    def test_async_generator_fully_consumed_emits_start_and_end(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        async def stream(context: object) -> AsyncGenerator[str, None]:
+            yield "item"
+
+        async def consume() -> None:
+            async for _ in stream(_MOCK_CONTEXT):
+                pass
+
+        with caplog.at_level(logging.INFO):
+            asyncio.run(consume())
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        assert events[1].__dict__["outcome"] == "success"
+
+    def test_sync_generator_unhandled_error_emits_error_and_reraises(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "item"
+            raise ValueError("boom")
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ValueError, match="boom"):
+                list(stream(_MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation error"]
+        err = events[1]
+        assert err.levelno == logging.ERROR
+        assert err.__dict__["outcome"] == "error"
+        assert err.exc_info is not None
+
+    def test_async_generator_unhandled_error_emits_error_and_reraises(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        async def stream(context: object) -> AsyncGenerator[str, None]:
+            yield "item"
+            raise ValueError("boom")
+
+        async def consume() -> None:
+            async for _ in stream(_MOCK_CONTEXT):
+                pass
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ValueError, match="boom"):
+                asyncio.run(consume())
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation error"]
+        assert events[1].__dict__["outcome"] == "error"
+
+    def test_sync_generator_early_close_emits_exactly_one_terminal_event(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "first"
+            yield "second"
+
+        with caplog.at_level(logging.INFO):
+            iterator = stream(_MOCK_CONTEXT)
+            next(iterator)
+            iterator.close()
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        assert events[1].__dict__["outcome"] == "closed"
+
+    def test_async_generator_early_close_emits_exactly_one_terminal_event(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        async def stream(context: object) -> AsyncGenerator[str, None]:
+            yield "first"
+            yield "second"
+
+        async def consume() -> None:
+            iterator = stream(_MOCK_CONTEXT)
+            await anext(iterator)
+            await iterator.aclose()
+
+        with caplog.at_level(logging.INFO):
+            asyncio.run(consume())
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        assert events[1].__dict__["outcome"] == "closed"
+
+    def test_sync_generator_never_started_emits_no_lifecycle_records(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Regression (#587 acceptance): closing a generator that was never
+        advanced even once must not emit a dangling terminal event -- the
+        generator's own code (including the lifecycle start call) never ran."""
+
+        @with_context(lifecycle=True)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "item"
+
+        with caplog.at_level(logging.INFO):
+            iterator = stream(_MOCK_CONTEXT)
+            iterator.close()
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert events == []
+
+    def test_generator_lifecycle_records_carry_invocation_context(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from azure_functions_logging._context import ContextFilter
+
+        caplog.handler.addFilter(ContextFilter())
+
+        @with_context(lifecycle=True)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "item"
+
+        with caplog.at_level(logging.INFO):
+            list(stream(_MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert len(events) == 2
+        for record in events:
+            assert record.__dict__["invocation_id"] == "inv-dec"
+            assert record.__dict__["function_name"] == "fn-dec"
+
+    def test_generator_lifecycle_level_is_honored(self, caplog: pytest.LogCaptureFixture) -> None:
+        @with_context(lifecycle=True, lifecycle_level=logging.DEBUG)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "item"
+
+        # Only capture INFO and above: DEBUG-level start/end are filtered out.
+        with caplog.at_level(logging.INFO):
+            list(stream(_MOCK_CONTEXT))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert events == []
+
+    def test_generator_lifecycle_without_context_still_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(req: object) -> Generator[str, Any, None]:
+            yield "item"
+
+        with caplog.at_level(logging.INFO):
+            list(stream("req"))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+
+    def test_generator_lifecycle_without_context_early_close(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(req: object) -> Generator[str, Any, None]:
+            yield "first"
+            yield "second"
+
+        with caplog.at_level(logging.INFO):
+            iterator = stream("req")
+            next(iterator)
+            iterator.close()
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation end"]
+        assert events[1].__dict__["outcome"] == "closed"
+
+    def test_generator_lifecycle_without_context_unhandled_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(req: object) -> Generator[str, Any, None]:
+            yield "item"
+            raise ValueError("boom")
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ValueError, match="boom"):
+                list(stream("req"))
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert [r.message for r in events] == ["invocation start", "invocation error"]
+        assert events[1].__dict__["outcome"] == "error"
+
+    def test_interleaved_sync_generators_do_not_exchange_lifecycle_state(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        @with_context(lifecycle=True)
+        def stream(context: object) -> Generator[str, Any, None]:
+            yield "a"
+            yield "b"
+
+        ctx2 = SimpleNamespace(
+            invocation_id="inv-2",
+            function_name="fn-2",
+            trace_context=SimpleNamespace(trace_parent="00-bbbb-2222-01"),
+        )
+        with caplog.at_level(logging.INFO):
+            first = stream(_MOCK_CONTEXT)
+            second = stream(ctx2)
+            next(first)
+            next(second)
+            next(first)
+            next(second)
+            with pytest.raises(StopIteration):
+                next(first)
+            with pytest.raises(StopIteration):
+                next(second)
+
+        events = [r for r in caplog.records if hasattr(r, "lifecycle_event")]
+        assert len(events) == 4
+        assert [r.message for r in events] == [
+            "invocation start",
+            "invocation start",
+            "invocation end",
+            "invocation end",
+        ]
