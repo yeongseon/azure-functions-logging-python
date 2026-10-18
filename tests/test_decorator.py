@@ -15,7 +15,8 @@ Ref: https://github.com/yeongseon/azure-functions-logging/issues/22
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, AsyncIterator, Generator
+import contextlib
 import inspect
 import logging
 from types import SimpleNamespace
@@ -263,6 +264,112 @@ class TestGenerators:
             await asyncio.create_task(iterator.aclose())
 
         asyncio.run(consume())
+
+    def test_async_generator_forwards_asend_with_context(self) -> None:
+        """Regression (#585): asend(value) must reach the inner generator,
+        not silently become a plain anext()."""
+
+        @with_context
+        async def handler(context: object) -> AsyncGenerator[Any, Any]:
+            received = yield "ready"
+            yield {"received": received}
+
+        async def consume() -> list[Any]:
+            iterator = handler(_MOCK_CONTEXT)
+            first = await anext(iterator)
+            second = await iterator.asend("payload")
+            await iterator.aclose()
+            return [first, second]
+
+        assert asyncio.run(consume()) == ["ready", {"received": "payload"}]
+
+    def test_async_generator_forwards_asend_without_context(self) -> None:
+        """Regression (#585 acceptance): the no-context path must also
+        forward asend, not just ordinary async-for iteration."""
+
+        @with_context
+        async def handler(context: object) -> AsyncGenerator[Any, Any]:
+            received = yield "ready"
+            yield {"received": received}
+
+        async def consume() -> list[Any]:
+            iterator = handler(None)
+            first = await anext(iterator)
+            second = await iterator.asend("payload")
+            await iterator.aclose()
+            return [first, second]
+
+        assert asyncio.run(consume()) == ["ready", {"received": "payload"}]
+
+    def test_async_generator_forwards_athrow_with_context(self) -> None:
+        """Regression (#585): athrow(exc) must reach the user generator's
+        own exception handling around its yield, preserving the recovery
+        value it yields in response -- not let the exception escape
+        unhandled."""
+
+        @with_context
+        async def handler(context: object) -> AsyncGenerator[Any, Any]:
+            try:
+                yield "ready"
+            except ValueError as exc:
+                yield {"caught": str(exc)}
+
+        async def consume() -> Any:
+            iterator = handler(_MOCK_CONTEXT)
+            await anext(iterator)
+            recovered = await iterator.athrow(ValueError("recoverable"))
+            await iterator.aclose()
+            return recovered
+
+        assert asyncio.run(consume()) == {"caught": "recoverable"}
+
+    def test_async_generator_forwards_unhandled_athrow(self) -> None:
+        """Regression (#585): an unhandled athrow() must genuinely reach the
+        inner generator's own frame before propagating -- not merely happen
+        to surface at the wrapper's own un-caught yield, which would also
+        look like 'propagation' without ever forwarding anything."""
+        observed: list[str] = []
+
+        @with_context
+        async def handler(context: object) -> AsyncGenerator[Any, Any]:
+            try:
+                yield "ready"
+            except ValueError:
+                observed.append("inner-generator-received-it")
+                raise
+
+        async def consume() -> None:
+            iterator = handler(_MOCK_CONTEXT)
+            await anext(iterator)
+            await iterator.athrow(ValueError("unhandled"))
+
+        with pytest.raises(ValueError, match="unhandled"):
+            asyncio.run(consume())
+        assert observed == ["inner-generator-received-it"]
+
+    def test_async_generator_used_as_asynccontextmanager_receives_exception(self) -> None:
+        """Regression (#585 acceptance): a decorated async generator wrapped
+        by contextlib.asynccontextmanager must receive an exception raised
+        inside the `async with` block, matching undecorated behavior."""
+
+        @contextlib.asynccontextmanager
+        @with_context
+        async def resource(context: object) -> AsyncIterator[str | None]:
+            try:
+                yield invocation_id_var.get()
+            except ValueError as exc:
+                raise RuntimeError(f"cleaned up after: {exc}") from exc
+
+        async def consume() -> str:
+            try:
+                async with resource(_MOCK_CONTEXT) as value:
+                    assert value == "inv-dec"
+                    raise ValueError("boom")
+            except RuntimeError as exc:
+                return str(exc)
+            return "no-exception-raised"
+
+        assert asyncio.run(consume()) == "cleaned up after: boom"
 
     def test_async_handler_resets_on_exception(self) -> None:
         @with_context

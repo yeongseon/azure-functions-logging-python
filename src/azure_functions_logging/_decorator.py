@@ -9,6 +9,7 @@ Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/22
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Generator
+import contextlib
 import inspect
 import logging
 import sys
@@ -375,21 +376,39 @@ def _wrap_async_generator(
 
     async def wrapper(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
         ctx = _find_context_arg(param, context_index, args, kwargs)
-        if ctx is not None:
-            iterator = func(*args, **kwargs)
-            try:
-                while True:
-                    try:
-                        with logging_context(ctx, activate_trace_context=activate_trace_context):
-                            item = await anext(iterator)
-                    except StopAsyncIteration:
-                        return
-                    yield item
-            finally:
-                with logging_context(ctx, activate_trace_context=activate_trace_context):
-                    await iterator.aclose()
-        async for item in func(*args, **kwargs):
-            yield item
+        iterator = func(*args, **kwargs)
+        # A context manager factory, not an instance: a fresh scope is
+        # entered at every suspension boundary (send/throw/close), matching
+        # the original per-advance context strategy from #510. With no
+        # context available, asend/athrow/aclose must still reach the inner
+        # generator (#585) -- contextlib.nullcontext lets the same pump loop
+        # serve both cases instead of duplicating it.
+        scope: Callable[[], contextlib.AbstractContextManager[None]] = (
+            (lambda: logging_context(ctx, activate_trace_context=activate_trace_context))
+            if ctx is not None
+            else contextlib.nullcontext
+        )
+        try:
+            with scope():
+                item = await anext(iterator)
+            while True:
+                try:
+                    sent = yield item
+                except GeneratorExit:
+                    with scope():
+                        await iterator.aclose()
+                    raise
+                except BaseException:
+                    with scope():
+                        item = await iterator.athrow(*sys.exc_info())
+                else:
+                    with scope():
+                        item = await iterator.asend(sent)
+        except StopAsyncIteration:
+            return
+        finally:
+            with scope():
+                await iterator.aclose()
 
     _copy_safe_metadata(wrapper, func)
     set_logging_metadata(wrapper, func, _build_logging_payload(param))
