@@ -348,3 +348,144 @@ def test_isolated_handler_bounds_deep_record_copy_without_raising() -> None:
     logger.info("nested payload", extra={"payload": payload})
 
     assert json.loads(stream.getvalue())["extra"]["payload"]
+
+
+def _wide_copy_fixture(count: int) -> tuple[logging.Logger, io.StringIO, dict[str, object]]:
+    stream = io.StringIO()
+    target = logging.StreamHandler(stream)
+    target.setFormatter(JsonFormatter())
+    logger = logging.Logger(f"isolated.wide-copy.{count}", logging.INFO)
+    observed: dict[str, object] = {}
+
+    def observe(record: logging.LogRecord) -> bool:
+        observed["levelno"] = record.levelno
+        observed["levelname"] = record.levelname
+        return True
+
+    handler = IsolatedHandler(target)
+    handler.addFilter(observe)
+    logger.addHandler(handler)
+    return logger, stream, observed
+
+
+@pytest.mark.parametrize("count", [4000, 4096, 4200])
+def test_isolated_handler_preserves_level_metadata_with_wide_positional_args(count: int) -> None:
+    """Regression (#580): a wide positional interpolation argument must not
+    exhaust the shared copy budget before standard control fields (levelno,
+    levelname) are copied -- a corrupted levelno previously raised TypeError
+    during IsolatedHandler.emit()'s level comparison, below, at, and above
+    the node budget."""
+    logger, stream, observed = _wide_copy_fixture(count)
+
+    logger.info("payload=%s", list(range(count)))
+
+    assert observed["levelno"] == logging.INFO
+    assert observed["levelname"] == "INFO"
+    assert json.loads(stream.getvalue())["message"].startswith("payload=")
+
+
+@pytest.mark.parametrize("count", [4000, 4096, 4200])
+def test_isolated_handler_preserves_level_metadata_with_wide_mapping_args(count: int) -> None:
+    """Regression (#580): a wide mapping (%-style dict) interpolation
+    argument is passed as a bare dict (not wrapped in a tuple) -- the
+    highest-risk shape for the top-level args value itself becoming the
+    bare sentinel string once the budget is already exhausted."""
+    logger, stream, observed = _wide_copy_fixture(count)
+    mapping = {f"key{i}": i for i in range(count)}
+
+    logger.info("payload=%(key0)s", mapping)
+
+    assert observed["levelno"] == logging.INFO
+    assert observed["levelname"] == "INFO"
+    assert stream.getvalue()  # emitted, not raised
+
+
+@pytest.mark.parametrize("count", [4000, 4200])
+def test_isolated_handler_preserves_level_metadata_with_structured_message(count: int) -> None:
+    """Regression (#580 acceptance): a structured message object (a dict
+    passed as msg itself, not as an interpolation argument) must not corrupt
+    control fields either."""
+    logger, stream, observed = _wide_copy_fixture(count)
+
+    logger.info({f"key{i}": i for i in range(count)})
+
+    assert observed["levelno"] == logging.INFO
+    assert observed["levelname"] == "INFO"
+    assert stream.getvalue()
+
+
+def test_isolated_handler_args_falls_back_to_empty_tuple_when_budget_already_exhausted() -> None:
+    """Regression (#580): when a wide `msg` (processed before `args` in
+    LogRecord's own field order) exhausts the budget first, `args` itself
+    -- not just a nested item inside it -- would become the bare sentinel
+    *string* in place of a tuple. Confirm the documented empty-tuple
+    fallback actually engages here, and that the resulting record still
+    renders and emits without raising.
+
+    Uses nested containers (not scalars) to exhaust the node budget: only
+    dict/list/tuple nodes consume it, so a flat structure of 5,000 plain
+    ints would not -- copying a scalar is O(1) and carries no recursion
+    risk, unlike recursing into 5,000 separate container nodes."""
+    logger, stream, observed = _wide_copy_fixture(5000)
+
+    logger.info({f"key{i}": [] for i in range(5000)}, "wasted_positional_arg")
+
+    assert observed["levelno"] == logging.INFO
+    assert observed["levelname"] == "INFO"
+    assert stream.getvalue()  # emitted without raising
+
+
+@pytest.mark.parametrize("count", [4000, 4200])
+def test_isolated_handler_preserves_level_metadata_with_wide_extra(count: int) -> None:
+    """Regression (#580 acceptance): the existing wide-extra path (not just
+    args) must also leave control fields uncorrupted."""
+    logger, stream, observed = _wide_copy_fixture(count)
+
+    logger.info("payload", extra={"items": list(range(count))})
+
+    assert observed["levelno"] == logging.INFO
+    assert observed["levelname"] == "INFO"
+    assert stream.getvalue()
+
+
+def test_isolated_handler_truncated_args_do_not_break_interpolation() -> None:
+    """Regression (#580): when the budget is already exhausted before args
+    is reached, args falls back to an empty tuple rather than the bare
+    sentinel string, so %-interpolation with a multi-placeholder format
+    string never raises -- even though the message renders unsubstituted."""
+    stream = io.StringIO()
+    target = logging.StreamHandler(stream)
+    target.setFormatter(JsonFormatter())
+    logger = logging.Logger("isolated.wide-copy.multi-placeholder", logging.INFO)
+    logger.addHandler(IsolatedHandler(target))
+
+    # A large extra consumes the whole budget before args is even reached
+    # (extra follows args/msg in the iteration order fixed by #580, but a
+    # second, even larger extra value after it still forces exhaustion by
+    # the time any remaining fields are processed).
+    logger.info(
+        "multi %s %s placeholder",
+        "first",
+        "second",
+        extra={"filler": list(range(5000))},
+    )
+
+    assert stream.getvalue()  # emitted without raising
+
+
+def test_isolated_handler_preserves_exception_info_with_wide_sibling_extra() -> None:
+    """Regression (#580 acceptance): exception handling metadata (exc_info)
+    must survive a wide sibling extra field exhausting the budget."""
+    stream = io.StringIO()
+    target = logging.StreamHandler(stream)
+    target.setFormatter(JsonFormatter())
+    logger = logging.Logger("isolated.wide-copy.exc-info", logging.INFO)
+    logger.addHandler(IsolatedHandler(target))
+
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        logger.exception("failed", extra={"items": list(range(5000))})
+
+    payload = json.loads(stream.getvalue())
+    assert "ValueError: boom" in payload["exception"]

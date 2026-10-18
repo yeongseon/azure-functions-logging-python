@@ -412,7 +412,12 @@ filters are forwarded according to the standard logging filter contract.
 
 Isolation copies supported `dict`, `list`, and `tuple` values up to 32 levels
 and 4,096 visited nodes. Values beyond either bound become `<copy-limit>`; the
-original record is never used as an unredacted fallback.
+original record is never used as an unredacted fallback. Standard `LogRecord`
+fields the logging machinery depends on (level, timestamp, caller info,
+exception data) are always preserved verbatim regardless of how large a
+sibling payload is; `args` specifically falls back to an empty tuple rather
+than the sentinel if it is reached after the bound, so truncation never
+breaks `%`-style message interpolation.
 
 → [OpenTelemetry: handler-local isolation](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/#handler-local-filter-isolation)
 

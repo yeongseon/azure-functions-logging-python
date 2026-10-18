@@ -12,6 +12,38 @@ _COPY_MAX_DEPTH = 32
 _COPY_MAX_NODES = 4096
 _COPY_LIMIT_SENTINEL = "<copy-limit>"
 
+#: Standard LogRecord fields the logging machinery and downstream
+#: formatters/handlers need verbatim, regardless of how large a sibling
+#: payload field is: level comparison (IsolatedHandler.emit), timestamp
+#: formatting, caller identification, and exception handling all depend on
+#: these keeping their original, uncorrupted types. Never passed through
+#: the bounded copier -- a wide `args`/extra payload must not be able to
+#: exhaust the shared budget and turn e.g. the numeric `levelno` into the
+#: sentinel string (#580).
+_CONTROL_FIELDS = frozenset(
+    {
+        "name",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+        "taskName",  # Python 3.12+; absent on 3.11, harmless to list here
+        "exc_info",
+        "exc_text",
+        "stack_info",
+    }
+)
+
 
 @dataclass(slots=True)
 class _ForwardingState:
@@ -30,6 +62,11 @@ def _copy_mutable(
     budget: list[int],
     depth: int = 0,
 ) -> Any:
+    if not isinstance(value, (dict, list, tuple)):
+        # Scalars (int, str, float, bool, None, ...) need no copying at all
+        # and must never consume -- or be rejected by -- the node budget;
+        # only containers do.
+        return value
     if depth > _COPY_MAX_DEPTH or budget[0] >= _COPY_MAX_NODES:
         return _COPY_LIMIT_SENTINEL
     budget[0] += 1
@@ -52,24 +89,48 @@ def _copy_mutable(
         memo[value_id] = copied_list
         copied_list.extend(_copy_mutable(item, memo, budget, depth + 1) for item in value)
         return copied_list
-    if isinstance(value, tuple):
+    if isinstance(value, tuple):  # pragma: no branch — the only remaining case after dict/list
         copied_items = [_copy_mutable(item, memo, budget, depth + 1) for item in value]
         if value_id in memo:
             return memo[value_id]
         copied_tuple = tuple(copied_items)
         memo[value_id] = copied_tuple
         return copied_tuple
-    return value
 
 
 def _copy_record(record: logging.LogRecord) -> logging.LogRecord:
     cloned = copy.copy(record)
     memo: dict[int, Any] = {}
     budget = [0]
-    cloned.__dict__ = {
-        key: _copy_mutable(value, memo, budget) for key, value in record.__dict__.items()
-    }
+    copied: dict[str, Any] = {}
+    for key, value in record.__dict__.items():
+        if key in _CONTROL_FIELDS:
+            # Preserved verbatim, never budget-bound: see _CONTROL_FIELDS.
+            copied[key] = value
+        elif key == "args":
+            copied[key] = _copy_args(value, memo, budget)
+        else:
+            copied[key] = _copy_mutable(value, memo, budget)
+    cloned.__dict__ = copied
     return cloned
+
+
+def _copy_args(value: Any, memo: dict[int, Any], budget: list[int]) -> Any:
+    """Copy ``LogRecord.args`` with a safe bound-reached fallback.
+
+    If the budget is already exhausted when ``args`` itself is reached,
+    ``_copy_mutable`` would return the bare sentinel *string* in its place.
+    A format string with multiple ``%`` placeholders expects a tuple (or a
+    single mapping) for ``args``, so replacing the whole value with a
+    string risks an interpolation ``TypeError`` of its own. Falling back to
+    an empty tuple instead keeps ``LogRecord.getMessage()`` safe: ``args``
+    becomes falsy, so interpolation is skipped entirely and the raw
+    ``msg`` template renders unchanged -- lossy, but never raises (#580).
+    """
+    copied = _copy_mutable(value, memo, budget)
+    if copied is _COPY_LIMIT_SENTINEL:
+        return ()
+    return copied
 
 
 class IsolatedHandler(logging.Handler):
