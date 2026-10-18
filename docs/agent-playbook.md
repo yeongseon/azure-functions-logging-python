@@ -12,6 +12,12 @@
 - `examples/` example logging configurations.
 - `docs/` documentation site content.
 
+## Issue Authoring
+
+Follow [Repository scope](https://github.com/yeongseon/azure-functions-logging-python/blob/main/AGENTS.md#repository-scope)
+before creating or editing an issue and verify the saved title, body, and labels afterwards.
+This also applies when using the API or CLI.
+
 ## Change Workflow
 1. Confirm whether the change affects logging API, redaction behavior, configuration, or docs only.
 2. Update examples when they are used as public contract material.
