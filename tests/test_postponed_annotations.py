@@ -99,6 +99,74 @@ async def non_strict_async(
         sys.modules.pop(spec.name, None)
 
 
+@pytest.fixture
+def quoted_postponed_handler_module(tmp_path: Path) -> Iterator[ModuleType]:
+    module_path = tmp_path / "quoted_postponed_handlers.py"
+    module_path.write_text(
+        """from __future__ import annotations
+
+import azure.functions as func
+from azure_functions_logging import with_context
+
+app = func.FunctionApp()
+
+@app.route(route="indexed")
+@with_context(strict=True)
+def indexed(
+    req: "func.HttpRequest", context: "func.Context"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+
+@with_context(strict=True)
+def strict_sync(
+    req: "func.HttpRequest", context: "func.Context"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+
+@with_context()
+def non_strict_sync(
+    req: "func.HttpRequest", context: "func.Context"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+
+@with_context(strict=True)
+async def strict_async(
+    req: "func.HttpRequest", context: "func.Context"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+
+@with_context()
+async def non_strict_async(
+    req: "func.HttpRequest", context: "func.Context"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+
+@with_context(strict=True)
+def mixed_quoting(
+    req: func.HttpRequest, context: "func.Context"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+
+@with_context(strict=True)
+def one_unresolvable(
+    req: "func.HttpRequest", context: "func.Context", extra: "NoSuchName"
+) -> "func.HttpResponse":
+    return func.HttpResponse("ok")
+""",
+        encoding="utf-8",
+    )
+    spec = importlib.util.spec_from_file_location("quoted_postponed_handlers", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    try:
+        yield module
+    finally:
+        sys.modules.pop(spec.name, None)
+
+
 def test_preserves_concrete_context_annotation_with_none_default(
     handler_module_with_none_default: ModuleType,
 ) -> None:
@@ -144,3 +212,62 @@ def test_worker_indexes_handler_with_postponed_annotations(
     function_info = worker_functions.Registry().add_indexed_function(indexed_function)
 
     assert function_info.requires_context is True
+
+
+@pytest.mark.parametrize(
+    "handler_name",
+    ["strict_sync", "non_strict_sync", "strict_async", "non_strict_async", "mixed_quoting"],
+)
+def test_resolves_quoted_postponed_annotations_from_handler_module(
+    quoted_postponed_handler_module: ModuleType,
+    handler_name: str,
+) -> None:
+    """Regression (#582): a reference quoted under postponed evaluation
+    (`req: "func.HttpRequest"` with `from __future__ import annotations`)
+    round-trips through one eval as its own string source, previously
+    leaving it unresolved on the decorated wrapper."""
+    # Given a separately imported handler with redundantly quoted annotations
+    handler = getattr(quoted_postponed_handler_module, handler_name)
+
+    # When the worker resolves the decorated callable's type hints
+    hints = get_type_hints(handler)
+
+    # Then every annotation is a concrete Azure Functions type, not a string
+    assert hints == {
+        "req": func.HttpRequest,
+        "context": func.Context,
+        "return": func.HttpResponse,
+    }
+
+
+def test_worker_indexes_handler_with_quoted_postponed_annotations(
+    quoted_postponed_handler_module: ModuleType,
+) -> None:
+    """Regression (#582): the official worker's typing.get_type_hints() call
+    during indexing must not raise NameError for a quoted postponed handler."""
+    worker_functions = pytest.importorskip("azure_functions_worker.functions")
+    app = quoted_postponed_handler_module.app
+    indexed_function = app.get_functions()[0]
+
+    function_info = worker_functions.Registry().add_indexed_function(indexed_function)
+
+    assert function_info.requires_context is True
+
+
+def test_unresolvable_quoted_annotation_does_not_block_siblings(
+    quoted_postponed_handler_module: ModuleType,
+) -> None:
+    """Regression (#582 acceptance): one annotation that cannot resolve
+    (references a name absent from the handler's namespace) must not
+    prevent its sibling annotations from resolving -- per-annotation
+    fallback, not all-or-nothing."""
+    handler = quoted_postponed_handler_module.one_unresolvable
+
+    annotations = handler.__annotations__
+
+    assert annotations["req"] is func.HttpRequest
+    assert annotations["context"] is func.Context
+    assert annotations["return"] is func.HttpResponse
+    # The unresolvable one is left as its partially-resolved string, not
+    # silently dropped and not raising during decoration.
+    assert annotations["extra"] == "NoSuchName"

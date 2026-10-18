@@ -67,6 +67,21 @@ def _copy_safe_metadata(wrapper: Callable[..., Any], func: Callable[..., Any]) -
                 annotations[name] = inspect.get_annotations(annotation_source, eval_str=True)[name]
             except (AttributeError, KeyError, NameError, SyntaxError, TypeError, ValueError):
                 annotations[name] = annotation
+    # A reference quoted under postponed evaluation (`from __future__ import
+    # annotations`) round-trips through exactly one eval as its own string
+    # source: `req: "func.HttpRequest"` becomes the source text
+    # '"func.HttpRequest"', and inspect.get_annotations's single eval_str
+    # pass evaluates that to the *string* "func.HttpRequest" (a string
+    # literal evaluates to itself), not the class. Resolve it a second time
+    # in the handler's own namespace. Per-annotation: one unresolved name
+    # must not block its siblings (#582).
+    for name, value in annotations.items():
+        if not isinstance(value, str):
+            continue
+        try:
+            annotations[name] = eval(value, func.__globals__)  # nosec B307 — second pass over the handler's own already-evaluated-once annotation source, not external input
+        except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+            pass  # leave the partially-resolved string; per-annotation fallback
     wrapper.__annotations__ = annotations
 
 
