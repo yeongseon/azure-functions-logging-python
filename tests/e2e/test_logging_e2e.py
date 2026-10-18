@@ -28,6 +28,7 @@ APPINSIGHTS_NAME = os.environ.get("APPINSIGHTS_NAME", "")
 APPINSIGHTS_RG = os.environ.get("E2E_RESOURCE_GROUP", "")
 SKIP_REASON = "E2E_BASE_URL not set — skipping real-Azure e2e tests"
 SKIP_AI_REASON = "APPINSIGHTS_NAME not set — skipping App Insights log query tests"
+pytestmark = pytest.mark.e2e
 
 CORRELATION_ID = f"e2e-{int(time.time())}"
 

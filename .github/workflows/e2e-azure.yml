@@ -173,7 +173,7 @@ jobs:
           func azure functionapp publish "${{ steps.names.outputs.app }}" --python --build remote
 
       - name: Run e2e tests (HTTP + App Insights)
-        run: pytest tests/e2e -v --no-cov --html=e2e-report/report.html --self-contained-html
+        run: pytest -v -m e2e tests/e2e/ --no-cov --html=e2e-report/report.html --self-contained-html
         env:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
           E2E_EXPECTED_VERSION: ${{ env.RESOLVED_VERSION }}
