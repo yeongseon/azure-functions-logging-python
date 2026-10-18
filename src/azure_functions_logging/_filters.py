@@ -337,9 +337,7 @@ class RedactionFilter(logging.Filter):
                         setattr(record, key, _MASK)
                         continue
                     value = record.__dict__[key]
-                    if isinstance(value, (dict, list)) or (
-                        self._patterns and isinstance(value, tuple)
-                    ):
+                    if isinstance(value, (dict, list, tuple)):
                         setattr(
                             record,
                             key,

@@ -307,6 +307,31 @@ def test_redaction_filter_recursively_masks_dicts_inside_lists() -> None:
     ]
 
 
+def test_redaction_filter_masks_dict_inside_top_level_tuple_without_patterns() -> None:
+    """Regression (#579): key-based redaction of a top-level tuple extra must
+    not depend on the opt-in `patterns=` feature being configured -- it is a
+    separate, unconditional guarantee from value-based pattern redaction."""
+    flt = RedactionFilter()  # no patterns configured
+    record = _make_record(msg="tuple")
+    setattr(record, "items", ({"password": "secret"},))
+
+    flt.filter(record)
+
+    assert getattr(record, "items") == ({"password": "***"},)
+
+
+def test_redaction_filter_masks_dict_inside_top_level_tuple_with_empty_patterns() -> None:
+    """Regression (#579): an explicitly empty patterns list must behave the
+    same as the default (no patterns) for key-based tuple redaction."""
+    flt = RedactionFilter(patterns=[])
+    record = _make_record(msg="tuple-empty-patterns")
+    setattr(record, "items", ({"password": "secret"},))
+
+    flt.filter(record)
+
+    assert getattr(record, "items") == ({"password": "***"},)
+
+
 def test_redaction_filter_recursively_masks_mixed_nested_structures() -> None:
     flt = RedactionFilter()
     record = _make_record(msg="mixed")

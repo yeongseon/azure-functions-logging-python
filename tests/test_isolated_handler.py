@@ -190,7 +190,13 @@ def test_isolated_handler_does_not_leak_guard_into_copied_context() -> None:
     assert len(copied_contexts) == 2
 
 
-def test_isolated_handler_preserves_tuple_list_cycle() -> None:
+def test_isolated_handler_masks_tuple_list_cycle_fail_closed() -> None:
+    # Regression (#579): RedactionFilter now recurses into a top-level tuple
+    # extra unconditionally (previously gated behind `patterns=`), so a
+    # cyclic tuple/list now hits the same cycle-detection fail-closed mask
+    # that dict cycles have always received -- it no longer passes through
+    # untouched. This replaces the old identity-preservation assertion,
+    # which only held because the pre-#579 bug skipped tuples entirely.
     # Given
     logger, target, _ = _pipeline("isolated.tuple-cycle", True)
     child: list[tuple[object, ...]] = []
@@ -201,8 +207,10 @@ def test_isolated_handler_preserves_tuple_list_cycle() -> None:
     logger.info("cycle", extra={"cycle": cycle})
 
     # Then
-    cloned_cycle = target.records[0].__dict__["cycle"]
-    assert cloned_cycle is cloned_cycle[0][0]
+    assert target.records[0].__dict__["cycle"] == (["***"],)
+    # And the caller's own object is never mutated
+    assert cycle[0] is child
+    assert child[0] is cycle
 
 
 def test_isolated_handler_applies_dotted_redaction_without_sibling_side_effects() -> None:
