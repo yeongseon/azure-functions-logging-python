@@ -83,6 +83,26 @@ def _validate_extra_context_vars(
     return dict(extra)
 
 
+def _get_extra_context_value(var: contextvars.ContextVar[Any]) -> Any:
+    """Read a user-supplied *extra_context_vars* entry, tolerating unbound state.
+
+    Shared by :class:`ContextFilter` and :func:`_install_context_factory`.
+    Unlike the package's own built-in context variables (all declared with
+    ``default=None``), a user-supplied ``ContextVar`` need not have a default
+    -- ``.get()`` on one that was never bound raises ``LookupError``. A
+    missing optional logging field must not break application execution
+    (Principle 3), so an unbound variable reads as ``None``, the same
+    documented "absent" value the built-in fields use; a variable with its
+    own declared default still returns that default normally, since
+    ``ContextVar.get()`` itself only raises when there is truly no value to
+    fall back on.
+    """
+    try:
+        return var.get()
+    except LookupError:
+        return None
+
+
 class ContextFilter(logging.Filter):
     """Logging filter that copies contextvars values onto LogRecord attributes.
 
@@ -129,7 +149,7 @@ class ContextFilter(logging.Filter):
         record.cold_start = cold_start_var.get()
         record.host_instance_id = get_host_instance_id()
         for field_name, var in self._extra_context_vars.items():
-            setattr(record, field_name, var.get())
+            setattr(record, field_name, _get_extra_context_value(var))
         return True
 
 
@@ -662,7 +682,7 @@ def _install_context_factory(
         record.cold_start = cold_start_var.get()
         record.host_instance_id = get_host_instance_id()
         for field_name, var in extra.items():
-            setattr(record, field_name, var.get())
+            setattr(record, field_name, _get_extra_context_value(var))
         if extra:
             record.__dict__ = _ContextRecordDict(record.__dict__, frozenset(extra))
         return record

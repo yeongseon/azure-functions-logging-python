@@ -73,7 +73,75 @@ def test_full_flow_logs_with_injected_context() -> None:
     target.filters.clear()
 
 
-def test_get_logger_returns_function_logger() -> None:
+def test_extra_context_var_unbound_does_not_break_filter_mode_logging() -> None:
+    """Regression (#583): a valid ContextVar without a default must not make
+    ordinary logging raise -- exercised through the full public pipeline
+    (setup_logging + ContextFilter) with both FunctionLogger and a plain
+    stdlib logger, in the default (filter) mode."""
+    import contextvars
+
+    logger_name = "afl.integration.unbound.filter"
+    target = logging.getLogger(logger_name)
+    target.handlers.clear()
+    target.filters.clear()
+
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar("tenant_integration_filter")
+    with patch.dict(os.environ, {}, clear=True):
+        setup_logging(logger_name=logger_name, extra_context_vars={"tenant": tenant_var})
+
+    stream = io.StringIO()
+    handler = target.handlers[0]
+    assert isinstance(handler, logging.StreamHandler)
+    handler.setStream(stream)
+
+    get_logger(logger_name).info("via FunctionLogger")
+    logging.getLogger(logger_name).info("via stdlib logger")
+
+    output = stream.getvalue()
+    assert "via FunctionLogger" in output
+    assert "via stdlib logger" in output
+
+    target.handlers.clear()
+    target.filters.clear()
+
+
+def test_extra_context_var_unbound_does_not_break_factory_mode_logging() -> None:
+    """Regression (#583): the same guarantee in use_record_factory=True mode,
+    where an unhandled LookupError would also break every other logger in
+    the process (the factory is process-wide, not per-logger)."""
+    import contextvars
+
+    logger_name = "afl.integration.unbound.factory"
+    target = logging.getLogger(logger_name)
+    target.handlers.clear()
+    target.filters.clear()
+    old_factory = logging.getLogRecordFactory()
+
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar("tenant_integration_factory")
+    try:
+        with patch.dict(os.environ, {}, clear=True):
+            setup_logging(
+                logger_name=logger_name,
+                use_record_factory=True,
+                extra_context_vars={"tenant": tenant_var},
+            )
+
+        stream = io.StringIO()
+        handler = target.handlers[0]
+        assert isinstance(handler, logging.StreamHandler)
+        handler.setStream(stream)
+
+        get_logger(logger_name).info("via FunctionLogger")
+        logging.getLogger(logger_name).info("via stdlib logger")
+
+        output = stream.getvalue()
+        assert "via FunctionLogger" in output
+        assert "via stdlib logger" in output
+    finally:
+        logging.setLogRecordFactory(old_factory)
+        target.handlers.clear()
+        target.filters.clear()
+
     logger = get_logger("afl.integration.type")
     assert isinstance(logger, FunctionLogger)
 

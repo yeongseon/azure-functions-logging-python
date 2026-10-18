@@ -475,6 +475,40 @@ def test_install_context_factory_injects_extra_context_vars() -> None:
         tenant_var.reset(token)
 
 
+def test_install_context_factory_tolerates_unbound_default_less_extra_context_var() -> None:
+    """Regression (#583): factory mode must not raise for an unbound,
+    default-less user ContextVar -- unlike filter mode, a factory-mode crash
+    also affects every other logger in the process, since the factory is
+    global."""
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar("tenant_unbound_factory")
+    try:
+        _install_context_factory({"tenant": tenant_var})
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "hi", (), None)
+        assert record.tenant is None  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+
+def test_install_context_factory_extra_context_var_with_declared_default_keeps_it() -> None:
+    """Regression (#583 acceptance): a variable with its own declared default
+    must retain that default in factory mode too."""
+    import contextvars
+
+    old_factory = logging.getLogRecordFactory()
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+        "tenant_defaulted_factory", default="unset"
+    )
+    try:
+        _install_context_factory({"tenant": tenant_var})
+        record = logging.getLogRecordFactory()("test", logging.INFO, __file__, 1, "hi", (), None)
+        assert record.tenant == "unset"  # type: ignore[attr-defined]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+
 def test_install_context_factory_explicit_extra_overrides_custom_context() -> None:
     import contextvars
 
@@ -686,6 +720,89 @@ def test_context_filter_extra_collision_raises() -> None:
     bad_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("trace_id", default=None)
     with pytest.raises(ValueError, match="collide"):
         ContextFilter({"trace_id": bad_var})
+
+
+def test_context_filter_tolerates_unbound_default_less_extra_context_var() -> None:
+    """Regression (#583): a valid ContextVar without a default must not make
+    ordinary logging raise when it is unbound -- context injection failures
+    never cause application failures (Principle 3)."""
+    import contextvars
+
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar("tenant_unbound")
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="hello",
+        args=(),
+        exc_info=None,
+    )
+
+    keep = ContextFilter({"tenant": tenant_var}).filter(record)
+
+    assert keep is True
+    assert record.tenant is None  # type: ignore[attr-defined]
+
+
+def test_context_filter_extra_context_var_lifecycle() -> None:
+    """Regression (#583 acceptance): logging works before binding, while a
+    token is set, and after the token is reset -- not only in the
+    permanently-unbound case."""
+    import contextvars
+
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar("tenant_lifecycle")
+    flt = ContextFilter({"tenant": tenant_var})
+
+    def _make_record() -> logging.LogRecord:
+        return logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hi",
+            args=(),
+            exc_info=None,
+        )
+
+    before = _make_record()
+    assert flt.filter(before) is True
+    assert before.tenant is None  # type: ignore[attr-defined]
+
+    token = tenant_var.set("acme")
+    try:
+        bound = _make_record()
+        assert flt.filter(bound) is True
+        assert bound.tenant == "acme"  # type: ignore[attr-defined]
+    finally:
+        tenant_var.reset(token)
+
+    after = _make_record()
+    assert flt.filter(after) is True
+    assert after.tenant is None  # type: ignore[attr-defined]
+
+
+def test_context_filter_extra_context_var_with_declared_default_keeps_it() -> None:
+    """Regression (#583 acceptance): a variable with its own declared default
+    must retain that default, not be forced to None by the unbound fallback."""
+    import contextvars
+
+    tenant_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+        "tenant_defaulted", default="unset"
+    )
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="hi",
+        args=(),
+        exc_info=None,
+    )
+
+    ContextFilter({"tenant": tenant_var}).filter(record)
+
+    assert record.tenant == "unset"  # type: ignore[attr-defined]
 
 
 def test_span_id_is_a_context_field() -> None:
