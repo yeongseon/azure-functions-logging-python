@@ -19,6 +19,7 @@ from collections.abc import AsyncGenerator, Generator
 import inspect
 import logging
 from types import SimpleNamespace
+from typing import Any
 import warnings
 
 import pytest
@@ -184,6 +185,58 @@ class TestGenerators:
         first.close()
         second.close()
         assert invocation_id_var.get() is None
+
+    def test_sync_generator_preserves_return_value_with_context(self) -> None:
+        """Regression (#584): a decorated sync generator's terminal return
+        value must survive via StopIteration.value, just like the
+        undecorated generator."""
+
+        @with_context
+        def stream(context: object) -> Generator[str, Any, dict[str, int]]:
+            yield "item"
+            return {"count": 1}
+
+        iterator = stream(_MOCK_CONTEXT)
+        assert next(iterator) == "item"
+        with pytest.raises(StopIteration) as excinfo:
+            next(iterator)
+        assert excinfo.value.value == {"count": 1}
+
+    def test_sync_generator_preserves_return_value_without_context(self) -> None:
+        """Regression (#584): the no-context fallback path (`yield from`)
+        must also forward the inner generator's return value -- it was
+        previously discarded because the `yield from` expression's result
+        was never captured and returned."""
+
+        @with_context
+        def stream(context: object) -> Generator[str, Any, dict[str, int]]:
+            yield "item"
+            return {"count": 1}
+
+        iterator = stream(None)
+        assert next(iterator) == "item"
+        with pytest.raises(StopIteration) as excinfo:
+            next(iterator)
+        assert excinfo.value.value == {"count": 1}
+
+    def test_sync_generator_return_value_reaches_yield_from_caller(self) -> None:
+        """Regression (#584): the common `result = yield from decorated(...)`
+        delegation pattern must receive the real return value, not None."""
+
+        @with_context
+        def stream(context: object) -> Generator[str, Any, dict[str, int]]:
+            yield "item"
+            return {"count": 1}
+
+        def consume() -> Generator[str, Any, dict[str, int]]:
+            result = yield from stream(_MOCK_CONTEXT)
+            return result
+
+        consumer = consume()
+        assert next(consumer) == "item"
+        with pytest.raises(StopIteration) as excinfo:
+            next(consumer)
+        assert excinfo.value.value == {"count": 1}
 
     def test_async_generator_injects_and_restores_context(self) -> None:
         @with_context

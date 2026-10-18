@@ -8,7 +8,7 @@ Ref: https://github.com/yeongseon/azure-functions-logging-python/issues/22
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Generator
 import inspect
 import logging
 import sys
@@ -334,7 +334,7 @@ def _wrap_generator(
 ) -> _F:
     context_index = _resolve_positional_index(func, param)
 
-    def wrapper(*args: Any, **kwargs: Any) -> Iterator[Any]:
+    def wrapper(*args: Any, **kwargs: Any) -> Generator[Any, Any, Any]:
         ctx = _find_context_arg(param, context_index, args, kwargs)
         if ctx is not None:
             iterator = func(*args, **kwargs)
@@ -354,12 +354,12 @@ def _wrap_generator(
                     else:
                         with logging_context(ctx, activate_trace_context=activate_trace_context):
                             item = iterator.send(sent)
-            except StopIteration:
-                return
+            except StopIteration as stop:
+                return stop.value
             finally:
                 with logging_context(ctx, activate_trace_context=activate_trace_context):
                     iterator.close()
-        yield from func(*args, **kwargs)
+        return (yield from func(*args, **kwargs))
 
     _copy_safe_metadata(wrapper, func)
     set_logging_metadata(wrapper, func, _build_logging_payload(param))
