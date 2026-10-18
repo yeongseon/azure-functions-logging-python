@@ -601,6 +601,129 @@ class TestColdStart:
         assert result is False
 
 
+class TestGeneratorColdStart:
+    """Regression (#586): a generator's cold_start must stay the same value
+    across every resume of a SINGLE invocation -- the process-wide one-shot
+    flag must be consumed exactly once per invocation, not once per resume.
+    """
+
+    def test_sync_generator_cold_start_stable_across_yields(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from azure_functions_logging._context import ContextFilter
+
+        caplog.handler.addFilter(ContextFilter())
+        logger = logging.getLogger("test.cold-start.sync")
+
+        @with_context
+        def stream(context: object) -> Generator[int, Any, None]:
+            logger.info("first")
+            yield 1
+            logger.info("second")
+            yield 2
+            logger.info("done")
+
+        with caplog.at_level(logging.INFO):
+            list(stream(_MOCK_CONTEXT))
+
+        records = [r for r in caplog.records if r.name == logger.name]
+        assert [r.getMessage() for r in records] == ["first", "second", "done"]
+        assert [r.__dict__["cold_start"] for r in records] == [True, True, True]
+        assert all(r.__dict__["invocation_id"] == "inv-dec" for r in records)
+
+    def test_async_generator_cold_start_stable_across_yields(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from azure_functions_logging._context import ContextFilter
+
+        caplog.handler.addFilter(ContextFilter())
+        logger = logging.getLogger("test.cold-start.async")
+
+        @with_context
+        async def stream(context: object) -> AsyncGenerator[int, None]:
+            logger.info("first")
+            yield 1
+            logger.info("second")
+            yield 2
+            logger.info("done")
+
+        async def consume() -> None:
+            async for _ in stream(_MOCK_CONTEXT):
+                pass
+
+        with caplog.at_level(logging.INFO):
+            asyncio.run(consume())
+
+        records = [r for r in caplog.records if r.name == logger.name]
+        assert [r.getMessage() for r in records] == ["first", "second", "done"]
+        assert [r.__dict__["cold_start"] for r in records] == [True, True, True]
+
+    def test_second_generator_invocation_is_not_cold_start(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from azure_functions_logging._context import ContextFilter
+
+        caplog.handler.addFilter(ContextFilter())
+        logger = logging.getLogger("test.cold-start.second-invocation")
+
+        @with_context
+        def stream(context: object) -> Generator[int, Any, None]:
+            logger.info("first")
+            yield 1
+            logger.info("second")
+
+        ctx2 = SimpleNamespace(
+            invocation_id="inv-2",
+            function_name="fn-2",
+            trace_context=SimpleNamespace(trace_parent="00-bbbb-2222-01"),
+        )
+        with caplog.at_level(logging.INFO):
+            list(stream(_MOCK_CONTEXT))  # first invocation -- consumes the global flag
+            caplog.clear()
+            list(stream(ctx2))  # second invocation -- must stay False throughout
+
+        records = [r for r in caplog.records if r.name == logger.name]
+        assert [r.getMessage() for r in records] == ["first", "second"]
+        assert [r.__dict__["cold_start"] for r in records] == [False, False]
+
+    def test_interleaved_sync_generators_each_keep_their_own_cold_start(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Regression (#586 acceptance): interleaved generator resumes must
+        not cross-contaminate each other's cold-start value."""
+        from azure_functions_logging._context import ContextFilter
+
+        caplog.handler.addFilter(ContextFilter())
+        logger = logging.getLogger("test.cold-start.interleaved")
+
+        @with_context
+        def stream(context: object) -> Generator[int, Any, None]:
+            logger.info("a")
+            yield 1
+            logger.info("b")
+            yield 2
+
+        ctx2 = SimpleNamespace(
+            invocation_id="inv-2",
+            function_name="fn-2",
+            trace_context=SimpleNamespace(trace_parent="00-bbbb-2222-01"),
+        )
+        with caplog.at_level(logging.INFO):
+            first = stream(_MOCK_CONTEXT)  # first invocation created: True
+            second = stream(ctx2)  # second invocation created: False
+            next(first)
+            next(second)
+            next(first)
+            next(second)
+
+        records = [r for r in caplog.records if r.name == logger.name]
+        by_invocation: dict[str, list[bool]] = {r.__dict__["invocation_id"]: [] for r in records}
+        for r in records:
+            by_invocation[r.__dict__["invocation_id"]].append(r.__dict__["cold_start"])
+        assert by_invocation["inv-dec"] == [True, True]
+        assert by_invocation["inv-2"] == [False, False]
+
+
 # ---------------------------------------------------------------------------
 # 7. Shared worker-compat metadata helper
 # ---------------------------------------------------------------------------

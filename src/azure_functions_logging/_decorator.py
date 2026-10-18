@@ -18,7 +18,7 @@ from types import FunctionType
 from typing import Any, TypeVar, overload
 import warnings
 
-from ._context import logging_context
+from ._context import cold_start_var, logging_context
 from ._metadata import LoggingMetadata, read_logging_metadata, set_logging_metadata
 from ._metadata_helpers import copy_identity_attrs
 
@@ -341,24 +341,29 @@ def _wrap_generator(
             iterator = func(*args, **kwargs)
             try:
                 with logging_context(ctx, activate_trace_context=activate_trace_context):
+                    generator_cold_start = cold_start_var.get()
                     item = next(iterator)
                 while True:
                     try:
                         sent = yield item
                     except GeneratorExit:
                         with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            cold_start_var.set(generator_cold_start)
                             iterator.close()
                         raise
                     except BaseException:
                         with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            cold_start_var.set(generator_cold_start)
                             item = iterator.throw(*sys.exc_info())
                     else:
                         with logging_context(ctx, activate_trace_context=activate_trace_context):
+                            cold_start_var.set(generator_cold_start)
                             item = iterator.send(sent)
             except StopIteration as stop:
                 return stop.value
             finally:
                 with logging_context(ctx, activate_trace_context=activate_trace_context):
+                    cold_start_var.set(generator_cold_start)
                     iterator.close()
         return (yield from func(*args, **kwargs))
 
@@ -388,26 +393,43 @@ def _wrap_async_generator(
             if ctx is not None
             else contextlib.nullcontext
         )
+        generator_cold_start: bool | None = None
+
+        def _reapply_cold_start() -> None:
+            # Reapply this generator invocation's own cold-start decision.
+            # Each resume's fresh logging_context() call re-queries the
+            # process-wide one-shot flag, which was already consumed by the
+            # first resume -- without this, every resume after the first
+            # sees cold_start=False for what is still the same invocation (#586).
+            if ctx is not None:
+                cold_start_var.set(generator_cold_start)
+
         try:
             with scope():
+                if ctx is not None:
+                    generator_cold_start = cold_start_var.get()
                 item = await anext(iterator)
             while True:
                 try:
                     sent = yield item
                 except GeneratorExit:
                     with scope():
+                        _reapply_cold_start()
                         await iterator.aclose()
                     raise
                 except BaseException:
                     with scope():
+                        _reapply_cold_start()
                         item = await iterator.athrow(*sys.exc_info())
                 else:
                     with scope():
+                        _reapply_cold_start()
                         item = await iterator.asend(sent)
         except StopAsyncIteration:
             return
         finally:
             with scope():
+                _reapply_cold_start()
                 await iterator.aclose()
 
     _copy_safe_metadata(wrapper, func)
