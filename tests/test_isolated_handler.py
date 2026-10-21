@@ -350,6 +350,52 @@ def test_isolated_handler_bounds_deep_record_copy_without_raising() -> None:
     assert json.loads(stream.getvalue())["extra"]["payload"]
 
 
+def test_isolated_handler_bounds_wide_shallow_record_copy_without_raising() -> None:
+    """Regression (#611): the budget must bound breadth (elements visited
+    while copying a single container), not just container nesting -- a
+    wide, shallow payload with no nested containers at all (every leaf a
+    plain scalar) must still be truncated at _COPY_MAX_NODES rather than
+    fully copied. This is what let scalars bypass the budget entirely as
+    an unintended side effect of #580's fix (which correctly made scalars
+    free of budget *rejection*, but also stopped charging the budget for
+    visiting them at all)."""
+    from azure_functions_logging._isolated_handler import _COPY_MAX_NODES
+
+    wide_payload = {str(i): i for i in range(_COPY_MAX_NODES * 10)}
+    stream = io.StringIO()
+    target = logging.StreamHandler(stream)
+    target.setFormatter(JsonFormatter())
+    logger = logging.Logger("isolated.wide-shallow-copy", logging.INFO)
+    logger.addHandler(IsolatedHandler(target))
+
+    logger.info("wide payload", extra={"payload": wide_payload})
+
+    copied_payload = json.loads(stream.getvalue())["extra"]["payload"]
+    assert len(copied_payload) <= _COPY_MAX_NODES
+    assert "<copy-limit>" in copied_payload
+    # Caller's own object is never mutated or truncated.
+    assert len(wide_payload) == _COPY_MAX_NODES * 10
+
+
+def test_isolated_handler_bounds_wide_tuple_copy_without_raising() -> None:
+    """Regression (#611): the tuple branch's own iteration must bound
+    breadth the same way the dict/list branches do."""
+    from azure_functions_logging._isolated_handler import (
+        _COPY_LIMIT_SENTINEL,
+        _COPY_MAX_NODES,
+        _copy_mutable,
+    )
+
+    wide_tuple = tuple(range(_COPY_MAX_NODES * 10))
+
+    copied = _copy_mutable(wide_tuple, {}, [0])
+
+    assert isinstance(copied, tuple)
+    assert len(copied) <= _COPY_MAX_NODES
+    assert copied[-1] == _COPY_LIMIT_SENTINEL
+    assert len(wide_tuple) == _COPY_MAX_NODES * 10
+
+
 def _wide_copy_fixture(count: int) -> tuple[logging.Logger, io.StringIO, dict[str, object]]:
     stream = io.StringIO()
     target = logging.StreamHandler(stream)
