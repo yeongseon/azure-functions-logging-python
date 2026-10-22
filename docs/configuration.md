@@ -15,6 +15,7 @@ def setup_logging(
     use_record_factory: bool = False,
     extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
     activate_trace_context: bool | None = None,
+    redaction: Literal["off", "secure"] = "off",
 ) -> None
 ```
 
@@ -22,12 +23,138 @@ def setup_logging(
 
 ## Configuration Principles
 
-- Idempotent initialization: repeated calls are no-ops.
+- Idempotent initialization: repeated calls do not duplicate handlers or filters;
+  the redaction preset is reapplied to current handlers on every call.
 - Environment-aware behavior: local and Azure runtime paths differ.
 - Standard logging compatibility: no custom logging framework required.
 
 !!! note
     In Azure or Core Tools environments, the library intentionally avoids adding handlers to prevent duplicate output.
+
+## Secure production configuration
+
+Redaction is **opt-in**. For Azure Functions host-managed handlers with structured
+JSON output, the recommended startup call is:
+
+```python
+from azure_functions_logging import JsonFormatter, setup_logging
+
+setup_logging(redaction="secure", functions_formatter=JsonFormatter())
+```
+
+For standalone execution, use `setup_logging(redaction="secure", format="json")`.
+The profile does not change host levels or add host handlers. It protects every
+handler registered on root or named loggers at call time, including handlers that
+receive propagated child-logger records. A logger filter alone cannot cover those
+propagated records; a record factory cannot cover `extra` added after creation.
+
+### OpenTelemetry and late handlers
+
+Configure the exporter first, then enable the profile:
+
+```python
+from azure.monitor.opentelemetry import configure_azure_monitor
+from azure_functions_logging import setup_logging
+
+configure_azure_monitor()
+setup_logging(redaction="secure", activate_trace_context=True)
+```
+
+Keep OTel handlers unformatted so their native attributes remain available.
+`activate_trace_context=True` is optional correlation, not a redaction dependency.
+Use the optional `[otel]` extra for activation; configure/export telemetry yourself.
+
+Protect a handler created **after** setup before registering it:
+
+```python
+import logging
+from azure_functions_logging import attach_secure_redaction
+
+handler = logging.StreamHandler()  # or your OTel LoggingHandler
+# Add enrichment/flattening filters first, then:
+attach_secure_redaction(handler)
+logging.getLogger().addHandler(handler)
+```
+
+The helper also protects an `IsolatedHandler`'s target, after target-local filters.
+For late host handlers you do not create, rerun `setup_logging(redaction="secure")`
+once they exist. There is no monkeypatch that automatically protects future
+handlers: records emitted before attachment are outside this guarantee.
+`use_record_factory=True` covers late-handler **context**, not redaction.
+
+### Ordering and reconfiguration
+
+Setup places the package-owned secure filter last on each handler, after existing
+context/flatten filters and before formatting or OTel translation. Thus injected
+context attributes and flattened dotted keys are sanitized too. Repeated secure
+setup reuses one package-owned filter, including in standalone first-call-wins
+mode. Filter-list replacement retains complete snapshots for concurrent logging;
+it does not temporarily remove the protection during secure-to-secure setup.
+Register enrichment filters before setup, or call `attach_secure_redaction(handler)`
+again after adding them. Later filters/formatters that inject new raw data are
+outside the protection boundary. Do not reconfigure enrichment concurrently with
+logging; switching to `"off"` deliberately ends protection for subsequent records.
+
+`setup_logging(redaction="off")` (including the default) removes only the exact
+package-owned secure filter type. Explicit `RedactionFilter` instances and user
+subclasses are preserved. This policy selection applies process-wide to current
+handlers, even when `logger_name=` selects standalone context configuration.
+
+### Fail-closed semantics and compatibility
+
+The secure preset uses `RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS,
+fail_closed=True)` with a superset of the existing sensitive keys. Existing keys
+already cover Authorization, cookies, Functions keys, API keys and APIM keys.
+Secure-only additions cover `proxy_authorization` (proxy credentials),
+`shared_access_key`/`shared_access_signature` (Azure access credentials),
+`instrumentation_key`/`instrumentationkey` (ingestion identifiers treated
+conservatively), `applicationinsights_connection_string`/
+`azure_monitor_connection_string` (telemetry configuration), and
+`azure_web_jobs_storage`/`azurewebjobsstorage` (storage credentials).
+Existing case/camelCase/hyphen normalization and whole dotted-segment matching
+apply; the default key set is unchanged.
+
+Conversion/traversal failures mask the affected field as `***`, never its original
+object. Opaque objects become guarded, pattern-masked `repr` strings (or `***` if
+rendering fails), so a formatter cannot later call their unsafe `str` method.
+Mappings, lists, tuples and sets are traversed; non-string keys are sanitized as
+well. Sets become lists. Exceptions retain sanitized type/message/traceback fields
+and drop raw `exc_info`. A diagnostic conversion failure masks diagnostics; a
+message conversion failure emits `[REDACTION FAILED]`, clears arguments and drops
+`exc_info`, `exc_text`, and `stack_info`. Ordinary records still return `True`:
+redaction failures remain silent and never raise from the filter.
+
+The default `RedactionFilter(fail_closed=False)` deliberately remains fail-open on
+conversion/substitution failures so existing applications retain diagnostics and
+logging behavior. `setup_logging()` still installs **no** redaction by default.
+The secure profile is additive now; changing that default would require a future
+minor release with a deprecation/migration discussion, not an announced date.
+
+### Limits and trade-offs
+
+- Secure traversal has a shared **4,096-node per-record** budget (including keys),
+  a **10-level** depth limit, and cycle detection. An over-budget collection is
+  masked in full; later extras may also be masked. This bounds traversal breadth,
+  including huge shallow collections, without touching the compatibility path.
+- Text longer than **65,536 characters** is masked in full, not truncated before
+  scanning. Arbitrary custom `repr`, mapping methods, and caller regexes can still
+  consume time/memory internally; these are not sandboxed or time-limited.
+- Numeric/boolean/None observability values, invocation/function/trace/correlation
+  IDs, and ordinary non-sensitive strings pass unchanged within these limits.
+  Exact sensitive segments are masked, not substrings such as `token_count`,
+  `author`, `secretary`, `password_policy`, or `monkey`.
+- Curated patterns recognize common bearer/JWT/GitHub tokens, credential
+  assignments, connection-string keys and SAS signatures. They cannot identify
+  arbitrary unlabelled secrets or PII, encoded/obfuscated credentials, or Unicode
+  homograph keys (`ΤΟΚΕΝ`, Turkish dotless-i spellings). They may mask benign
+  credential-shaped documentation examples. Add application-specific policies
+  where necessary; do not log credentials in the first place.
+- Sanitization mutates the shared record; handler isolation is an explicit
+  separate choice. Formatters that reread application state, handlers not yet
+  protected, direct stdout, and host-generated logs are not covered.
+- This is **defence in depth, not a guarantee against arbitrary secrets in free
+  text**. Local host capture and in-memory OTel tests do not prove real Azure
+  Monitor/Application Insights ingestion behavior.
 
 ## Parameter: `level`
 
