@@ -25,6 +25,7 @@ from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
 from ._redaction import is_sensitive as _is_sensitive
 from ._redaction import mask_patterns as _mask_patterns
 from ._redaction import normalize_key as _normalize_key
+from ._secure_record import sanitize_record
 
 _REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
 _FLATTEN_MAX_DEPTH = 10  # default depth limit for recursive flattening
@@ -293,6 +294,9 @@ class RedactionFilter(logging.Filter):
             only the value. Regex strings are compiled at construction; an
             invalid pattern raises ``re.error`` there (fail-fast on config), and
             runtime substitution failures are swallowed (Principle 3).
+        fail_closed: Opt-in masking of failed conversions instead of preserving
+            originals. Bounds traversal and safely renders opaque values. Message
+            failure replaces the message and drops raw diagnostics; never raises.
 
     Note:
         The default set includes ``credential`` which may over-redact
@@ -309,8 +313,11 @@ class RedactionFilter(logging.Filter):
         sensitive_keys: Iterable[str] | None = None,
         name: str = "",
         patterns: Iterable[str | re.Pattern[str]] | None = None,
+        *,
+        fail_closed: bool = False,
     ) -> None:
         super().__init__(name)
+        self._fail_closed = fail_closed
         self._sensitive_keys: frozenset[str] = (
             frozenset(_normalize_key(k) for k in sensitive_keys)
             if sensitive_keys is not None
@@ -327,6 +334,9 @@ class RedactionFilter(logging.Filter):
         # Honor name-based scoping from logging.Filter
         if not super().filter(record):
             return True  # bypass redaction for non-matching loggers
+
+        if self._fail_closed:
+            return sanitize_record(record, self._sensitive_keys, self._patterns)
 
         try:
             for key in list(record.__dict__.keys()):
