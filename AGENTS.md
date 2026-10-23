@@ -18,7 +18,7 @@
 
 ### Test Coverage
 - Maintain test coverage at **95% or above** for committed changes and PRs.
-- Run `hatch run pytest --cov --cov-report=term-missing -q` to verify before submitting changes.
+- For optional local verification, run `hatch run pytest --cov --cov-report=term-missing -q`; required GitHub CI remains authoritative.
 - Any PR that drops coverage below 95% must include additional tests to compensate.
 - In Azure/Core Tools mode, `setup_logging()` installs `ContextFilter` on the root logger's existing handlers (and the root logger itself for late-attaching handlers) but never adds new handlers or changes the root level. When `use_record_factory=True`, no `ContextFilter` is attached; context is injected via the global `LogRecordFactory` instead. In standalone local mode, the root logger is configured by default (`logger_name=None`); pass an explicit `logger_name` to avoid modifying the root logger.
 - `azure-functions>=1.21.0` is a required runtime dependency (declared in `pyproject.toml`, added deliberately in #528 to align the toolkit floor). OpenTelemetry support remains an optional `[otel]` extra, imported only when `activate_trace_context=True` is used.
@@ -30,6 +30,25 @@
 - English (`README.md`) is the **canonical** source of truth for all documentation. Translated READMEs (`README.ko.md`, `README.ja.md`, `README.zh-CN.md`) are **best-effort**, community-maintained, and may lag the English source.
 - Translation sync is **not** required in the same PR as an English change, and a PR is **never** blocked by translation drift. Update translations opportunistically; when you do, keep them faithful to the current English source.
 - Each translated README carries a staleness banner linking back to the canonical English README. Keep that banner in place so readers always know the translation may be out of date.
+
+## Unified PR Review and Merge Policy
+
+Apply the same review standards to human-authored changes and code produced
+with OpenCode, Codex, Claude Code, ChatGPT, Copilot or any other agent.
+There is **no required AI-specific design, code review or approval route**.
+
+1. Submit a focused, issue-linked PR with appropriate tests, docs and risks.
+2. Use **GitHub CI** required checks on the final relevant PR head as the
+   authoritative validation record; local checks are useful but optional.
+   Preserve coverage thresholds, documentation, security, Azure integration
+   and release/publishing safeguards. Do not assume a specific CI runner.
+3. Evaluate behavior, security, regressions and maintainability. Oracle,
+   Copilot and `agent-review` may provide optional **advisory** observations,
+   but do not substitute for human review or actual test execution.
+4. Resolve or disposition findings and let the responsible maintainer
+   make the merge decision after confirming final CI. High-impact
+   security, credential, workflow and release changes need explicit
+   independent scrutiny.
 
 ## Issue Conventions
 
