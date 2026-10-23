@@ -15,7 +15,7 @@ Thank you for your interest in contributing to `azure-functions-logging`. This g
 3. Install development dependencies:
 
    ```bash
-   pip install -e ".[dev]"
+    make install
    ```
 
 4. Verify your setup:
@@ -50,15 +50,19 @@ Before pushing, run the full local gate:
 make check-all
 ```
 
-This runs:
+`make check-all` is an exact alias of `make verify`, requiring Core Tools and
+Azurite. It runs the following non-mutating/local gates (formatting fixes remain
+an explicit `make format` action):
 
 | Check | Command |
 | ----- | ------- |
-| Code formatting | `make format` (ruff) |
+| Code formatting | `make format-check` (ruff, non-mutating) |
 | Linting | `make style` (ruff) |
 | Type checking | `make typecheck` (mypy) |
 | Security scan | `make security` (bandit) |
 | Tests | `make test` (pytest) |
+| OTel instrumentation and managed real host/Azurite | `make integration` |
+| Installed wheel smoke and strict docs | `make wheel-smoke`, `make docs` |
 
 ### 4. Commit
 
@@ -123,10 +127,22 @@ Titles for issues, pull requests, and commits follow the **Title Convention** in
 | `make style` | Lint with ruff |
 | `make typecheck` | Type check with mypy (strict mode) |
 | `make lint` | Run both style and typecheck |
-| `make test` | Run tests with pytest |
+| `make test` | Fully offline pytest, all privacy regressions, coverage >=95% |
 | `make cov` | Run tests and generate coverage report |
 | `make security` | Run bandit security scan |
-| `make check-all` | Run full local gate (all of the above) |
+| `make check` | Complete non-mutating quality/policy gate, types once |
+| `make integration` | Separate OTel instrumentation and managed real-host/Azurite lanes |
+| `make verify` / `make check-all` | Full local gate / exact alias |
+| `make e2e-azure` | Explicitly configured real Azure/App Insights certification, no provisioning |
+| `make report` | Render saved evidence without execution |
+| `make clean` | Generated artifacts only; `clean-all` also removes bytecode/local `.venv` |
+
+`lint`, `style`, `typecheck`, `security`, `cov`, `build` and `docs` are partial/focused.
+Local host/OTel success is not cloud ingestion certification. Required skipped
+App Insights assertions are INCOMPLETE/non-zero; optional local omissions are
+NOT_APPLICABLE and listed explicitly. See [Development](development.md#evidence-and-certification)
+for saved `test-results/` layout, redaction and status semantics. CI uses the same
+runner on each actual matrix interpreter and uploads evidence even on failure.
 
 ## Pre-commit Hooks
 

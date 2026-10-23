@@ -4,7 +4,7 @@ This guide covers the testing strategy, structure, and practices for `azure-func
 
 ## Running Tests
 
-### All Tests
+### Offline Tests
 
 ```bash
 make test
@@ -16,7 +16,21 @@ Or using Hatch:
 hatch run test
 ```
 
-Both commands run the full test suite via pytest.
+Both commands run the offline unit/mock suite with the existing 95% coverage
+floor, including every redaction/privacy regression. No Azure, host, Docker or
+emulator is needed. Only the dedicated E2E/host directories are excluded.
+
+`make integration` separately runs OTel instrumentation and real decorated-handler
+and correlation host checks with managed private Azurite. `make verify` (exact
+alias: `make check-all`) always adds quality/policies, offline tests, integration,
+installed wheel smoke and strict docs. Missing tools, zero/all-skipped cases and
+required skipped live assertions fail closed. `make report` reads saved JSON only.
+
+OTel/local-host success does not prove Azure Monitor ingestion. Required Azure
+certification requires the App Insights assertion and deployed-version match;
+skips or absent assertions are INCOMPLETE. Optional local App Insights omissions
+are NOT_APPLICABLE and explicitly listed, never certification. See
+[Development](development.md#evidence-and-certification) for the evidence contract.
 
 ### With Coverage
 

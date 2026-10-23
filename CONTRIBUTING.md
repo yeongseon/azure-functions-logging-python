@@ -34,10 +34,12 @@ Recommended branch prefixes:
 
 ## Local development quickstart
 
-Local development requires Python 3.11, 3.12, 3.13, or 3.14. No repo-specific services or
-tools such as Azure Functions Core Tools, Azurite, or Docker are required for the standard
-local checks. The `make install` target creates `.venv`, installs Hatch into it, creates the
-Hatch environment, and installs the pre-commit hook:
+Install Hatch once in an isolated tool environment. The default Hatch environment
+requires Python 3.11; CI selects Python 3.11–3.14 explicitly. `make install` creates
+the isolated dev/docs environment and installs local hooks. Routine commands never
+upgrade pip, reinstall Hatch, or change the global interpreter. Offline quality and
+unit checks need no services; full local verification requires `func` and `azurite`
+on PATH. Docker and an Azure account are not needed locally.
 
 ```bash
 git clone https://github.com/yeongseon/azure-functions-logging-python.git
@@ -49,21 +51,78 @@ Run the standard verification commands from the repository root:
 
 ```bash
 make test
-make lint
-make typecheck
-make build
+make check
+make verify
 ```
 
 ## Project Commands
 
-```bash
-make format      # Format code with ruff
-make lint        # Lint with ruff
-make typecheck   # Type check with mypy
-make test        # Run tests
-make cov         # Run tests with coverage
-make check-all   # Run the full local gate
+| Command | Contract |
+| --- | --- |
+| `make install` | Isolated Hatch development/docs environment and local hooks |
+| `make install-ci` | Install extras into CI's explicitly selected `PYTHON` |
+| `make doctor` | Read-only prerequisites; fail non-zero for missing required tools |
+| `make format` / `make format-check` | Mutating Ruff formatting / non-mutating check |
+| `make check` | Ruff lint/format, strict mypy once, Bandit, workflow/doc-link policies and Mermaid rendering |
+| `make test` | Fully offline unit/mock suite, all privacy/redaction regressions, coverage >=95% |
+| `make integration` | Separate OTel instrumentation, decorated real-host and correlation host lanes; managed private Azurite |
+| `make verify` | Always check + test + integration + installed wheel smoke + strict docs |
+| `make e2e-azure` | Explicit existing deployment and actual App Insights ingestion certification; never provisions |
+| `make report` | Render saved JSON only, without running tests |
+| `make clean` | Generated artifacts only; preserve environments and shared storage |
+
+`make check-all` is an exact backward-compatible alias of `make verify`.
+`clean-all` retains historical deep cleanup: artifacts, bytecode and local `.venv`.
+Other useful targets are partial/focused: `style`, `lint`, `typecheck`, `security`,
+`lint-workflows`, `lint-doc-links`, `cov` (HTML coverage), `bench`, `otel`,
+`host-smoke`, `host-matrix`, `build`, `wheel-smoke`, `docs`, `docs-serve`,
+`format-check-changed`, and maintenance commands. Quality checks require Mermaid
+CLI (`mmdc`) and its Chromium installation; rendering uses temporary output only.
+
+### Verification evidence
+
+```text
+test-results/
+  test/{junit.xml,coverage.xml,summary.json,environment.json,logs/}
+  otel/{junit.xml,summary.json,environment.json,logs/}
+  host-smoke/{junit/junit.xml,summary.json,environment.json,logs/}
+  host-matrix/{junit/junit.xml,summary.json,environment.json,logs/}
+  integration/{summary.json,environment.json,lanes.json,junit/,logs/}
+  verify/{summary.json,environment.json,lanes.json,logs/}
+  azure-e2e/{summary.json,environment.json,junit.xml,logs/}
 ```
+
+Each summary records schema version, lane/command, selected/passed/failed/skipped
+counts, exit status and supporting paths. Actual Python/runtime/SDK/OTel and live
+service versions are captured without dumping environment variables. Credentials,
+connection strings (including instrumentation keys/endpoints), authorization,
+function keys and SAS are masked in logs, XML, saved JSON, console and Job Summary.
+CI runs the same runner on its selected interpreter and uploads `test-results/**`
+with `if: always()`; it never routes matrix tests through Hatch's Python 3.11.
+
+- **PASS** requires actual execution and successful required checks.
+- **FAIL** means failed tests/checks, non-zero processes or timeouts.
+- **INCOMPLETE** means missing prerequisites/evidence, zero tests, all skipped,
+  or skipped required live assertions. These runs exit non-zero.
+- **NOT_APPLICABLE** is only an explicitly unsupported/not-requested capability,
+  never a fallback for missing required tools or cloud assertions.
+
+OTel instrumentation and local Functions-host success do **not** certify Azure
+Monitor ingestion. `cloud_monitor` is `NOT_APPLICABLE` locally, with the unrun
+App Insights assertion listed in `cloud_tests_not_run`. `e2e-local` targets an
+already-running app and permits only that explicitly optional cloud assertion to
+skip. A required `azure-e2e` run with that assertion skipped or absent is
+`INCOMPLETE`, never PASS—even if HTTP tests passed. Deployed-version matching has
+its own status derived from the actual JUnit assertion, not from configuration.
+
+Real Azure requires `E2E_BASE_URL`, `E2E_EXPECTED_VERSION`, `APPINSIGHTS_NAME`,
+`E2E_RESOURCE_GROUP`, and an authenticated `az` CLI. The runner never deploys or
+provisions; the existing release workflow still owns deployment, exact-ref and
+candidate-version records, cleanup, OIDC, and upload of the original built artifact.
+Telemetry destination is recorded as configured/redacted, never a connection string.
+Host lanes use temporary storage, distinct ephemeral ports and bounded readiness;
+only their owned process groups are stopped, including on interruption. Core Tools
+may need its extension bundle cached before an offline host run.
 
 ## GitHub Actions Pinning
 
@@ -98,8 +157,6 @@ context never drifts from the pinned commit.
 permitted in this repository and are flagged with an inline comment at
 the call site:
 
-- `pypa/gh-action-pypi-publish@release/v1` — PyPA-maintained stable
-  release channel; this pinning style is explicitly recommended upstream.
 - Local composite actions (`uses: ./...`) — versioned with the repo.
 
 When adding a new external Action, resolve the SHA with

@@ -26,11 +26,17 @@ This also applies when using the API or CLI.
 5. Do not broaden supported Python versions or dependency ranges casually.
 
 ## Validation
-- `make test`
-- `make lint`
-- `make typecheck`
-- `make security`
-- `make build`
+- `make doctor`: read-only prerequisites and actual interpreter.
+- `make check`: complete non-mutating quality/policies, strict types once.
+- `make test`: offline, all privacy regressions, coverage >=95%.
+- `make integration`: separate OTel and managed real-host/private Azurite lanes.
+- `make verify`: full local gate; `make check-all` is an exact alias.
+- `make e2e-azure`: configured deployment and real App Insights ingestion, no provisioning.
+- `make report`: saved redacted JSON only; `make clean`: generated artifacts only.
+
+Other targets are focused/partial. `clean-all` retains deep cleanup including local
+`.venv`. Local host/OTel success is not cloud certification: skipped required
+App Insights assertions are INCOMPLETE. See [Development](development.md#development-commands).
 
 ## Review Evidence
 

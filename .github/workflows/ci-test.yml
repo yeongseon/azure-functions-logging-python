@@ -91,22 +91,18 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install package with dev extras
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: make install-ci
 
-      - name: Lint workflows (pin hygiene + release-gate canonical SHAs)
-        run: |
-          python tools/lint_release_workflows.py
-          python tools/lint_workflow_pins.py
+      - name: Set up Node.js for Mermaid policy checks
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
 
-      - name: Hatch/matrix hygiene lint
-        run: python tools/lint_hatch_matrix.py
+      - name: Install Mermaid render checker
+        run: npm install -g @mermaid-js/mermaid-cli
 
-      - name: Ruff style check
-        run: |
-          ruff check src tests tools examples benchmarks scripts
-          ruff format --check src tests tools examples benchmarks scripts
+      - name: Complete non-mutating quality gate
+        run: make check
 
       - name: Ruff format check (changed Python files)
         if: github.event_name == 'pull_request'
@@ -115,8 +111,12 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python tools/check_pr_format.py "$PR_BASE_SHA" "$PR_HEAD_SHA"
 
-      - name: Type check (mypy, strict)
-        run: mypy src tests
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quality-evidence
+          path: test-results/**
 
   test:
     name: Test (Py ${{ matrix.python-version }})
@@ -160,9 +160,7 @@ jobs:
           PY
 
       - name: Install package with dev extras (on the matrix interpreter)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: make install-ci
 
       - name: Run tests on the matrix interpreter
         # Raw pytest on the interpreter provisioned above (NOT through the
@@ -174,25 +172,35 @@ jobs:
           IS_COVERAGE_CELL: ${{ matrix.python-version == '3.11' }}
         run: |
           if [ "$IS_COVERAGE_CELL" = "true" ]; then
-            pytest tests/
+            python -m tools.verification test
           else
-            pytest tests/ --no-cov
+            python -m tools.verification test --no-cov
           fi
 
       - name: Verify coverage output
         if: matrix.python-version == '3.11'
-        run: ls -lh coverage.xml
+        run: ls -lh test-results/test/coverage.xml
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11' && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
+          files: ./test-results/test/coverage.xml
           verbose: true
           fail_ci_if_error: false
         env:
           CODECOV_RETRIES: 3
+
+      - name: Record OTel instrumentation separately from ingestion
+        run: python -m tools.verification otel
+
+      - name: Upload offline and OTel evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-evidence-py${{ matrix.python-version }}
+          path: test-results/**
 
   minimum-dependencies:
     name: Minimum dependencies (Py 3.11)
@@ -228,7 +236,14 @@ jobs:
           PY
 
       - name: Run full suite against minimum runtime dependencies
-        run: pytest tests/ --no-cov
+        run: python -m tools.verification test --no-cov
+
+      - name: Upload minimum-dependency evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: minimum-dependencies-evidence
+          path: test-results/**
 
   artifact-build:
     name: Build compatibility artifacts
@@ -371,28 +386,17 @@ jobs:
           npm install --global azurite
 
       - name: Install smoke app dependencies
-        working-directory: tests/host_smoke
-        run: pip install -r requirements.txt
+        run: make install-ci
 
-      - name: Start Azurite and Functions host
-        run: |
-          azurite --silent > /tmp/azurite.log 2>&1 &
-          cd tests/host_smoke
-          func start --python --port 7071 > /tmp/functions-host.log 2>&1 &
+      - name: Managed decorated-handler and correlation host verification
+        run: python -m tools.verification integration
 
-      - name: Call decorated handlers
-        run: |
-          for attempt in {1..30}; do
-            if response="$(curl --fail --silent http://127.0.0.1:7071/api/smoke)" \
-              && default_response="$(curl --fail --silent http://127.0.0.1:7071/api/smoke-default)"; then
-              test "$response" = "smoke"
-              test "$default_response" = "smoke_default"
-              exit 0
-            fi
-            sleep 2
-          done
-          cat /tmp/functions-host.log
-          exit 1
+      - name: Upload local host evidence (not App Insights certification)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: host-evidence-py${{ matrix.python-version }}
+          path: test-results/**
 
   docs-check:
     runs-on: ubuntu-latest
@@ -421,7 +425,14 @@ jobs:
           npm install -g @mermaid-js/mermaid-cli
 
       - name: Build documentation strictly
-        run: mkdocs build --strict
+        run: make docs
+
+      - name: Upload documentation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: docs-evidence
+          path: test-results/**
 
       - name: Lint documentation links
         run: python tools/lint_doc_links.py

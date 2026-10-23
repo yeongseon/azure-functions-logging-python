@@ -7,6 +7,8 @@ This guide explains how to set up a development environment for `azure-functions
 - Python 3.11-3.14 (`>=3.11,<3.15`)
 - Git
 - Make (for running development commands)
+- Hatch installed once in an isolated tool environment
+- Functions Core Tools (`func`) and Azurite for integration/verify only
 
 ## Getting Started
 
@@ -20,13 +22,13 @@ This guide explains how to set up a development environment for `azure-functions
 2. Install the package in editable mode with development dependencies:
 
    ```bash
-   pip install -e ".[dev]"
+    make install
    ```
 
 3. Install pre-commit hooks:
 
    ```bash
-   pre-commit install
+    make precommit-install
    ```
 
 4. Verify everything works:
@@ -72,10 +74,51 @@ All development tasks are automated via `Makefile` targets:
 | `make style` | Lint for code quality issues | ruff |
 | `make typecheck` | Static type checking | mypy (strict) |
 | `make lint` | Run both `style` and `typecheck` | ruff, mypy |
-| `make test` | Run test suite | pytest |
+| `make test` | Offline unit/mock suite, all privacy regressions, coverage >=95% | pytest |
 | `make cov` | Run tests with coverage report | pytest-cov |
 | `make security` | Security vulnerability scan | bandit |
-| `make check-all` | Run all checks (full local gate) | All of the above |
+| `make install` / `make install-ci` | Isolated local setup / CI-selected interpreter setup | Hatch / selected Python |
+| `make doctor` | Read-only prerequisite check; missing required tools fail | canonical runner |
+| `make format-check` | Non-mutating formatting check | Ruff |
+| `make check` | Lint, format, strict mypy once, security, workflow/doc-link policies | non-mutating |
+| `make integration` | Separate OTel, decorated-host and correlation-host lanes; private Azurite | managed processes |
+| `make verify` | Check + test + integration + wheel smoke + strict docs | full local gate |
+| `make check-all` | Exact alias of verify | full local gate |
+| `make e2e-azure` | Explicit deployed candidate and App Insights ingestion | no provisioning |
+| `make report` | Render saved JSON, never rerun tests | canonical runner |
+| `make clean` | Generated artifacts only, preserve environments/shared data | allowlisted cleanup |
+| `make clean-all` | Deep cleanup including bytecode and local `.venv` | maintenance |
+
+Other targets (`lint`, `style`, `typecheck`, `security`, `cov`, `bench`, `build`,
+`wheel-smoke`, `docs`, `otel`, `host-smoke`, `host-matrix`, workflow/link lints)
+are partial/focused. `e2e-local` checks an already-running local app, not Azure.
+Routine commands never upgrade pip or reinstall Hatch. CI uses `make install-ci`
+and the canonical runner on its selected Python/SDK/OTel versions, never the
+Python 3.11 Hatch default. Quality checks include Mermaid rendering via `mmdc`
+and its Chromium installation, using temporary output only.
+
+### Evidence and certification
+
+Gitignored `test-results/` holds separate `test/`, `otel/`, `host-smoke/`,
+`host-matrix/`, `integration/`, `verify/`, and `azure-e2e/` summaries. Unit evidence
+includes JUnit and coverage XML; integration copies JUnit/logs while retaining each
+lane's summary; verify adds `lanes.json` and `environment.json`. Every summary has
+schema version, command, selected/passed/failed/skipped counts, status, exit code
+and supporting paths. Actual interpreter/SDK/service versions are recorded.
+Secrets are masked before console/Job Summary publication and artifact upload.
+
+PASS requires execution; failures/timeouts are FAIL; missing prerequisites,
+zero/all-skipped tests and required skipped assertions are INCOMPLETE/non-zero.
+NOT_APPLICABLE is only a capability not requested/supported, never missing tools.
+Local host and OTel instrumentation cannot certify cloud ingestion. A skipped
+App Insights assertion is listed in `cloud_tests_not_run`; `cloud_monitor` is
+NOT_APPLICABLE for local runs and INCOMPLETE for required Azure certification.
+Deployed-version matching is separately derived from its JUnit assertion.
+
+`make e2e-azure` requires `E2E_BASE_URL`, `E2E_EXPECTED_VERSION`, `APPINSIGHTS_NAME`,
+`E2E_RESOURCE_GROUP` and authenticated `az`. It never provisions. Host lanes use
+private temporary storage, unique ephemeral ports, bounded readiness, and owned
+process-group cleanup. See the repository CONTRIBUTING.md for the full contract.
 
 ### Running Individual Commands
 
@@ -83,7 +126,7 @@ All development tasks are automated via `Makefile` targets:
 make format      # Fix formatting issues
 make style       # Check for lint violations
 make typecheck   # Check types
-make test        # Run all tests
+make test        # Offline suite only
 make cov         # Run tests with coverage
 make security    # Run security scan
 make check-all   # Run everything
@@ -103,7 +146,7 @@ The project uses [Hatch](https://hatch.pypa.io/) as its build system and environ
 
 ```bash
 hatch run test           # Run tests in managed environment
-hatch run lint:all       # Run all linting checks
+hatch run lint           # Focused lint and type checks
 hatch run cov            # Run tests with coverage
 ```
 
@@ -164,7 +207,7 @@ See the [Testing](testing.md) guide for detailed information on the test suite.
 Quick reference:
 
 ```bash
-make test          # Run all tests
+make test          # Offline suite only
 make cov           # Run with coverage report
 pytest tests/test_formatter.py   # Run specific test file
 pytest -k "test_json"            # Run tests matching pattern
@@ -220,10 +263,12 @@ The hooks check formatting, linting, and type safety. If a hook fails, the commi
 
 CI runs on every push and pull request via GitHub Actions. The pipeline:
 
-1. Runs `make check-all` (format, lint, typecheck, security, tests)
+1. Runs `make check` (non-mutating format/lint/types/security/policies)
 2. Tests across the Python version matrix: 3.11, 3.12, 3.13, 3.14
 3. Generates coverage report
 4. Uploads coverage to Codecov
+5. Runs the same canonical managed host runner and preserves wheel/minimum-dependency gates
+6. Uploads `test-results/**` even on failure and appends the same counts/status to Job Summary
 
 Pull requests must pass all CI checks before merging.
 

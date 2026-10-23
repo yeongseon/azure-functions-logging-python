@@ -173,7 +173,7 @@ jobs:
           func azure functionapp publish "${{ steps.names.outputs.app }}" --python --build remote
 
       - name: Run e2e tests (HTTP + App Insights)
-        run: pytest -v -m e2e tests/e2e/ --no-cov --html=e2e-report/report.html --self-contained-html
+        run: python -m tools.verification azure-e2e -v --html=test-results/azure-e2e/report.html --self-contained-html
         env:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
           E2E_EXPECTED_VERSION: ${{ env.RESOLVED_VERSION }}
@@ -218,7 +218,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: e2e-report/
+          path: test-results/**
           retention-days: 30
 
   cleanup:

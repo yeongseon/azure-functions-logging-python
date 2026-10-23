@@ -101,11 +101,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Hatch
-        run: pip install hatch
+      - name: Install test dependencies on the selected interpreter
+        run: make install-ci
 
       - name: Run test suite
-        run: hatch run test
+        run: python -m tools.verification test
+
+      - name: Upload release library evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-library-evidence
+          path: test-results/**
 
   cookbook-smoke:
     name: Cookbook dogfood smoke (candidate wheel)
@@ -278,7 +285,7 @@ jobs:
           path: dist
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1 # pin-exempt: PyPA official publisher (trusted-publisher OIDC); tracks release/v1 by design
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
 
   notify-cookbook:
     name: Trigger cookbook e2e re-verification

@@ -18,7 +18,7 @@
 
 ### Test Coverage
 - Maintain test coverage at **95% or above** for committed changes and PRs.
-- Run `hatch run pytest --cov --cov-report=term-missing -q` to verify before submitting changes.
+- Run `make test` to verify the offline suite and coverage before submitting changes.
 - Any PR that drops coverage below 95% must include additional tests to compensate.
 - In Azure/Core Tools mode, `setup_logging()` installs `ContextFilter` on the root logger's existing handlers (and the root logger itself for late-attaching handlers) but never adds new handlers or changes the root level. When `use_record_factory=True`, no `ContextFilter` is attached; context is injected via the global `LogRecordFactory` instead. In standalone local mode, the root logger is configured by default (`logger_name=None`); pass an explicit `logger_name` to avoid modifying the root logger.
 - `azure-functions>=1.21.0` is a required runtime dependency (declared in `pyproject.toml`, added deliberately in #528 to align the toolkit floor). OpenTelemetry support remains an optional `[otel]` extra, imported only when `activate_trace_context=True` is used.
@@ -101,10 +101,11 @@ When splitting a large piece of work into focused issues, keep the umbrella open
 Keep issue creation **open/unrestricted** in this repository (issue tracker enabled, no `interaction-limits`). External bug reports are the only inbound support channel, so restricting issue creation suppresses the signal we most need. Do not enable an interaction limit or restrict issue creation without an explicit, documented reason recorded in an issue first.
 
 ## Validation
-- `make test`
-- `make lint`
-- `make typecheck`
-- `make build`
+- `make doctor` (read-only required prerequisites)
+- `make check` (complete non-mutating quality/policy gate)
+- `make test` (offline, all privacy regressions, coverage >=95%)
+- `make integration` (separate OTel and managed host/Azurite evidence)
+- `make verify` (`make check-all` is an exact alias)
 
 ## Release Process
 
@@ -181,11 +182,24 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 | Purpose | Command |
 | --- | --- |
 | Environment setup | `make install` |
+| CI-selected interpreter setup | `make install-ci` |
+| Read-only prerequisites | `make doctor` |
 | Format code | `make format` |
-| Lint | `make lint` |
-| Type check | `make typecheck` |
-| Tests | `make test` |
-| Clean | `make clean` |
+| Check formatting | `make format-check` |
+| Complete non-mutating quality/policies | `make check` |
+| Offline tests with 95% coverage | `make test` |
+| Managed local OTel/host/Azurite lanes | `make integration` |
+| Full local validation | `make verify` (`make check-all` exact alias) |
+| Configured real Azure/App Insights certification | `make e2e-azure` |
+| Render saved results only | `make report` |
+| Generated artifact cleanup only | `make clean` |
+| Partial/focused lint/types/security/coverage | `make lint`, `make typecheck`, `make security`, `make cov` |
+| Partial/focused docs/build/wheel | `make docs`, `make build`, `make wheel-smoke` |
+
+See CONTRIBUTING.md for the command/evidence contract. Separate summaries live in
+gitignored `test-results/`. Local host or OTel success is not App Insights ingestion
+certification; required skipped cloud assertions are INCOMPLETE. `clean-all` retains
+deep cleanup including bytecode and the project-local `.venv`.
 
 ## Design Constraints
 
