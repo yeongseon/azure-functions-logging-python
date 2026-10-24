@@ -18,7 +18,7 @@ env:
 
 # Verify-before-publish gate (see AGENTS.md):
 #   build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
-#         -> azure-e2e -> publish
+#         -> azure-e2e -> runtime-dependency-audit -> publish
 # Tiered runtime verification before any PyPI upload:
 #   * lib-tests            : the library's own unit suite (against the built wheel).
 #   * cookbook-smoke       : downstream module-import checks (catches registration/import drift).
@@ -32,6 +32,10 @@ env:
 #                            against the tag being published. Because it runs inside this chain at
 #                            the same ref, certification covers the exact published commit by
 #                            construction -- no cross-run SHA/freshness matching is required.
+#   * runtime-dependency-audit : installs the exact candidate wheel (base and [otel]) on the oldest
+#                            and newest supported Python and fails on any known advisory in its
+#                            runtime closure, an empty closure or an unauditable package, except
+#                            dated exceptions in security/runtime-advisory-exceptions.txt (SECURITY.md).
 # The publish job uploads the EXACT artifact that was tested; it never rebuilds.
 # A tag whose gate fails is a failed release candidate: the version stays
 # unpublished. Recover by fixing forward and cutting the next patch tag
@@ -263,9 +267,66 @@ jobs:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+  runtime-dependency-audit:
+    name: Runtime dependency audit (Py ${{ matrix.python }}, ${{ matrix.extras == '' && 'base' || matrix.extras }})
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # azure-functions resolves to different majors on 3.11-3.12 and 3.13-3.14, so one
+        # interpreter is not enough; the oldest and newest bracket the supported range.
+        # The key is `python`: tools/lint_hatch_matrix.py reads a `python-version` list as a Hatch test matrix.
+        python: ["3.11", "3.14"]
+        extras: ["", "[otel]"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download the exact tested distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Audit the candidate's runtime closure (any known advisory blocks release)
+        env:
+          EXTRAS: ${{ matrix.extras }}
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/candidate"
+          "$RUNNER_TEMP/candidate/bin/pip" install "$(ls dist/*.whl)${EXTRAS:-}"
+          "$RUNNER_TEMP/candidate/bin/pip" freeze --exclude azure-functions-logging > req.txt
+          test -s req.txt  # an empty closure must not pass vacuously
+          ignores=$(python tools/runtime_audit_args.py security/runtime-advisory-exceptions.txt)
+          echo "Advisory exceptions in effect: ${ignores:-none}"
+          python -m pip install "pip-audit==2.10.1"
+          # --strict: a package pip-audit cannot audit fails the gate instead of being skipped.
+          # $ignores stays unquoted: one --ignore-vuln=ID word per waiver, ids validated (no globbing).
+          # shellcheck disable=SC2086
+          python -m pip_audit --no-deps --disable-pip --strict --desc off -f json -r req.txt $ignores | tee pip-audit.json
+
+      - name: Upload the audit report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runtime-audit-py${{ matrix.python }}-${{ matrix.extras == '' && 'base' || 'otel' }}-${{ github.run_attempt }}
+          path: pip-audit.json
+          retention-days: 30
+
   publish:
     name: Publish to PyPI
-    needs: [build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e]
+    needs: [build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e, runtime-dependency-audit]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
