@@ -150,6 +150,7 @@ def test_public_api_exports() -> None:
     expected = {
         "__version__",
         "AttributeFlattenFilter",
+        "attach_secure_redaction",
         "ContextTokens",
         "DEFAULT_REDACTION_PATTERNS",
         "FunctionLogger",

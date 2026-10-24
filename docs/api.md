@@ -217,6 +217,14 @@ principle that redaction failures are silent).
 
 ::: azure_functions_logging.DEFAULT_REDACTION_PATTERNS
 
+## attach_secure_redaction
+
+::: azure_functions_logging.attach_secure_redaction
+
+Use `setup_logging(redaction="secure")` for startup configuration, or this helper
+for a handler created later. See [Secure production configuration](configuration.md#secure-production-configuration)
+for fail-closed semantics, ordering, limits, and migration guidance.
+
 ## AttributeFlattenFilter
 
 ::: azure_functions_logging.AttributeFlattenFilter
