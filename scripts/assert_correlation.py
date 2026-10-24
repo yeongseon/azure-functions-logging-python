@@ -129,8 +129,8 @@ def check(host_text: str, response_text: str) -> list[str]:
     if failures:
         return failures
 
-    assert main_1 is not None and main_2 is not None
-    assert thread is not None and propagated_thread is not None
+    assert main_1 is not None and main_2 is not None  # nosec B101 - type narrowing; failures were returned above
+    assert thread is not None and propagated_thread is not None  # nosec B101 - type narrowing; failures were returned above
 
     # Claim 1: invocation_id parses as a UUID.
     inv_1 = main_1.get("invocation_id")
