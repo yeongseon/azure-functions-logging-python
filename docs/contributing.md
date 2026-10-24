@@ -127,6 +127,7 @@ Titles for issues, pull requests, and commits follow the **Title Convention** in
 | `make cov` | Run tests and generate coverage report |
 | `make security` | Run bandit security scan |
 | `make check-all` | Run full local gate (all of the above) |
+| `make doctor` | Check that Hatch, `python3` and `git` are present; exits non-zero if one is missing |
 
 ## Pre-commit Hooks
 

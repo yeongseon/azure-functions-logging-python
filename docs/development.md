@@ -76,6 +76,7 @@ All development tasks are automated via `Makefile` targets:
 | `make cov` | Run tests with coverage report | pytest-cov |
 | `make security` | Security vulnerability scan | bandit |
 | `make check-all` | Run all checks (full local gate) | All of the above |
+| `make doctor` | Check that Hatch, `python3` and `git` are present (exits non-zero if one is missing); `func` and `azurite` are reported as optional | shell |
 
 ### Running Individual Commands
 
