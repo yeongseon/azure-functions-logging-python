@@ -16,6 +16,12 @@
 
 ## Working Rules
 
+Security gates, evidence redaction, production boundaries and expiring exceptions:
+see [SECURITY.md](SECURITY.md). Use `make security`, `make security-typecheck`,
+`make security-semgrep`, `make security-runtime` (blocking),
+`make security-runtime-report` (reporting workflow), and `make security-host`
+(opt-in host) as the shared security entry points.
+
 ### Test Coverage
 - Maintain test coverage at **95% or above** for committed changes and PRs.
 - For optional local verification, run `hatch run pytest --cov --cov-report=term-missing -q`; required GitHub CI remains authoritative.

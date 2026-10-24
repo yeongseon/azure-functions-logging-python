@@ -64,7 +64,24 @@ lint: ensure-hatch
 
 .PHONY: security
 security: ensure-hatch
-	@$(HATCH) run security
+	@$(MAKE) security-inventory
+
+# Security evidence entry points; kept separate from verification standardization.
+SECURITY_PYTHON ?= python
+AUDIT_ARGS ?=
+SCAN_OUTCOME ?=
+.PHONY: security-inventory security-bandit security-semgrep security-runtime security-runtime-report security-typecheck security-host
+security-inventory security-bandit: ensure-hatch
+	@$(HATCH) run python -m tools.security_evidence bandit
+security-semgrep:
+	@$(SECURITY_PYTHON) -m tools.security_evidence semgrep --outcome "$(SCAN_OUTCOME)"; code=$$?; [ $$code -eq 3 ] || exit $$code
+security-runtime:
+	@$(SECURITY_PYTHON) -m tools.dependency_audit_policy $(AUDIT_ARGS)
+security-runtime-report:
+	@$(SECURITY_PYTHON) -m tools.dependency_audit_policy $(AUDIT_ARGS)
+security-typecheck: ensure-hatch
+	@$(HATCH) run security-typecheck
+security-host: e2e-local
 
 .PHONY: check
 check: ensure-hatch

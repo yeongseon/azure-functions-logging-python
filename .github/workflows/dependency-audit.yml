@@ -21,22 +21,46 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install audit tool and runtime dependencies
+      - name: Build wheel and isolated reporting environments
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install "pip-audit==2.10.1" .
+          python -m pip install 'pip-audit==2.10.1' 'build==1.5.0'
+          python -m build --wheel
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m venv --without-pip "$RUNNER_TEMP/runtime"
+          python -m pip --python "$RUNNER_TEMP/runtime/bin/python" install "${wheels[0]}"
+          python -m venv --without-pip "$RUNNER_TEMP/otel"
+          python -m pip --python "$RUNNER_TEMP/otel/bin/python" install "${wheels[0]}[otel]"
+          python -m venv --without-pip "$RUNNER_TEMP/development"
+          python -m pip --python "$RUNNER_TEMP/development/bin/python" install '.[dev]'
 
       - name: Audit runtime dependencies
         continue-on-error: true
         run: |
-          echo "## Runtime dependency audit" >> "$GITHUB_STEP_SUMMARY"
-          python -m pip_audit 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          site_packages=$("$RUNNER_TEMP/runtime/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          wheels=(dist/*.whl)
+          make security-runtime-report AUDIT_ARGS="--site-packages $site_packages --candidate-wheel ${wheels[0]} --output security-results/runtime"
 
-      - name: Install development dependencies
-        run: python -m pip install ".[dev]"
-
-      - name: Audit runtime and development dependencies
+      - name: Audit OTel runtime dependencies
+        if: always()
         continue-on-error: true
         run: |
-          echo "## Runtime and development dependency audit" >> "$GITHUB_STEP_SUMMARY"
-          python -m pip_audit 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          site_packages=$("$RUNNER_TEMP/otel/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          wheels=(dist/*.whl)
+          make security-runtime-report AUDIT_ARGS="--site-packages $site_packages --candidate-wheel ${wheels[0]} --output security-results/otel"
+
+      - name: Audit runtime and development dependencies
+        if: always()
+        continue-on-error: true
+        run: |
+          site_packages=$("$RUNNER_TEMP/development/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          wheels=(dist/*.whl)
+          make security-runtime-report AUDIT_ARGS="--site-packages $site_packages --candidate-wheel ${wheels[0]} --development --output security-results/development"
+
+      - name: Upload redacted reporting evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-security-report
+          path: security-results/**
+          if-no-files-found: error
