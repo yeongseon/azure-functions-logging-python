@@ -155,7 +155,7 @@ feat:/fix: PR merged into main
         |
   publish-pypi.yml  (started by the tag)
         build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
-              -> azure-e2e -> PyPI
+              -> azure-e2e -> runtime-dependency-audit -> PyPI
 ```
 
 1. Merge Conventional-Commit PRs into `main`. Release Please keeps an open **Release PR** showing exactly what the next release would be.
@@ -179,6 +179,7 @@ Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the
 | `cookbook-smoke` | downstream import/registration drift |
 | `cookbook-host-smoke` | package-specific runtime and host-boot compatibility: installs the candidate wheel, collects only the cookbook's existing `package_logging` E2E selection, and exercises logging output/correlation through a real `func` host + Azurite. The pinned cookbook SHA, tool versions, dependency resolution, wheel digest, selection, JUnit output, and sanitized host diagnostics make the attempt reproducible. |
 | `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
+| `runtime-dependency-audit` | a known advisory in the candidate wheel's runtime dependencies (base and `[otel]`, Python 3.11 and 3.14), an empty dependency list or an unauditable package; dated waivers live in `security/runtime-advisory-exceptions.txt` (see `SECURITY.md`) |
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
 ### Recovery

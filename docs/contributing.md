@@ -169,7 +169,7 @@ Publishing to PyPI is a separate, gated workflow (`publish-pypi.yml`) that runs 
 anything is uploaded:
 
 ```
-build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> publish
+build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> runtime-dependency-audit -> publish
 ```
 
 The full procedure, the retired Makefile targets, and the recovery playbook live in the

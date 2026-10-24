@@ -74,7 +74,7 @@ it does, or no Release PR will appear.
 The tag starts `publish-pypi.yml`. Everything else is automatic:
 
 ```
-build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> publish
+build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> runtime-dependency-audit -> publish
 ```
 
 | Tier | Catches |
@@ -84,6 +84,7 @@ build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> publ
 | `cookbook-smoke` | downstream import/registration drift |
 | `cookbook-host-smoke` | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, exercising the cookbook's package-specific `package_logging` E2E selection (logging output/correlation through a real host), no cloud |
 | `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
+| `runtime-dependency-audit` | a known advisory in the candidate wheel's runtime dependencies (base and `[otel]`, Python 3.11 and 3.14), an empty dependency list or an unauditable package; dated waivers live in `security/runtime-advisory-exceptions.txt` (see `SECURITY.md` in the repository root) |
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
 `azure-e2e` calls `e2e-azure.yml` as a reusable workflow at the same ref being published, so
