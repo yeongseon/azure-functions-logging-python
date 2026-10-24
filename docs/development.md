@@ -205,6 +205,8 @@ make security
 
 Bandit checks for common security issues in Python code (hardcoded passwords, SQL injection, unsafe deserialization, etc.).
 
+`make security` scans `src`, `examples`, `scripts`, `tools` and `benchmarks` and writes Bandit's JSON report to `test-results/bandit.json`. Bandit exits 0 for an empty or missing path and for a file it cannot parse, so `tools/check_bandit_report.py` then fails the target when no code was analysed, a file was skipped, a Python file in scope was left unscanned, or any finding remains. Suppress a reviewed false positive inline with `# nosec Bxxx - <reason>`, naming the test ID and the reason.
+
 ## Pre-commit Hooks
 
 Pre-commit hooks run automatically before each commit:
