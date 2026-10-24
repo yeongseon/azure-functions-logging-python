@@ -100,7 +100,6 @@ e2e-azure = "pytest -v -m e2e tests/e2e/ --no-cov"
 docs = "mkdocs serve"
 precommit = "pre-commit run --all-files"
 precommit-install = "pre-commit install"
-security = "python -m bandit -r src"
 
 [tool.pytest.ini_options]
 addopts = "--cov=src/azure_functions_logging --cov-report=xml --cov-report=term-missing -ra -q -m 'not e2e'"

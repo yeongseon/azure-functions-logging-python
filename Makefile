@@ -62,9 +62,14 @@ typecheck: ensure-hatch
 lint: ensure-hatch
 	@$(HATCH) run lint
 
+# Bandit exits 0 for an empty, missing or unparsable scope; the guard rejects those.
+# -q: Bandit 1.9.4 prints a progress bar to stdout above 50 files.
+SECURITY_SCOPE := src examples scripts tools benchmarks
 .PHONY: security
 security: ensure-hatch
-	@$(HATCH) run security
+	@mkdir -p test-results
+	@$(HATCH) run python -m bandit -r $(SECURITY_SCOPE) -q -f json -o test-results/bandit.json; \
+	  code=$$?; $(HATCH) run python tools/check_bandit_report.py test-results/bandit.json $(SECURITY_SCOPE) && exit $$code
 
 .PHONY: check
 check: ensure-hatch
