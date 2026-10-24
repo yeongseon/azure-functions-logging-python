@@ -179,6 +179,7 @@ jobs:
           E2E_EXPECTED_VERSION: ${{ env.RESOLVED_VERSION }}
           APPINSIGHTS_NAME: ${{ steps.names.outputs.ai }}
           E2E_RESOURCE_GROUP: ${{ steps.names.outputs.rg }}
+          FAIL_ON_SKIP: "1" # a skipped App Insights assertion must not certify a release
 
       - name: Record certification
         run: |
