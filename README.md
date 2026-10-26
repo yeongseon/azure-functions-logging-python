@@ -49,9 +49,37 @@ Azure Functions Python logging has specific failure modes that generic logging l
 
 ## OpenTelemetry trace correlation
 
-> **Python is the only Azure Functions worker runtime without built-in OpenTelemetry invocation middleware.** The host emits a W3C `traceparent` for every invocation, but the Python worker never activates it in-process — so unless you activate a span yourself, worker log records are stamped with `span_id=0` and get orphaned from the host's invocation span.
+### Choosing this library or Azure Monitor OpenTelemetry
 
-You *can* close this gap by hand, but it's manual and easy to forget. structlog, Loguru, and stdlib `logging` all rely on OpenTelemetry's `LoggingHandler` / `LoggingInstrumentor`, which only stamp `trace_id` / `span_id` when there is an **active span in the process**. Because the Python worker never activates one, Microsoft's documented pattern is to extract the host's `traceparent` and start a span yourself — in **every handler**. Miss it in one path and those records silently fall back to `span_id=0`.
+Microsoft's `azure-monitor-opentelemetry` distribution configures instrumentation
+and exporters for Azure Monitor. This library does not replace that setup: it
+adds structured JSON, invocation metadata, context lifetime helpers and optional
+redaction to Python's standard logging. Use both when you need those logging
+features alongside Azure Monitor export; configure exporters before calling
+`setup_logging()` and applying the secure redaction preset.
+
+If your host's built-in Application Insights/OpenTelemetry integration already
+provides the fields and correlation you need, use that integration alone. You do
+not need this package merely to send telemetry to Azure Monitor. Conversely,
+structured stdout logging does not require an Azure Monitor exporter.
+
+The optional correlation helper extracts the host's W3C context and attaches it
+only for the invocation scope; it preserves an already-active valid local span
+and restores the prior context on exit. It creates no spans, exporters or
+instrumentation. See the [integration guide](https://yeongseon.dev/azure-functions-python/logging/opentelemetry/)
+for call order and configuration boundaries.
+
+### When invocation trace activation is needed
+
+The host supplies a W3C `traceparent` for an invocation, but whether a corresponding
+span is active in Python depends on the worker and telemetry configuration. When
+no valid span is active, OpenTelemetry log handlers cannot infer the invocation's
+trace IDs from the header alone.
+
+You can bind the host context yourself or let this library do it within
+`logging_context()`. OpenTelemetry log handlers use the **active span in the
+current execution context**, so check your existing integration before enabling
+another correlation mechanism.
 
 `azure-functions-logging` fills that gap. Opt in with `activate_trace_context=True` (requires the `[otel]` extra) and the library binds the host's W3C trace context for the duration of the handler, so your existing OpenTelemetry log records inherit the invocation's `trace_id` / `span_id`:
 
