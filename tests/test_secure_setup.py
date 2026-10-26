@@ -8,7 +8,12 @@ import logging
 import pytest
 
 import azure_functions_logging as afl
-from azure_functions_logging import AttributeFlattenFilter, JsonFormatter, setup_logging
+from azure_functions_logging import (
+    AttributeFlattenFilter,
+    JsonFormatter,
+    configure_secure_redaction,
+    setup_logging,
+)
 from azure_functions_logging._formatter import ColorFormatter
 from azure_functions_logging._secure import _SecureRedactionFilter
 import azure_functions_logging._setup as setup_mod
@@ -47,7 +52,8 @@ def test_child_records_are_masked_before_every_formatter(formatter: logging.Form
     handler = logging.StreamHandler(stream)
     handler.setFormatter(formatter)
     logging.getLogger().addHandler(handler)
-    setup_logging(redaction="secure")
+    setup_logging()
+    configure_secure_redaction()
     # When
     try:
         raise ValueError(f"password={CANARY}")
@@ -73,7 +79,8 @@ def test_secure_runs_after_injected_context_and_flattening() -> None:
     handler.addFilter(AttributeFlattenFilter())
     logging.getLogger().addHandler(handler)
     # When
-    setup_logging(redaction="secure", extra_context_vars={"note": context})
+    setup_logging(extra_context_vars={"note": context})
+    configure_secure_redaction()
     logging.getLogger("secure.order.child").warning(
         "ordinary", extra={"payload": {"token": CANARY}}
     )
@@ -86,10 +93,11 @@ def test_secure_reconfiguration_is_idempotent_and_off_preserves_user_filters() -
     # Given
     handler = logging.StreamHandler(io.StringIO())
     logging.getLogger().addHandler(handler)
-    setup_logging(redaction="secure")
+    setup_logging()
+    configure_secure_redaction()
     original = tuple(handler.filters)
     # When
-    setup_logging(redaction="secure")
+    configure_secure_redaction()
     # Then
     assert tuple(handler.filters) == original
     owned = handler.filters[-1]
@@ -99,14 +107,15 @@ def test_secure_reconfiguration_is_idempotent_and_off_preserves_user_filters() -
 
     user = UserFilter()
     handler.addFilter(user)
-    setup_logging(redaction="off")
+    configure_secure_redaction(enabled=False)
     assert owned not in handler.filters
     assert user in handler.filters
 
 
 def test_late_handler_can_be_protected_before_registration() -> None:
     # Given
-    setup_logging(redaction="secure")
+    setup_logging()
+    configure_secure_redaction()
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     # When
@@ -122,23 +131,28 @@ def test_late_handler_can_be_protected_before_registration() -> None:
 def test_local_repeat_call_protects_new_handlers(monkeypatch: pytest.MonkeyPatch) -> None:
     # Given
     monkeypatch.delenv("FUNCTIONS_WORKER_RUNTIME")
-    setup_logging(logger_name="secure.local", redaction="secure")
+    setup_logging(logger_name="secure.local")
+    configure_secure_redaction()
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     root = logging.getLogger()
     root.addHandler(handler)
     # When
-    setup_logging(logger_name="secure.local", redaction="secure")
+    setup_logging(logger_name="secure.local")
+    configure_secure_redaction()
     logging.getLogger("secure.other").warning("Bearer %s", CANARY)
     # Then
     assert CANARY not in stream.getvalue()
     logging.getLogger("secure.local").handlers.clear()
 
 
-def test_invalid_redaction_has_no_factory_side_effect() -> None:
+def test_ordinary_setup_preserves_explicit_secure_policy() -> None:
     # Given
-    factory = logging.getLogRecordFactory()
-    # When / Then
-    with pytest.raises(ValueError, match="redaction"):
-        getattr(afl, "setup_logging")(redaction="invalid", use_record_factory=True)
-    assert logging.getLogRecordFactory() is factory
+    stream = io.StringIO()
+    logging.getLogger().addHandler(logging.StreamHandler(stream))
+    configure_secure_redaction()
+    # When
+    setup_logging()
+    logging.getLogger("secure.preserved").warning("token=%s", CANARY)
+    # Then
+    assert CANARY not in stream.getvalue()

@@ -15,6 +15,7 @@ from azure_functions_logging import (
     AttributeFlattenFilter,
     IsolatedHandler,
     attach_secure_redaction,
+    configure_secure_redaction,
     logging_context,
     setup_logging,
 )
@@ -35,12 +36,14 @@ def test_otel_exports_only_sanitized_child_records(late: bool, isolated: bool) -
     target.addFilter(AttributeFlattenFilter())
     root = logging.getLogger()
     if late:
-        setup_logging(redaction="secure")
+        setup_logging()
+        configure_secure_redaction()
         attach_secure_redaction(handler)
         root.addHandler(handler)
     else:
         root.addHandler(handler)
-        setup_logging(redaction="secure")
+        setup_logging()
+        configure_secure_redaction()
     context = SimpleNamespace(
         invocation_id="inv-42",
         function_name="secure_fn",
@@ -77,7 +80,8 @@ def test_otel_exports_only_sanitized_child_records(late: bool, isolated: bool) -
 def test_caplog_text_and_records_are_sanitized(caplog: pytest.LogCaptureFixture) -> None:
     # Given
     logging.getLogger().addHandler(caplog.handler)
-    setup_logging(redaction="secure")
+    setup_logging()
+    configure_secure_redaction()
     # When
     logging.getLogger("secure.capture.child").warning(
         "password=%s",
@@ -95,7 +99,8 @@ def test_concurrent_secure_reconfiguration_never_opens_filter_gap() -> None:
     handler = logging.StreamHandler(stream)
     handler.setFormatter(InspectFormatter())
     logging.getLogger().addHandler(handler)
-    setup_logging(redaction="secure")
+    setup_logging()
+    configure_secure_redaction()
     barrier = Barrier(9)
 
     def emit() -> None:
@@ -106,7 +111,7 @@ def test_concurrent_secure_reconfiguration_never_opens_filter_gap() -> None:
     def configure() -> None:
         barrier.wait()
         for _ in range(100):
-            setup_logging(redaction="secure")
+            configure_secure_redaction()
 
     # When
     with ThreadPoolExecutor(max_workers=9) as pool:

@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 import threading
-from typing import Any, Literal
+from typing import Any
 import warnings
 import weakref
 
@@ -19,7 +19,6 @@ from ._host_config import (
     warn_otel_logging_misconfig,
 )
 from ._json_formatter import JsonFormatter
-from ._secure import configure_secure_handlers
 
 # Track configured logger names to ensure per-logger idempotency (local mode).
 _configured_loggers: set[str | None] = set()
@@ -71,7 +70,6 @@ def setup_logging(
     use_record_factory: bool = False,
     extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
     activate_trace_context: bool | None = None,
-    redaction: Literal["off", "secure"] = "off",
 ) -> None:
     """Configure logging for the current environment.
     Behavior depends on the detected environment:
@@ -167,12 +165,6 @@ def setup_logging(
             default ``None`` leaves the stored default unchanged (which itself
             defaults to ``False`` — activation is strictly opt-in). A per-call
             ``activate_trace_context`` argument overrides this default.
-        redaction: Opt-in policy preset. ``"off"`` preserves legacy behavior;
-            ``"secure"`` installs fail-closed key/pattern masking after enrichment
-            on every currently registered handler, including named loggers.
-            Repeat calls update this policy even in standalone idempotent mode.
-            Use ``attach_secure_redaction(handler)`` before registering a late
-            handler. A later ``"off"`` removes only package-owned secure filters.
 
     .. warning::
 
@@ -186,9 +178,6 @@ def setup_logging(
     """
     if format not in {"color", "json"}:
         msg = "format must be 'color' or 'json'"
-        raise ValueError(msg)
-    if redaction not in {"off", "secure"}:
-        msg = "redaction must be 'off' or 'secure'"
         raise ValueError(msg)
 
     # Install the global LogRecordFactory only after argument validation, so an
@@ -268,7 +257,6 @@ def setup_logging(
         else:
             # Standalone local development: full idempotency via logger name.
             if logger_name in _configured_loggers:
-                configure_secure_handlers(redaction == "secure")
                 return
 
             # When the LogRecordFactory is active, attaching ContextFilter would
@@ -299,4 +287,3 @@ def setup_logging(
                     handler.addFilter(context_filter)
 
             _configured_loggers.add(logger_name)
-        configure_secure_handlers(redaction == "secure")

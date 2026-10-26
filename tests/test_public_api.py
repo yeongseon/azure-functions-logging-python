@@ -11,6 +11,7 @@ class TestAPISurface:
             "__version__",
             "AttributeFlattenFilter",
             "attach_secure_redaction",
+            "configure_secure_redaction",
             "ContextTokens",
             "DEFAULT_REDACTION_PATTERNS",
             "FunctionLogger",

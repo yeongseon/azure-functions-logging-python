@@ -47,8 +47,14 @@ def attach_secure_redaction(handler: logging.Handler) -> None:
             attach_secure_redaction(handler.target)
 
 
-def configure_secure_handlers(enabled: bool) -> None:
-    """Apply a profile snapshot atomically per handler, including named loggers."""
+def configure_secure_redaction(*, enabled: bool = True) -> None:
+    """Apply the secure preset to current handlers after logging/exporter setup.
+
+    Includes named loggers and isolated targets. Reapply after registering late
+    handlers or use attach_secure_redaction before registration. Disabling removes
+    only exact package-owned secure filters; ordinary setup does not disable it.
+    Never changes handler ownership, levels, formatters, or context strategy.
+    """
     loggers = (logging.getLogger(), *tuple(logging.Logger.manager.loggerDict.values()))
     handlers = {
         h for logger in loggers if isinstance(logger, logging.Logger) for h in logger.handlers
