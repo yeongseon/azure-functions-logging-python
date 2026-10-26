@@ -44,9 +44,16 @@ Closes #
 ## Compatibility and documentation
 
 - [ ] This change affects the public API, supported versions, or output format
-- [ ] Breaking change (describe the migration)
 - [ ] Documentation updated, or not needed because:
 
 <!-- Version selection, tags, publication and repository labels are the
      release owner's, not yours. CHANGELOG.md is generated; write a good
      commit message instead of editing it. -->
+
+### Breaking-change impact (only if applicable)
+
+<!-- Complete this only when the PR title has ! or the final squash commit uses a BREAKING CHANGE: footer. Otherwise remove/leave blank. -->
+- Previous supported behavior:
+- New incompatible behavior:
+- Affected consumers and scope (existing deployments, new/regenerated projects, versions, etc.):
+- Migration or mitigation (or "none", with explanation):
