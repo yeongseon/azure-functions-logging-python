@@ -36,13 +36,17 @@ def summarize(scanner: str, report: dict[str, Any], scopes: list[Path], status: 
         results, errors = report["results"], report["errors"]
         if not isinstance(results, list) or not isinstance(errors, list):
             return summary
+        summary["findings"] = len(results)
+        summary["errors"] = len(errors)
         if scanner == "semgrep":
             paths = report["paths"]["scanned"]
         elif scanner == "bandit":
             metrics = report["metrics"]
+            summary["suppressions"] = int(metrics["_totals"].get("nosec", 0)) + int(
+                metrics["_totals"].get("skipped_tests", 0)
+            )
             if metrics["_totals"]["loc"] <= 0:
                 return summary
-            summary["suppressions"] = int(metrics["_totals"].get("nosec", 0))
             paths = [name for name in metrics if name != "_totals"]
         else:
             return summary

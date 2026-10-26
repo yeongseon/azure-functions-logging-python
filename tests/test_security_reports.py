@@ -85,3 +85,30 @@ def test_required_scanner_evidence_runs_and_uploads_after_failure() -> None:
     assert scan["if"] == upload["if"] == "always()"
     assert not scan.get("continue-on-error")
     assert any("semgrep/semgrep-action@713efdd" in step.get("uses", "") for step in steps)
+
+
+def test_bandit_zero_loc_keeps_parse_error_count(tmp_path: Path) -> None:
+    summary = summarize(
+        "bandit",
+        {"metrics": {"_totals": {"loc": 0}}, "results": [], "errors": [{"reason": "secret"}]},
+        [tmp_path],
+        0,
+    )
+    assert summary["result"] == "tool-error"
+    assert summary["errors"] == 1
+
+
+def test_bandit_counts_targeted_and_blanket_suppressions(tmp_path: Path) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("x = 1\n")
+    summary = summarize(
+        "bandit",
+        {
+            "metrics": {str(source): {}, "_totals": {"loc": 1, "nosec": 2, "skipped_tests": 24}},
+            "results": [],
+            "errors": [],
+        },
+        [tmp_path],
+        0,
+    )
+    assert summary["suppressions"] == 26

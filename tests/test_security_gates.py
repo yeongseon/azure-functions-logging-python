@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import sys
 
 import pytest
 
-from tools import check_bandit_report
+from tools import security_reports
 
 SHELL_TRUE = "import subprocess\nsubprocess.call('echo', shell=True)\n"
 TWO_FILES = {"a.py": "x = 1\n", "gone.py": "y = 2\n"}
@@ -23,8 +24,17 @@ def _gate(tmp_path: Path, files: dict[str, str] | None, *bandit_args: str) -> in
             (scope / name).write_text(text)
     report = tmp_path / "bandit.json"
     bandit = [sys.executable, "-m", "bandit", "-r", str(scope), "-q", "-f", "json", "-o"]
-    subprocess.run([*bandit, str(report), *bandit_args], check=False, capture_output=True)
-    return check_bandit_report.main(str(report), [str(scope)])
+    run = subprocess.run([*bandit, str(report), *bandit_args], check=False, capture_output=True)
+    output = tmp_path / "summary.json"
+    code = security_reports.main("bandit", str(report), str(output), run.returncode, [str(scope)])
+    summary = json.loads(output.read_text())
+    assert summary["exit_status"] == run.returncode
+    assert "code" not in summary and "results" not in summary
+    if code == 0:
+        assert summary["result"] == "success"
+    else:
+        assert summary["result"] in {"findings", "tool-error"}
+    return code
 
 
 @pytest.mark.parametrize(
