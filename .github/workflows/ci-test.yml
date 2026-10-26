@@ -292,10 +292,14 @@ jobs:
           grep -F ">=3.11" <<<"$output"
 
   artifact-python311:
-    name: Wheel install and smoke (Py 3.11)
+    name: Wheel install and smoke (Py 3.11, ${{ matrix.sdk }})
     needs: [changes, artifact-build]
     if: needs.changes.outputs.full_required == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: ["azure-functions==1.21.0", "azure-functions>=1.21.0"]
     steps:
       - name: Checkout dependency metadata
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -315,7 +319,8 @@ jobs:
         run: |
           wheel=$(find compatibility-dist -maxdepth 1 -name '*.whl' -print -quit)
           test -n "$wheel"
-          python -m pip install "$wheel"
+          python -m pip install "$wheel" "${{ matrix.sdk }}"
+          python -m pip show azure-functions
 
       - name: Check installed wheel outside the checkout
         working-directory: /tmp
@@ -343,15 +348,16 @@ jobs:
           PY
 
   host-smoke:
-    name: Real Functions host smoke (Py ${{ matrix.python-version }})
+    name: Real Functions host smoke (Py ${{ matrix.python-version }}, ${{ matrix.sdk }})
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, artifact-build]
     if: needs.changes.outputs.full_required == 'true'
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
+        sdk: ["azure-functions==1.21.0", "azure-functions>=1.21.0"]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,9 +376,17 @@ jobs:
           npm install --global azure-functions-core-tools@4 --unsafe-perm true
           npm install --global azurite
 
+      - name: Download candidate wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: compatibility-dist
+          path: compatibility-dist
+
       - name: Install smoke app dependencies
-        working-directory: tests/host_smoke
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install compatibility-dist/*.whl "${{ matrix.sdk }}"
+          python -m pip check
+          python -m pip show azure-functions
 
       - name: Start Azurite and Functions host
         run: |
@@ -384,9 +398,11 @@ jobs:
         run: |
           for attempt in {1..30}; do
             if response="$(curl --fail --silent http://127.0.0.1:7071/api/smoke)" \
-              && default_response="$(curl --fail --silent http://127.0.0.1:7071/api/smoke-default)"; then
+              && default_response="$(curl --fail --silent http://127.0.0.1:7071/api/smoke-default)" \
+              && contract_response="$(curl --fail --silent http://127.0.0.1:7071/api/smoke-contract)"; then
               test "$response" = "smoke"
               test "$default_response" = "smoke_default"
+              test "$contract_response" = "sdk-contract-ok"
               exit 0
             fi
             sleep 2
