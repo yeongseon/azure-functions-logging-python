@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import contextvars
 import logging
 import os
@@ -11,7 +12,13 @@ from typing import Any
 import warnings
 import weakref
 
-from ._context import ContextFilter, _install_context_factory, set_default_trace_context_activation
+from ._context import (
+    ContextFilter,
+    _install_context_factory,
+    _uninstall_context_factory,
+    _validate_extra_context_vars,
+    set_default_trace_context_activation,
+)
 from ._formatter import ColorFormatter
 from ._host_config import (
     _is_otel_logging_handler,
@@ -33,6 +40,7 @@ _configured_lock = threading.Lock()
 _AzureStateKey = tuple[str | None, bool]
 _AzureStateValue = tuple[ContextFilter | None, weakref.WeakSet[logging.Handler]]
 _azure_state: dict[_AzureStateKey, _AzureStateValue] = {}
+_owned_factory: Callable[..., logging.LogRecord] | None = None
 
 
 def _remove_context_filters(logger: logging.Logger) -> None:
@@ -110,15 +118,17 @@ def setup_logging(
       call, without duplicating filters. The root logger's level and handler
       list are never modified (``host.json`` owns the level).
 
-    **Switching ``use_record_factory`` between calls.** Enabling it
-    (``False`` -> ``True``) installs the global ``LogRecordFactory`` and strips
-    any ``ContextFilter`` this package previously installed on the target and
-    root loggers, so context is injected by exactly one mechanism. The two
-    modes keep isolated per-signature state, so a later ``ContextFilter`` call
-    never reuses a factory-mode instance (or vice versa). Switching back
-    (``True`` -> ``False``) installs a fresh ``ContextFilter`` but does **not**
-    uninstall the already-installed global factory; prefer a single, consistent
-    ``use_record_factory`` value per process.
+    **Strategy lifetime.** ``use_record_factory`` selects a process-wide strategy.
+    Reconfigure only while application logging is quiescent, not per invocation.
+    Enabling the factory removes exact package-owned ``ContextFilter`` instances
+    from all registered loggers/handlers, preserving user subclasses. Switching
+    back restores the preceding factory only if our factory is still the active
+    global factory, then configures filters on the selected target. Configure
+    other standalone targets again after switching back. If another library
+    replaces or wraps our factory, reconfiguration raises ``RuntimeError`` before
+    changing anything; restore our factory through that library's teardown first.
+    A bare call selects filter mode too. Keep passing ``use_record_factory=True``
+    on repeated setup calls if creation-time snapshots are required.
 
     **Switching ``activate_trace_context``.** A bare ``setup_logging()`` (the
     default ``activate_trace_context=None``) leaves the previously configured
@@ -180,32 +190,36 @@ def setup_logging(
         msg = "format must be 'color' or 'json'"
         raise ValueError(msg)
 
-    # Install the global LogRecordFactory only after argument validation, so an
-    # invalid call (e.g. an extra_context_vars collision) does not leave
-    # persistent global side effects. In record-factory mode the factory now
-    # carries extra_context_vars too, so both modes honor user fields.
-    if use_record_factory:
-        _install_context_factory(extra_context_vars)
-
+    global _owned_factory
+    _validate_extra_context_vars(extra_context_vars)
     with _configured_lock:
+        current = logging.getLogRecordFactory()
+        if _owned_factory is not None and current is not _owned_factory:
+            raise RuntimeError(
+                "LogRecordFactory changed after setup; restore the package-owned factory "
+                "before reconfiguring context injection"
+            )
+        if use_record_factory:
+            enabling = _owned_factory is None
+            _install_context_factory(extra_context_vars)
+            _owned_factory = logging.getLogRecordFactory()
+            for logger in (logging.getLogger(), *tuple(logging.Logger.manager.loggerDict.values())):
+                if isinstance(logger, logging.Logger):
+                    _remove_context_filters(logger)
+            if enabling:
+                _azure_state.clear()
+        elif _owned_factory is not None:
+            _uninstall_context_factory()
+            _owned_factory = None
+            _azure_state.clear()
+            _configured_loggers.clear()
+
         # Only override the process-wide activation default when the caller
         # explicitly opts in or out. A bare ``setup_logging()`` (where
         # ``activate_trace_context`` is ``None``) must not silently revert a
         # previously-configured default — that would break idempotency.
         if activate_trace_context is not None:
             set_default_trace_context_activation(activate_trace_context)
-
-        # When switching to record-factory mode, strip any previously-installed
-        # ContextFilter from the target logger and root logger.  Must run BEFORE
-        # the idempotency guards (so re-entry for the same logger_name still
-        # removes stale filters), and UNDER _configured_lock (so concurrent
-        # setup_logging() calls cannot race on the filter lists).
-        if use_record_factory:
-            _target = logging.getLogger(logger_name)
-            _root = logging.getLogger()
-            _remove_context_filters(_target)
-            if _root is not _target:
-                _remove_context_filters(_root)
 
         is_functions_env = _is_functions_environment()
 

@@ -940,9 +940,7 @@ def test_azure_repeat_calls_do_not_modify_root_level_or_handlers() -> None:
         root.setLevel(original_level)
 
 
-def test_switch_back_to_filter_mode_leaves_global_factory_installed() -> None:
-    """Documented caveat: True -> False installs a fresh ContextFilter but does
-    NOT uninstall the already-installed global LogRecordFactory."""
+def test_switch_back_to_filter_mode_restores_global_factory() -> None:
     from azure_functions_logging._context import _CONTEXT_FACTORY_MARKER
 
     name_true = "afl.test.reconfig.factory"
@@ -955,11 +953,9 @@ def test_switch_back_to_filter_mode_leaves_global_factory_installed() -> None:
     with patch.dict(os.environ, {}, clear=True):
         setup_logging(logger_name=name_true, use_record_factory=True)
         assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
-        # A subsequent filter-mode call for a different logger does not tear the
-        # global factory back down.
         setup_logging(logger_name=name_false, use_record_factory=False)
 
-    assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is True
+    assert getattr(logging.getLogRecordFactory(), _CONTEXT_FACTORY_MARKER, False) is False
     filter_installed = any(
         type(f) is ContextFilter for f in logging.getLogger(name_false).filters
     ) or any(

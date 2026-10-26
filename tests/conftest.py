@@ -11,9 +11,21 @@ the Azure certification step (``e2e-azure.yml``) and the OpenTelemetry upstream 
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import os
 
 import pytest
+
+import azure_functions_logging._setup as setup_mod
+
+
+@pytest.fixture(autouse=True)
+def restore_strategy_owner() -> Iterator[None]:
+    previous = setup_mod._owned_factory
+    setup_mod._owned_factory = None
+    yield
+    setup_mod._owned_factory = previous
+
 
 _skipped: list[str] = []
 
