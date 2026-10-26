@@ -1,5 +1,6 @@
 """Opt-in fail-closed record sanitization before downstream formatting/export."""
 
+from collections.abc import Mapping
 import json
 import logging
 import re
@@ -26,6 +27,13 @@ def _message(record: logging.LogRecord, masker: ValueMasker) -> None:
     try:
         if not isinstance(record.msg, str):
             record.__dict__["msg"] = masker.mask(record.msg)
+        if isinstance(record.args, Mapping):
+            record.__dict__["args"] = masker.mask(record.args)
+        elif isinstance(record.args, tuple):
+            record.__dict__["args"] = tuple(
+                masker.mask(arg) if isinstance(arg, (Mapping, list, tuple)) else arg
+                for arg in record.args
+            )
         rendered = record.getMessage()
         try:
             parsed = json.loads(rendered)
@@ -81,12 +89,22 @@ def sanitize_record(
     masker = ValueMasker(keys, patterns)
     try:
         for key in tuple(record.__dict__):
-            if key in _STDLIB_RECORD_KEYS:
+            if key in _STDLIB_RECORD_KEYS and key not in {
+                "name",
+                "threadName",
+                "processName",
+                "pathname",
+                "filename",
+                "module",
+                "funcName",
+                "levelname",
+                "taskName",
+            }:
                 continue
             value = record.__dict__[key]
             record.__dict__[key] = MASK if is_sensitive(key, keys) else masker.mask(value)
         _message(record, masker)
-        _exception(record, (*DEFAULT_PATTERNS, *patterns))
+        _exception(record, (*patterns, *DEFAULT_PATTERNS))
     except Exception:
         # Malformed custom LogRecords cannot force the original payload to a sink.
         record.__dict__ = {k: v for k, v in record.__dict__.items() if k in _STDLIB_RECORD_KEYS}
