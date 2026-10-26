@@ -40,5 +40,5 @@ Closes #
      release owner's, not yours. CHANGELOG.md is generated; write a good
      commit message instead of editing it. -->
 
-<!-- Add review details for material security or release risks only, following
+<!-- Add review details for significant findings or any high-risk change defined in
      docs/review-evidence-policy.md. Avoid agent transcripts and empty risk fields. -->
