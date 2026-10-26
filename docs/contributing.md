@@ -127,6 +127,7 @@ Titles for issues, pull requests, and commits follow the **Title Convention** in
 | `make cov` | Run tests and generate coverage report |
 | `make security` | Run bandit security scan |
 | `make check-all` | Run full local gate (all of the above) |
+| `make doctor` | Check that Hatch, `python3` and `git` are present; exits non-zero if one is missing |
 
 ## Pre-commit Hooks
 
@@ -169,7 +170,7 @@ Publishing to PyPI is a separate, gated workflow (`publish-pypi.yml`) that runs 
 anything is uploaded:
 
 ```
-build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> publish
+build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke -> azure-e2e -> runtime-dependency-audit -> publish
 ```
 
 The full procedure, the retired Makefile targets, and the recovery playbook live in the

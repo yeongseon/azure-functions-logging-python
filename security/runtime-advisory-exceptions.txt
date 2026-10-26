@@ -1,0 +1,4 @@
+# Dated exceptions for the release-time runtime dependency audit (see SECURITY.md).
+# One per line:  ADVISORY-ID owner added expires reason...   (ISO dates; expires at most 90 days after added)
+# An expired, not-yet-added, malformed or longer-than-90-day line blocks the release. Delete a line once fixed.
+# Check an edit: python tools/runtime_audit_args.py security/runtime-advisory-exceptions.txt

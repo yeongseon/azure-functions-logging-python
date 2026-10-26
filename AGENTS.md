@@ -18,7 +18,7 @@
 
 ### Test Coverage
 - Maintain test coverage at **95% or above** for committed changes and PRs.
-- Run `hatch run pytest --cov --cov-report=term-missing -q` to verify before submitting changes.
+- For optional local verification, run `hatch run pytest --cov --cov-report=term-missing -q`; required GitHub CI remains authoritative.
 - Any PR that drops coverage below 95% must include additional tests to compensate.
 - In Azure/Core Tools mode, `setup_logging()` installs `ContextFilter` on the root logger's existing handlers (and the root logger itself for late-attaching handlers) but never adds new handlers or changes the root level. When `use_record_factory=True`, no `ContextFilter` is attached; context is injected via the global `LogRecordFactory` instead. In standalone local mode, the root logger is configured by default (`logger_name=None`); pass an explicit `logger_name` to avoid modifying the root logger.
 - `azure-functions>=1.21.0` is a required runtime dependency (declared in `pyproject.toml`, added deliberately in #528 to align the toolkit floor). OpenTelemetry support remains an optional `[otel]` extra, imported only when `activate_trace_context=True` is used.
@@ -30,6 +30,25 @@
 - English (`README.md`) is the **canonical** source of truth for all documentation. Translated READMEs (`README.ko.md`, `README.ja.md`, `README.zh-CN.md`) are **best-effort**, community-maintained, and may lag the English source.
 - Translation sync is **not** required in the same PR as an English change, and a PR is **never** blocked by translation drift. Update translations opportunistically; when you do, keep them faithful to the current English source.
 - Each translated README carries a staleness banner linking back to the canonical English README. Keep that banner in place so readers always know the translation may be out of date.
+
+## Unified PR Review and Merge Policy
+
+Apply the same review standards to human-authored changes and code produced
+with OpenCode, Codex, Claude Code, ChatGPT, Copilot or any other agent.
+There is **no required AI-specific design, code review or approval route**.
+
+1. Submit a focused, issue-linked PR with appropriate tests, docs and risks.
+2. Use **GitHub CI** required checks on the final relevant PR head as the
+   authoritative validation record; local checks are useful but optional.
+   Preserve coverage thresholds, documentation, security, Azure integration
+   and release/publishing safeguards. Do not assume a specific CI runner.
+3. Evaluate behavior, security, regressions and maintainability. Oracle,
+   Copilot and `agent-review` may provide optional **advisory** observations,
+   but do not substitute for human review or actual test execution.
+4. Resolve or disposition findings and let the responsible maintainer
+   make the merge decision after confirming final CI. High-impact
+   security, credential, workflow and release changes need explicit
+   independent scrutiny.
 
 ## Issue Conventions
 
@@ -81,13 +100,17 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 ### Labels
 
 - Apply at least one type label: `bug`, `enhancement`, `documentation`, or `chore` (`ci`, `test`, `question` where they fit).
-- Every new issue gets `needs-triage` (issue forms and the `Triage new issues` workflow add it automatically; add it yourself with `gh issue create --label needs-triage` when creating issues from a workflow). Leave it for the maintainer, who removes it after confirming validity, scope, type, and priority.
-- Priority uses exactly one of `priority:critical` / `priority:high` / `priority:medium` / `priority:low`. Never write P0/P1/P2.
+- Every new issue gets `needs-triage` (issue forms and the `Triage new issues` workflow add it automatically; add it yourself when creating issues programmatically). **Do not remove it until validity, duplicate checks, repository scope, type, priority, and size have all been confirmed and saved.**
+- Priority uses exactly one of the exact GitHub label names `priority: critical` / `priority: high` / `priority: medium` / `priority: low` (lowercase values; a space follows the colon). Never write P0/P1/P2.
   - `critical` — fix now: security issue, data loss, broken released package, or blocked release pipeline.
   - `high` — address before the next planned release; serious impact or no reasonable workaround.
   - `medium` — normal planned work; a workaround exists or scope is limited.
   - `low` — opportunistic polish or non-urgent improvement.
 - Priority may be provisional while `needs-triage` is present. An external contributor without label permissions should describe urgency in the issue body.
+- Give each actionable issue exactly one effort label using the **exact case-sensitive GitHub label names**: `size: XS` (up to half a working day), `size: S` (about one working day), `size: M` (about two to three working days), `size: L` (about four to five working days), or `size: XL` (more than five working days). Include implementation, tests, CI and docs in the estimate. These are estimates, not deadlines. Split independent or multi-concern work into focused repository-specific issues; retain `size: XL` only when a cohesive task cannot reasonably be split and its scope is justified. For umbrella trackers, size the tracking work itself, not the sum of child issues, and size each child independently.
+- Completing triage is a deliberate maintainer/authorized-agent action: verify the issue is actionable, not a duplicate, has its appropriate type/area labels, **one `priority:*` and one `size:*` label**; then remove `needs-triage`. If any decision remains uncertain, leave `needs-triage` and record what is missing. Do not remove it merely because a priority label was assigned.
+- Each triage pass must re-evaluate the **entire open-issue backlog in this repository** (not just the newest issue) for relative urgency, impact, release blockers, dependencies, duplication, and effort. Keep priorities consistent, adjust stale priority/size labels when evidence or scope changes, and state which issues should be addressed first. Reapply `needs-triage` if a material scope change invalidates a prior assessment.
+- Use exactly one label from the four `priority: ...` values and one from the five `size: ...` values per actionable open issue. Priority is based on impact/urgency, not size; a small security defect may outrank a large enhancement. Do not introduce a separate ranking, project board, or shared cross-repository tracker.
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
 - There is no work-in-progress label. Open unfinished pull requests as Draft PRs, and link the issue with `Fixes #N` so its in-progress state shows on the issue.
@@ -132,7 +155,7 @@ feat:/fix: PR merged into main
         |
   publish-pypi.yml  (started by the tag)
         build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
-              -> azure-e2e -> PyPI
+              -> azure-e2e -> runtime-dependency-audit -> PyPI
 ```
 
 1. Merge Conventional-Commit PRs into `main`. Release Please keeps an open **Release PR** showing exactly what the next release would be.
@@ -156,6 +179,7 @@ Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the
 | `cookbook-smoke` | downstream import/registration drift |
 | `cookbook-host-smoke` | package-specific runtime and host-boot compatibility: installs the candidate wheel, collects only the cookbook's existing `package_logging` E2E selection, and exercises logging output/correlation through a real `func` host + Azurite. The pinned cookbook SHA, tool versions, dependency resolution, wheel digest, selection, JUnit output, and sanitized host diagnostics make the attempt reproducible. |
 | `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
+| `runtime-dependency-audit` | a known advisory in the candidate wheel's runtime dependencies (base and `[otel]`, Python 3.11 and 3.14), an empty dependency list or an unauditable package; dated waivers live in `security/runtime-advisory-exceptions.txt` (see `SECURITY.md`) |
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
 ### Recovery
@@ -198,6 +222,16 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 ## Commit Rules
 
 Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
+
+## Pull Request Writing
+
+Write PR titles and descriptions for maintainers and contributors rather than for an internal review agent. Follow the title convention in `CONTRIBUTING.md`.
+
+- Describe what changed and why under concise `Summary`, `Changes`, `Validation`, and `Related Issues` sections, preserving project-specific verification and compatibility notes.
+- Record checks actually run with results. Distinguish pending GitHub CI from completed local validation; do not imply unrun commands passed.
+- Retain significant findings, migration risks, and stacked PR dependencies; omit routine agent transcripts, review-round counters, empty SHA/risk fields, and redundant policy commentary.
+- Apply these rules across Codex, Claude, OpenCode, Copilot, and human contributions. Check the saved PR title and body after editing.
+- See `docs/review-evidence-policy.md` for security, release and other high-risk review requirements. Do not weaken required CI or maintainer decisions.
 
 ## Agent Rules
 

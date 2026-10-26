@@ -76,6 +76,7 @@ All development tasks are automated via `Makefile` targets:
 | `make cov` | Run tests with coverage report | pytest-cov |
 | `make security` | Security vulnerability scan | bandit |
 | `make check-all` | Run all checks (full local gate) | All of the above |
+| `make doctor` | Check that Hatch, `python3` and `git` are present (exits non-zero if one is missing); `func` and `azurite` are reported as optional | shell |
 
 ### Running Individual Commands
 
@@ -204,6 +205,8 @@ make security
 ```
 
 Bandit checks for common security issues in Python code (hardcoded passwords, SQL injection, unsafe deserialization, etc.).
+
+`make security` scans `src`, `examples`, `scripts`, `tools` and `benchmarks` and writes Bandit's JSON report to `test-results/bandit.json`. Bandit exits 0 for an empty or missing path and for a file it cannot parse, so `tools/check_bandit_report.py` then fails the target when no code was analysed, a file was skipped, a Python file in scope was left unscanned, or any finding remains. Suppress a reviewed false positive inline with `# nosec Bxxx - <reason>`, naming the test ID and the reason.
 
 ## Pre-commit Hooks
 

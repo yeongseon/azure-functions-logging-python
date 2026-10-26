@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import subprocess
+import subprocess  # nosec B404 - runs only git and ruff, no shell
 import sys
 
 
 def changed_python_files(base: str, head: str) -> list[str]:
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 B607 - git on PATH, no shell; base...head is one argument
         # Exclude deletions rather than allow-listing statuses: an allow-list of
         # ACMR silently drops T (type changed), so swapping a Python-named
         # symlink for a real .py file would skip the format check entirely.
@@ -34,7 +34,7 @@ def main(base: str, head: str) -> int:
     if not paths:
         print("No changed Python files to format-check.")
         return 0
-    return subprocess.run(["ruff", "format", "--check", "--", *paths], check=False).returncode
+    return subprocess.run(["ruff", "format", "--check", "--", *paths], check=False).returncode  # nosec B603 B607 - ruff on PATH, no shell; paths follow --
 
 
 if __name__ == "__main__":
