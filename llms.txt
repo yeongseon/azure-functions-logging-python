@@ -25,7 +25,8 @@ Key features:
 
 ## Core API
 
-- `setup_logging(*, level=logging.INFO, format="color", logger_name=None, functions_formatter=None, host_json_path=None, use_record_factory=False, extra_context_vars=None, activate_trace_context=None, redaction="off")` — Keyword-only. Opt into `redaction="secure"` for bounded fail-closed key/pattern masking on every current handler, after enrichment; defaults unchanged.
+- `setup_logging(*, level=logging.INFO, format="color", logger_name=None, functions_formatter=None, host_json_path=None, use_record_factory=False, extra_context_vars=None, activate_trace_context=None)` — Eight keyword-only parameters; defaults unchanged.
+- `configure_secure_redaction(*, enabled=True) -> None` — Apply bounded fail-closed key/pattern masking on every current handler after setup/exporter enrichment. Explicit `enabled=False` removes only package-owned secure filters; ordinary setup preserves the selected policy.
 - `get_logger(name)` → `FunctionLogger` — Create a logger with context binding support
 - `FunctionLogger` — Enhanced logger wrapper with `bind()`, `log()`, `hasHandlers()`, `setLevel()`, `isEnabledFor()`, `getEffectiveLevel()` for stdlib parity
 - `JsonFormatter(*, max_string_length=2048, truncate_native_strings=False)` — JSON log formatter (NDJSON). Set `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` chars.

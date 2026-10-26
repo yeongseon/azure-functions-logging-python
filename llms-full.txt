@@ -36,7 +36,6 @@ def setup_logging(
     use_record_factory: bool = False,
     extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
     activate_trace_context: bool | None = None,
-    redaction: Literal["off", "secure"] = "off",
 ) -> None:
     """Configure logging for the current environment.
 
@@ -239,13 +238,14 @@ class RedactionFilter(logging.Filter):
 
 ### Secure production preset
 
-Use `setup_logging(redaction="secure", functions_formatter=JsonFormatter())` on
-Azure host handlers, or `setup_logging(redaction="secure", format="json")` standalone.
+Use `setup_logging(functions_formatter=JsonFormatter())` on Azure host handlers,
+or `setup_logging(format="json")` standalone, then `configure_secure_redaction()`.
+The separate preset preserves the eight-keyword setup ceiling.
 Configure OTel exporters before secure setup; do not assign a formatter to OTel
 handlers. Protect later handlers with public
 `attach_secure_redaction(handler: logging.Handler) -> None` before registration.
 It runs after existing enrichment/flatten filters and also protects isolated targets.
-Repeat setup is idempotent; `redaction="off"` removes only exact package-owned
+Repeated preset application is idempotent; `configure_secure_redaction(enabled=False)` removes only exact package-owned
 secure filters, preserving user filters/subclasses. The policy is process-wide.
 
 Secure mode uses curated default patterns plus credential keys (proxy authorization,
