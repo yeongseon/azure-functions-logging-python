@@ -141,6 +141,12 @@ interpreted by your shell (notably zsh with `EXTENDED_GLOB`).
 
 ## Example Coverage Policy
 
+Explain a non-obvious test contract with a one-line English docstring (for example,
+which invocation context must be restored after a generator yields). Prefer a
+clear test name for simple cases; comments should explain surprising fixtures or
+runtime constraints, not repeat empty Given/When/Then headings. Keep assertions
+and logger-state cleanup intact when improving readability.
+
 Examples are part of the supported API experience and should stay verified.
 
 - Keep one representative example for the minimal structured logging workflow.
