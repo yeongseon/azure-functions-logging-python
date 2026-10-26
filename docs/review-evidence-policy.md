@@ -42,24 +42,16 @@ A review is evidence for the commit it evaluated — never for the PR as a whole
   head.
 - Any push after a review invalidates that review's evidence for the new head.
 
-## Review budget
+## Review effort
 
-- Default: **two published AI review rounds per scoped PR/task.**
-- New commits do not reset the budget. Deduplicate by head SHA and purpose.
-- After budget exhaustion with findings still open, do not manufacture a third automated round.
-  Record the no-change outcome and leave the PR pending for an explicit maintainer decision, or
-  route to human review.
+Seek additional review when risk or unresolved findings justify it, without a mandatory number of AI review rounds. Maintain explicit human review for high-risk changes.
 
 ## What to record per PR
 
-Extend the existing PR template's **Verification**/**Not run** sections (keep those — command,
-environment, result evidence is a separate, complementary record) with:
+For routine PRs, record a short summary, key changes, actual validation, and related issues. State significant findings and blockers when relevant. Do not require risk tiers, evidence placeholders, or agent process logs on ordinary PRs.
 
-- Linked issue(s) (already required).
-- Risk category (see "R3 scope" below).
-- Review source and the exact commit SHA it evaluated.
-- Material findings and their disposition (fixed / acknowledged-wont-fix / deferred-with-issue).
-- Unresolved blockers, if any, with the reason merging anyway is acceptable (or "none").
+For changes in the high-risk R3 scope below, additionally record the reviewed commit, material findings, and explicit maintainer authorization. This evidence can be a short dedicated section; AI review does not itself establish human approval.
+
 - For changes to Logging's public contracts specifically: invocation/context isolation across
   concurrent work and generator lifetimes, handler-local record mutation (`IsolatedHandler`),
   structured output and redaction, sanitized exception diagnostics, Azure worker handler ownership,
@@ -67,9 +59,7 @@ environment, result evidence is a separate, complementary record) with:
   it. Evidence here can be local and use dummy/synthetic sensitive values; live telemetry ingestion
   or publication is a separate claim this policy does not make.
 
-External contributors must not need an internal AI subscription, credentials, or local tooling to
-satisfy this — Copilot review runs automatically on PRs against this repository; a contributor
-without Copilot access simply records "no automated review available, human review requested."
+External contributors may use ordinary human review without subscriptions or AI tooling.
 
 ## R3 scope
 

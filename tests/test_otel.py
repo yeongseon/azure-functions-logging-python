@@ -113,9 +113,7 @@ def test_activated_trace_context_skips_invalid_span_context() -> None:
 
 
 def test_activated_trace_context_invalid_preserves_existing_context() -> None:
-    # A nested activation with an invalid traceparent must NOT detach or clear
-    # an already-active valid host span context (Oracle risk: no accidental
-    # clobber of the surrounding context).
+    """Invalid nested traceparents leave the enclosing valid host span active."""
     pytest.importorskip("opentelemetry.context")
     from opentelemetry import trace
 
@@ -155,11 +153,7 @@ def test_activated_trace_context_preserves_already_active_span() -> None:
 
 
 def test_activated_trace_context_nested_host_override() -> None:
-    # F1 boundary (issue #358): a currently-active *remote* span is only a
-    # previously-attached host traceparent, not a real worker span, so a nested
-    # host activation IS allowed to override it (mirrors the public-API contract
-    # test_nested_host_activation_restores_outer_span). The outer host span is
-    # restored on exit of the inner block.
+    """Nested host spans may replace remote context but must restore it on exit."""
     pytest.importorskip("opentelemetry.context")
     from opentelemetry import trace
 
