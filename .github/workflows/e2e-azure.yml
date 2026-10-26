@@ -93,6 +93,7 @@ jobs:
       - name: Deploy infra with App Insights (Bicep)
         run: |
           az deployment group create \
+            --output none \
             --resource-group "${{ steps.names.outputs.rg }}" \
             --template-file infra/main.bicep \
             --parameters \
