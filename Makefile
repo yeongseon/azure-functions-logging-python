@@ -63,8 +63,18 @@ SECURITY_SCOPE := src examples scripts tools benchmarks
 .PHONY: security
 security: ensure-hatch
 	@mkdir -p test-results
-	@$(HATCH) run python -m bandit -r $(SECURITY_SCOPE) -q -f json -o test-results/bandit.json; \
-	  code=$$?; $(HATCH) run python tools/check_bandit_report.py test-results/bandit.json $(SECURITY_SCOPE) && exit $$code
+	@raw=$$(mktemp); $(HATCH) run python -m bandit -r $(SECURITY_SCOPE) -q -f json -o "$$raw" >/dev/null 2>&1; \
+	  code=$$?; $(HATCH) run python tools/security_reports.py bandit "$$raw" test-results/bandit.json $$code $(SECURITY_SCOPE); \
+	  result=$$?; rm -f "$$raw"; exit $$result
+
+SECURITY_PYTHON ?= python
+SEMGREP ?= semgrep
+.PHONY: security-semgrep
+security-semgrep:
+	@mkdir -p test-results
+	@raw=$$(mktemp); $(SEMGREP) scan --config p/python --metrics off --disable-version-check --error --strict --disable-nosem --no-git-ignore --jobs 1 --json $(SECURITY_SCOPE) >"$$raw" 2>/dev/null; \
+	  code=$$?; $(SECURITY_PYTHON) tools/security_reports.py semgrep "$$raw" test-results/semgrep.json $$code $(SECURITY_SCOPE); \
+	  result=$$?; rm -f "$$raw"; exit $$result
 
 # `lint` is style + typecheck (see pyproject.toml); a separate `typecheck` here would run mypy twice.
 .PHONY: check
