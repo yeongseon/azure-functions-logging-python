@@ -97,6 +97,17 @@ Four exports plus a logger class:
 
 ## Key Design Decisions
 
+### Opt-in secure redaction
+
+`configure_secure_redaction()` installs handler-level fail-closed redaction
+after enrichment on current root/named handlers; `attach_secure_redaction(handler)`
+protects later handlers explicitly. No default filters, sensitive-key defaults,
+or legacy failure behavior change. The principle that **redaction failures are
+silent** retains its default fail-open semantics and now has an opt-in fail-closed
+counterpart: failed conversions mask the affected value without raising or
+dropping ordinary records. Secure-only traversal/text budgets bound work.
+See [secure production configuration](docs/configuration.md#secure-production-configuration).
+
 ### Environment Detection
 
 `FUNCTIONS_WORKER_RUNTIME` is present both in Azure and under local Core Tools. Detection uses:

@@ -69,6 +69,15 @@ directly if you manage trace headers yourself.
 
 ## Required call order
 
+For the supported fail-closed preset, call
+`setup_logging(activate_trace_context=True)`, then `configure_secure_redaction()`
+**after** exporter configuration. The preset protects existing OTel handlers before native translation and
+export. For late handlers, use `attach_secure_redaction(handler)` before registering
+them; context factories do not redact `extra`. See
+[secure production configuration](configuration.md#secure-production-configuration)
+for ordering, isolation, limits, and migration details. The manual filter examples
+below remain supported legacy configurations, not the secure preset.
+
 The OpenTelemetry `LoggingHandler` is attached to the root logger by
 `configure_azure_monitor()`. `setup_logging()` only decorates handlers that
 already exist when it runs. **Call `configure_azure_monitor()` before

@@ -18,11 +18,14 @@ from ._isolated_handler import IsolatedHandler
 from ._json_formatter import JsonFormatter
 from ._logger import FunctionLogger
 from ._redaction import DEFAULT_PATTERNS as DEFAULT_REDACTION_PATTERNS
+from ._secure import attach_secure_redaction, configure_secure_redaction
 from ._setup import setup_logging
 
 __all__ = [
     "__version__",
     "AttributeFlattenFilter",
+    "attach_secure_redaction",
+    "configure_secure_redaction",
     "ContextTokens",
     "DEFAULT_REDACTION_PATTERNS",
     "FunctionLogger",

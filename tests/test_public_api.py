@@ -10,6 +10,8 @@ class TestAPISurface:
         assert set(azure_functions_logging.__all__) == {
             "__version__",
             "AttributeFlattenFilter",
+            "attach_secure_redaction",
+            "configure_secure_redaction",
             "ContextTokens",
             "DEFAULT_REDACTION_PATTERNS",
             "FunctionLogger",

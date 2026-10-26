@@ -25,11 +25,13 @@ Key features:
 
 ## Core API
 
-- `setup_logging(*, level=logging.INFO, format="color", logger_name=None, functions_formatter=None, host_json_path=None)` — Keyword-only. One-call logging setup for local or Azure (pass `logger_name=None` for root logger configuration in standalone mode).
+- `setup_logging(*, level=logging.INFO, format="color", logger_name=None, functions_formatter=None, host_json_path=None, use_record_factory=False, extra_context_vars=None, activate_trace_context=None)` — Eight keyword-only parameters; defaults unchanged.
+- `configure_secure_redaction(*, enabled=True) -> None` — Apply bounded fail-closed key/pattern masking on every current handler after setup/exporter enrichment. Explicit `enabled=False` removes only package-owned secure filters; ordinary setup preserves the selected policy.
 - `get_logger(name)` → `FunctionLogger` — Create a logger with context binding support
 - `FunctionLogger` — Enhanced logger wrapper with `bind()`, `log()`, `hasHandlers()`, `setLevel()`, `isEnabledFor()`, `getEffectiveLevel()` for stdlib parity
 - `JsonFormatter(*, max_string_length=2048, truncate_native_strings=False)` — JSON log formatter (NDJSON). Set `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` chars.
-- `RedactionFilter` — Filter to redact sensitive fields (password, token, api_key, etc.)
+- `RedactionFilter(sensitive_keys=None, name="", patterns=None, *, fail_closed=False)` — Default fail-open compatibility; opt-in fail-closed conversion masks affected values and never raises.
+- `attach_secure_redaction(handler) -> None` — Protect a late handler before registration, after enrichment/flatten filters. Idempotent; also protects IsolatedHandler targets. No automatic future-handler interception.
 - `IsolatedHandler(target)` — opt-in wrapper that clones each `LogRecord` before wrapper filters run, keeping mutating transformations local to one output; register the wrapper instead of `target`
 - `SamplingFilter(rate=100, window=1.0, name="", per_logger=False)` — Filter for log sampling/rate-limiting noisy loggers. Set `per_logger=True` for independent buckets per logger name.
 - `logging_context(context)` — **Recommended** context manager: injects on enter, always restores on exit

@@ -42,7 +42,8 @@ Azure Functions Python logging has specific failure modes that generic logging l
 - **Invocation context** — auto-injects `invocation_id`, `function_name`, `cold_start`, and `host_instance_id` (the scaled-out worker instance) into every log
 - **Structured JSON output** — Application Insights-ready NDJSON format for production
 - **Noise control** — `SamplingFilter` rate-limits chatty third-party loggers
-- **PII protection** — `RedactionFilter` masks sensitive fields before they reach log aggregation
+- **PII protection** — `RedactionFilter` masks sensitive fields; opt into
+  `configure_secure_redaction()` after setup for fail-closed key/pattern masking on current handlers
 
 > **Scope disclaimer.** This package writes structured JSON to Python `logging` / stdout. How those fields appear in Application Insights depends on the Azure Functions host, worker, logging configuration, and ingestion pipeline. The library does not own ingestion or schema mapping — both `customDimensions`-parsed and raw-`message` shapes are valid in production.
 
@@ -371,6 +372,16 @@ At startup the library warns when your `host.json` — or `AzureFunctionsJobHost
 → [Configuration: host.json conflict](https://yeongseon.dev/azure-functions-python/logging/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/#hostjson-conflict-warning-appears)
 
 ### Noise control & PII redaction
+
+For an opt-in secure production preset, use
+`setup_logging(functions_formatter=JsonFormatter())` on Azure host handlers
+(or `format="json"` standalone), then call `configure_secure_redaction()`.
+It installs fail-closed key/pattern
+masking after enrichment on current handlers, including OTel handlers. Protect
+late handlers with `attach_secure_redaction(handler)` before registering them.
+Defaults remain unchanged. See [secure production configuration](docs/configuration.md#secure-production-configuration)
+for exporter call order, limits and trade-offs: this is defence in depth, not a
+guarantee against arbitrary secrets in free text.
 
 `SamplingFilter` rate-limits chatty third-party loggers (e.g. `azure-core`, `urllib3`); `RedactionFilter` masks sensitive keys (passwords, tokens, secrets, connection strings, and more — case-insensitive, recursive) before logs reach aggregation. Attach either to your root handlers, and pass `sensitive_keys=[...]` to customize redaction.
 

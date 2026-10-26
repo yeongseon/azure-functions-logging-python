@@ -33,6 +33,9 @@ def setup_logging(
     logger_name: str | None = None,
     functions_formatter: logging.Formatter | None = None,
     host_json_path: Path | str | None = None,
+    use_record_factory: bool = False,
+    extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
+    activate_trace_context: bool | None = None,
 ) -> None:
     """Configure logging for the current environment.
 
@@ -40,7 +43,8 @@ def setup_logging(
     - **Azure / Core Tools**: Installs ContextFilter on existing root handlers AND on the root logger itself (so direct calls on the root logger carry context). Does NOT add handlers or modify root logger level (respects host.json). If `functions_formatter` is provided, it is applied to host-managed handlers. NOTE: a filter on the root logger does not run for records that propagate from named child loggers to host/third-party handlers attached later — pass `use_record_factory=True` to `setup_logging()` to guarantee context coverage in that case.
     - **Standalone local**: Sets the target/root logger level. Adds a StreamHandler (ColorFormatter or JsonFormatter) ONLY when no handlers exist; otherwise just attaches filters to existing handlers.
 
-    This function is idempotent per logger_name.
+    This function is idempotent per logger_name; the redaction policy is reapplied
+    on repeat calls to all currently registered root/named handlers.
 
     Args:
         level: Logging level for local dev. Ignored in Azure/Core Tools (default: INFO).
@@ -210,14 +214,20 @@ class RedactionFilter(logging.Filter):
     
     Args:
         sensitive_keys: Iterable of key names to redact (case-insensitive,
-                       hyphen-insensitive). None = uses default set (25 keys).
+                        hyphen-insensitive). None = uses default set (25 keys).
         name: Logger name filter. Empty string = all (default).
+        patterns: Optional regex strings or compiled patterns for free-text masking.
+        fail_closed: Keyword-only opt-in; failed conversions mask affected values
+                     instead of preserving originals. Defaults to False.
     """
     
     def __init__(
         self,
         sensitive_keys: Iterable[str] | None = None,
         name: str = "",
+        patterns: Iterable[str | re.Pattern[str]] | None = None,
+        *,
+        fail_closed: bool = False,
     ) -> None:
         ...
     
@@ -225,6 +235,32 @@ class RedactionFilter(logging.Filter):
         """Redact sensitive fields. Always returns True."""
         ...
 ```
+
+### Secure production preset
+
+Use `setup_logging(functions_formatter=JsonFormatter())` on Azure host handlers,
+or `setup_logging(format="json")` standalone, then `configure_secure_redaction()`.
+The separate preset preserves the eight-keyword setup ceiling.
+Configure OTel exporters before secure setup; do not assign a formatter to OTel
+handlers. Protect later handlers with public
+`attach_secure_redaction(handler: logging.Handler) -> None` before registration.
+It runs after existing enrichment/flatten filters and also protects isolated targets.
+Repeated preset application is idempotent; `configure_secure_redaction(enabled=False)` removes only exact package-owned
+secure filters, preserving user filters/subclasses. The policy is process-wide.
+
+Secure mode uses curated default patterns plus credential keys (proxy authorization,
+Azure shared-access keys/signatures, instrumentation keys and telemetry/storage
+connection settings). Default keys and fail-open behavior remain unchanged.
+Objects become guarded, masked repr strings. Failed messages use `[REDACTION FAILED]`
+and lose raw diagnostics; exception fields retain sanitized diagnostics, never raw
+exc_info. Traversal masks cycles/10-level depth/4,096-node budget overflow; strings
+over 65,536 characters are masked in full. Mapping keys are sanitized; sets become lists.
+Ordinary bounded primitive observability fields are preserved. Unicode homographs,
+arbitrary unlabelled/encoded secrets, new data injected after filtering, direct stdout,
+unprotected future handlers and host-generated logs are not guaranteed covered.
+Custom repr/mapping/regex code is not sandboxed. This is defence in depth, not an
+arbitrary-secret detector. Future default changes need a minor-release deprecation
+discussion; no date is promised. See docs/configuration.md for full trade-offs.
 
 ### Context Injection
 
