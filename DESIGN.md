@@ -99,7 +99,7 @@ Four exports plus a logger class:
 
 ### Opt-in secure redaction
 
-`setup_logging(redaction="secure")` installs handler-level fail-closed redaction
+`configure_secure_redaction()` installs handler-level fail-closed redaction
 after enrichment on current root/named handlers; `attach_secure_redaction(handler)`
 protects later handlers explicitly. No default filters, sensitive-key defaults,
 or legacy failure behavior change. The principle that **redaction failures are
