@@ -1,5 +1,9 @@
 # API Reference
 
+This API enriches standard logging; it does not configure Azure Monitor
+instrumentation or exporters. See the [OpenTelemetry integration guide](opentelemetry.md)
+for exporter-first ordering and optional invocation trace-context activation.
+
 This reference documents the public API exported by `azure_functions_logging`.
 
 Use this page together with:
