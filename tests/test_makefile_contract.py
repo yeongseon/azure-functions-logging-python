@@ -63,3 +63,12 @@ def test_check_type_checks_once_and_never_upgrades_pip(tmp_path: Path) -> None:
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["hatch"]["envs"]
     assert scripts["default"]["scripts"]["lint"].count("hatch run typecheck") == 1
     assert "--upgrade" not in (ROOT / "Makefile").read_text()
+
+
+def test_local_e2e_explicitly_uses_noncertifying_entrypoint(tmp_path: Path) -> None:
+    dry = _make(tmp_path, "-n", "e2e-local").stdout
+    assert "run e2e-local" in dry
+    assert "FAIL_ON_SKIP=0" in dry
+    scripts = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["hatch"]["envs"]
+    assert "e2e-local" in scripts["default"]["scripts"]
+    assert "certification.json" not in dry
