@@ -1,6 +1,29 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.16.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.3...v0.16.0) (2026-10-26)
+
+
+### Features
+
+* **redaction:** add optional secure logging mode ([#617](https://github.com/yeongseon/azure-functions-logging-python/issues/617)) ([f0afe51](https://github.com/yeongseon/azure-functions-logging-python/commit/f0afe51ad5af3153bf69d571219de7c19a0843b0))
+
+
+### Bug Fixes
+
+* **context:** forward async generator send and throw operations ([#599](https://github.com/yeongseon/azure-functions-logging-python/issues/599)) ([0e64e12](https://github.com/yeongseon/azure-functions-logging-python/commit/0e64e1220e0199eb8703e70e9c006a48c81d4dba)), closes [#585](https://github.com/yeongseon/azure-functions-logging-python/issues/585)
+* **context:** keep cold-start state stable across generator resumes ([#600](https://github.com/yeongseon/azure-functions-logging-python/issues/600)) ([8c6d91f](https://github.com/yeongseon/azure-functions-logging-python/commit/8c6d91f9039f5919fc1094c905afd48fe40efb9a)), closes [#586](https://github.com/yeongseon/azure-functions-logging-python/issues/586)
+* **context:** make injection strategy changes safely reversible ([#644](https://github.com/yeongseon/azure-functions-logging-python/issues/644)) ([904ec8d](https://github.com/yeongseon/azure-functions-logging-python/commit/904ec8df84f9b70550258854a68cfe728fccf4cc))
+* **context:** preserve decorated synchronous generator return values ([#598](https://github.com/yeongseon/azure-functions-logging-python/issues/598)) ([b7c7002](https://github.com/yeongseon/azure-functions-logging-python/commit/b7c700274663b3446440c9c8bb0ddec7f82e5811)), closes [#584](https://github.com/yeongseon/azure-functions-logging-python/issues/584)
+* **context:** tolerate unbound extra context variables in both injection modes ([#602](https://github.com/yeongseon/azure-functions-logging-python/issues/602)) ([a988169](https://github.com/yeongseon/azure-functions-logging-python/commit/a988169317a55f7f724a23981a30d3edd22578ec)), closes [#583](https://github.com/yeongseon/azure-functions-logging-python/issues/583)
+* **decorator:** fully resolve quoted postponed handler annotations ([#597](https://github.com/yeongseon/azure-functions-logging-python/issues/597)) ([cdeffb3](https://github.com/yeongseon/azure-functions-logging-python/commit/cdeffb359eb430fd41cc3f679d8b924333087fac)), closes [#582](https://github.com/yeongseon/azure-functions-logging-python/issues/582)
+* **decorator:** honor lifecycle logging for generator handlers ([#601](https://github.com/yeongseon/azure-functions-logging-python/issues/601)) ([f30855f](https://github.com/yeongseon/azure-functions-logging-python/commit/f30855fa9beef509737dc847e95b0b67c16f9d73)), closes [#587](https://github.com/yeongseon/azure-functions-logging-python/issues/587)
+* **filters:** preserve pre-existing record attributes while flattening ([#605](https://github.com/yeongseon/azure-functions-logging-python/issues/605)) ([2d493b8](https://github.com/yeongseon/azure-functions-logging-python/commit/2d493b8cccc6f238b4066e880e6a8c7552048cc4)), closes [#280](https://github.com/yeongseon/azure-functions-logging-python/issues/280)
+* **handlers:** bound copy-budget breadth, not just container depth ([#612](https://github.com/yeongseon/azure-functions-logging-python/issues/612)) ([2bc53d8](https://github.com/yeongseon/azure-functions-logging-python/commit/2bc53d862c5a40dd0263861d2674834eef44b277)), closes [#611](https://github.com/yeongseon/azure-functions-logging-python/issues/611)
+* **handlers:** preserve LogRecord metadata when the copy budget is exhausted ([#604](https://github.com/yeongseon/azure-functions-logging-python/issues/604)) ([80c3cb4](https://github.com/yeongseon/azure-functions-logging-python/commit/80c3cb4b7375df8fa673d639fa946bae9ac53b52)), closes [#580](https://github.com/yeongseon/azure-functions-logging-python/issues/580)
+* **otel:** recognize inherited logging handlers before assigning formatters ([#603](https://github.com/yeongseon/azure-functions-logging-python/issues/603)) ([ae580df](https://github.com/yeongseon/azure-functions-logging-python/commit/ae580df35f1d3ed366a7132df4c5046edb51e0b5)), closes [#581](https://github.com/yeongseon/azure-functions-logging-python/issues/581)
+* **redaction:** redact sensitive keys in top-level tuple extras without patterns ([#595](https://github.com/yeongseon/azure-functions-logging-python/issues/595)) ([0ad6de9](https://github.com/yeongseon/azure-functions-logging-python/commit/0ad6de980f75b819fa8f2d7fd3c925dfcdba9568)), closes [#579](https://github.com/yeongseon/azure-functions-logging-python/issues/579)
+
 ## [0.15.3](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.2...v0.15.3) (2026-10-16)
 
 
