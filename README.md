@@ -43,7 +43,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 - **Structured JSON output** — Application Insights-ready NDJSON format for production
 - **Noise control** — `SamplingFilter` rate-limits chatty third-party loggers
 - **PII protection** — `RedactionFilter` masks sensitive fields; opt into
-  `setup_logging(redaction="secure")` for fail-closed key/pattern masking on current handlers
+  `configure_secure_redaction()` after setup for fail-closed key/pattern masking on current handlers
 
 > **Scope disclaimer.** This package writes structured JSON to Python `logging` / stdout. How those fields appear in Application Insights depends on the Azure Functions host, worker, logging configuration, and ingestion pipeline. The library does not own ingestion or schema mapping — both `customDimensions`-parsed and raw-`message` shapes are valid in production.
 
@@ -374,8 +374,9 @@ At startup the library warns when your `host.json` — or `AzureFunctionsJobHost
 ### Noise control & PII redaction
 
 For an opt-in secure production preset, use
-`setup_logging(redaction="secure", functions_formatter=JsonFormatter())` on Azure
-host handlers (or `format="json"` standalone). It installs fail-closed key/pattern
+`setup_logging(functions_formatter=JsonFormatter())` on Azure host handlers
+(or `format="json"` standalone), then call `configure_secure_redaction()`.
+It installs fail-closed key/pattern
 masking after enrichment on current handlers, including OTel handlers. Protect
 late handlers with `attach_secure_redaction(handler)` before registering them.
 Defaults remain unchanged. See [secure production configuration](docs/configuration.md#secure-production-configuration)
