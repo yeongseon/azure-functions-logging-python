@@ -97,6 +97,17 @@ Four exports plus a logger class:
 
 ## Key Design Decisions
 
+### Process-wide context strategy
+
+Filter mode remains the default. The opt-in record factory is reversible during
+quiescent setup: enabling removes package context filters across registered
+loggers; disabling restores its predecessor only while the exact owned factory
+is active. A third-party replacement/wrapper causes a clear error, never an
+automatic uninstall. Reconfiguration invalidates setup caches, not host handlers
+or formatters. Invocation context remains in contextvars, not setup registries.
+See [strategy lifetime and migration](docs/configuration.md#strategy-lifetime-and-migration)
+for the changed True-to-False contract and queue-draining requirements.
+
 ### Opt-in secure redaction
 
 `configure_secure_redaction()` installs handler-level fail-closed redaction

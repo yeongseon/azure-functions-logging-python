@@ -261,13 +261,41 @@ Behavior details:
 - Input validation (e.g. `format`) runs **before** the factory is installed, so
   invalid arguments raise `ValueError` without any global side effects.
 
+### Strategy lifetime and migration
+
+The strategy is process-wide because a record factory affects every logger.
+Select it during startup; switch only while logging is quiescent, never during
+concurrent invocations. Enabling factory mode removes exact package-owned context
+filters across registered loggers and handlers; user subclasses are preserved.
+Calling `setup_logging(use_record_factory=False)` (including a bare call) now
+restores the preceding factory instead of leaving a mixed factory/filter mode.
+Keep passing `use_record_factory=True` on repeated setup if snapshots are needed.
+
+Restoration only occurs when the exact factory installed by this package remains
+active. If another library replaces or wraps it, setup raises `RuntimeError`
+without removing that library's factory. Tear down that integration in reverse
+installation order so our factory is active again, then switch modes. Do not
+assign the standard factory blindly: that would discard third-party behavior.
+
+Switching back invalidates package setup bookkeeping, not handlers or formatters.
+The next call configures the selected target; rerun setup for other standalone
+targets as needed. Azure repeats still discover late host handlers without
+adding handlers or changing host levels. Existing records retain fields already
+injected; drain queues before switching. Factory mode reserves context keys in
+stdlib `extra`; restoring filter mode ends those creation-time reservations.
+
+The local logger-name registry retains first-call handler/level configuration;
+the Azure weak-handler registry retains late-handler recovery and formatter
+idempotency. Factory ownership is one identity reference, used only to prevent
+uninstalling someone else's factory. None stores invocation context.
+
 ## Parameter: `extra_context_vars`
 
 `extra_context_vars` is an optional mapping of `field_name -> contextvars.ContextVar`
 whose current values `ContextFilter` copies onto each `LogRecord`, alongside the
 built-in context fields. Field names must not collide with the built-in fields.
-This only applies to the `ContextFilter` strategy and is ignored when
-`use_record_factory=True`.
+This applies to both `ContextFilter` and factory strategies. Repeated setup with
+the same strategy retains its initial mapping; choose fields at startup.
 
 ## Parameter: `activate_trace_context`
 
