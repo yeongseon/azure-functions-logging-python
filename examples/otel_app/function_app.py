@@ -67,7 +67,7 @@ def process_order(req: func.HttpRequest, context: func.Context) -> func.HttpResp
         # `password` is masked by RedactionFilter before it becomes an attribute.
         logger.info(
             "Processing order",
-            extra={"order_id": order_id, "password": "should-be-masked"},
+            extra={"order_id": order_id, "password": "should-be-masked"},  # nosec B105 - placeholder that RedactionFilter masks
         )
         logger.info("Order processed", extra={"order_id": order_id})
         return func.HttpResponse(

@@ -100,7 +100,7 @@ def _ref_exists(url: str, *, timeout: float = 10.0) -> tuple[bool | None, str]:
     """Return (exists, note). ``None`` means indeterminate (transient error)."""
     req = Request(url, method="HEAD", headers={"User-Agent": "doc-link-lint"})
     try:
-        with urlopen(req, timeout=timeout) as resp:  # noqa: S310 - fixed https host
+        with urlopen(req, timeout=timeout) as resp:  # noqa: S310 - fixed https host # nosec B310 - only https github.com and raw.githubusercontent.com URLs
             return (200 <= resp.status < 400, f"HTTP {resp.status}")
     except HTTPError as exc:
         if exc.code == 404:

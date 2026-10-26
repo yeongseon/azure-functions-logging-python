@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import shutil
-import subprocess
+import subprocess  # nosec B404 - runs only mmdc, no shell
 import sys
 import tempfile
 
@@ -86,7 +86,7 @@ def _render(source: str, workdir: Path) -> tuple[bool, str]:
     ]
     if PUPPETEER_CONFIG.is_file():
         cmd += ["--puppeteerConfigFile", str(PUPPETEER_CONFIG)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True)  # nosec B603 - mmdc argv, no shell
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
         return False, detail

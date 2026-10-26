@@ -11,7 +11,7 @@ name: Release Please
 #        |
 #   publish-pypi.yml (started by the tag)
 #        build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
-#              -> azure-e2e -> PyPI
+#              -> azure-e2e -> runtime-dependency-audit -> PyPI
 #
 # RELEASE_PLEASE_TOKEN (a fine-grained PAT) is load-bearing, not a convenience.
 # The default GITHUB_TOKEN cannot trigger other workflows, which would mean
@@ -58,6 +58,7 @@ jobs:
             echo "Commit: \`$RELEASE_SHA\`"
             echo
             echo "The tag has started **Publish to PyPI**, which runs the full gate"
-            echo "(build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e) before"
-            echo "uploading. Nothing reaches PyPI until every tier passes."
+            echo "(build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e,"
+            echo "runtime-dependency-audit) before uploading. Nothing reaches PyPI until"
+            echo "every tier passes."
           } >> "$GITHUB_STEP_SUMMARY"

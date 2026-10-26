@@ -62,7 +62,7 @@ def _make_record() -> logging.LogRecord:
     )
     # A representative payload of structured extras.
     record.order_id = "o-42"  # type: ignore[attr-defined]
-    record.user = {"id": "u-1", "password": "hunter2", "email": "a@b.com"}  # type: ignore[attr-defined]
+    record.user = {"id": "u-1", "password": "hunter2", "email": "a@b.com"}  # type: ignore[attr-defined] # nosec B105 - fake password; the benchmark measures masking
     return record
 
 

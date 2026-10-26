@@ -39,6 +39,8 @@ jobs:
           pip show opentelemetry-api opentelemetry-sdk | grep -E "^(Name|Version):"
 
       - name: Run OTel-focused test suite
+        env:
+          FAIL_ON_SKIP: "1" # an unimportable upstream module must fail, not skip
         run: |
           # This canary runs a four-file subset, but pyproject's addopts force
           # --cov over the whole package and fail_under=95 applies. Coverage of
