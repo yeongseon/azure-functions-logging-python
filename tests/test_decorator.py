@@ -169,6 +169,8 @@ class TestGenerators:
         assert invocation_id_var.get() is None
 
     def test_sync_generators_restore_context_between_interleaved_resumes(self) -> None:
+        """Each resume binds its own invocation and each yield restores the caller."""
+
         @with_context
         def stream(context: object) -> Generator[str | None, None, None]:
             yield invocation_id_var.get()
@@ -254,6 +256,8 @@ class TestGenerators:
         assert invocation_id_var.get() is None
 
     def test_async_generator_closes_from_another_task(self) -> None:
+        """Disposal in another task must not reset a token owned by the original task."""
+
         @with_context
         async def handler(context: object) -> AsyncGenerator[str | None, None]:
             yield invocation_id_var.get()

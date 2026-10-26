@@ -30,17 +30,6 @@ Closes #
 
 <!-- Checks you did not run, and why. Leave this honest rather than empty. -->
 
-## Review Evidence
-
-<!-- See docs/review-evidence-policy.md (advisory, not a required check).
-     Record review source/SHA so evidence can be checked against the
-     commit it actually evaluated, not just the PR as a whole. -->
-
-- Review source and reviewed commit SHA:
-- Material findings and disposition (fixed / acknowledged-wont-fix / deferred-with-issue), or "none":
-- Unresolved blockers, or "none":
-- R3 (workflow permissions, release/publishing, security-sensitive redaction/exposure, telemetry trust boundaries, review-policy files): yes/no — if yes, human authorization record:
-
 ## Compatibility and documentation
 
 - [ ] This change affects the public API, supported versions, or output format
@@ -57,3 +46,6 @@ Closes #
 - New incompatible behavior:
 - Affected consumers and scope (existing deployments, new/regenerated projects, versions, etc.):
 - Migration or mitigation (or "none", with explanation):
+
+<!-- Add review details for significant findings or any high-risk change defined in
+     docs/review-evidence-policy.md. Avoid agent transcripts and empty risk fields. -->
