@@ -15,7 +15,6 @@ def setup_logging(
     use_record_factory: bool = False,
     extra_context_vars: dict[str, contextvars.ContextVar[Any]] | None = None,
     activate_trace_context: bool | None = None,
-    redaction: Literal["off", "secure"] = "off",
 ) -> None
 ```
 
@@ -23,8 +22,7 @@ def setup_logging(
 
 ## Configuration Principles
 
-- Idempotent initialization: repeated calls do not duplicate handlers or filters;
-  the redaction preset is reapplied to current handlers on every call.
+- Idempotent initialization: repeated calls do not duplicate handlers or filters.
 - Environment-aware behavior: local and Azure runtime paths differ.
 - Standard logging compatibility: no custom logging framework required.
 
@@ -37,12 +35,17 @@ Redaction is **opt-in**. For Azure Functions host-managed handlers with structur
 JSON output, the recommended startup call is:
 
 ```python
-from azure_functions_logging import JsonFormatter, setup_logging
+from azure_functions_logging import JsonFormatter, configure_secure_redaction, setup_logging
 
-setup_logging(redaction="secure", functions_formatter=JsonFormatter())
+setup_logging(functions_formatter=JsonFormatter())
+configure_secure_redaction()
 ```
 
-For standalone execution, use `setup_logging(redaction="secure", format="json")`.
+For standalone execution, call `setup_logging(format="json")`, then
+`configure_secure_redaction()`.
+The separate preset function preserves the eight-keyword `setup_logging()` ceiling:
+privacy policy is not a ninth setup flag. Ordinary setup never changes an explicitly
+selected redaction policy; disabling it requires `configure_secure_redaction(enabled=False)`.
 The profile does not change host levels or add host handlers. It protects every
 handler registered on root or named loggers at call time, including handlers that
 receive propagated child-logger records. A logger filter alone cannot cover those
@@ -54,10 +57,11 @@ Configure the exporter first, then enable the profile:
 
 ```python
 from azure.monitor.opentelemetry import configure_azure_monitor
-from azure_functions_logging import setup_logging
+from azure_functions_logging import configure_secure_redaction, setup_logging
 
 configure_azure_monitor()
-setup_logging(redaction="secure", activate_trace_context=True)
+setup_logging(activate_trace_context=True)
+configure_secure_redaction()
 ```
 
 Keep OTel handlers unformatted so their native attributes remain available.
@@ -77,28 +81,28 @@ logging.getLogger().addHandler(handler)
 ```
 
 The helper also protects an `IsolatedHandler`'s target, after target-local filters.
-For late host handlers you do not create, rerun `setup_logging(redaction="secure")`
+For late host handlers you do not create, rerun `configure_secure_redaction()`
 once they exist. There is no monkeypatch that automatically protects future
 handlers: records emitted before attachment are outside this guarantee.
 `use_record_factory=True` covers late-handler **context**, not redaction.
 
 ### Ordering and reconfiguration
 
-Setup places the package-owned secure filter last on each handler, after existing
+The secure preset places the package-owned filter last on each handler, after existing
 context/flatten filters and before formatting or OTel translation. Thus injected
-context attributes and flattened dotted keys are sanitized too. Repeated secure
-setup reuses one package-owned filter, including in standalone first-call-wins
-mode. Filter-list replacement retains complete snapshots for concurrent logging;
+context attributes and flattened dotted keys are sanitized too. Repeated calls
+reuse one package-owned filter, independently of standalone setup idempotency.
+Filter-list replacement retains complete snapshots for concurrent logging;
 it does not temporarily remove the protection during secure-to-secure setup.
 Register enrichment filters before setup, or call `attach_secure_redaction(handler)`
 again after adding them. Later filters/formatters that inject new raw data are
 outside the protection boundary. Do not reconfigure enrichment concurrently with
-logging; switching to `"off"` deliberately ends protection for subsequent records.
+logging; explicitly disabling the preset ends protection for subsequent records.
 
-`setup_logging(redaction="off")` (including the default) removes only the exact
+`configure_secure_redaction(enabled=False)` removes only the exact
 package-owned secure filter type. Explicit `RedactionFilter` instances and user
 subclasses are preserved. This policy selection applies process-wide to current
-handlers, even when `logger_name=` selects standalone context configuration.
+handlers, independently of the `logger_name=` used for context configuration.
 
 ### Fail-closed semantics and compatibility
 

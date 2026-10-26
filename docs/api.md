@@ -217,11 +217,18 @@ principle that redaction failures are silent).
 
 ::: azure_functions_logging.DEFAULT_REDACTION_PATTERNS
 
+## configure_secure_redaction
+
+::: azure_functions_logging.configure_secure_redaction
+
+Apply after `setup_logging()` and exporter configuration. Pass `enabled=False`
+to remove only package-owned secure filters from current handlers.
+
 ## attach_secure_redaction
 
 ::: azure_functions_logging.attach_secure_redaction
 
-Use `setup_logging(redaction="secure")` for startup configuration, or this helper
+Use `configure_secure_redaction()` after startup setup, or this helper
 for a handler created later. See [Secure production configuration](configuration.md#secure-production-configuration)
 for fail-closed semantics, ordering, limits, and migration guidance.
 
