@@ -116,14 +116,14 @@ cov: ensure-hatch
 
 .PHONY: e2e-local
 e2e-local: ensure-hatch
-	@echo "Running e2e tests against local Azurite (E2E_BASE_URL=http://localhost:7071)..."
-	@echo "E2E_EXPECTED_VERSION defaults to the locally installed candidate version (hatch version); override to certify a different deployed build."
-	@E2E_BASE_URL=http://localhost:7071 E2E_EXPECTED_VERSION=$${E2E_EXPECTED_VERSION:-$$($(HATCH) version)} $(HATCH) run e2e-azure
+	@echo "Local-only HTTP smoke; App Insights may skip. This cannot create a certification record."
+	@echo "E2E_EXPECTED_VERSION defaults to the locally installed candidate version (hatch version)."
+	@FAIL_ON_SKIP=0 E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:7071} E2E_EXPECTED_VERSION=$${E2E_EXPECTED_VERSION:-$$($(HATCH) version)} $(HATCH) run e2e-local
 
 .PHONY: e2e-azure
 e2e-azure: ensure-hatch
 	@echo "Running e2e tests against Azure (E2E_BASE_URL and E2E_EXPECTED_VERSION must both be set)..."
-	@$(HATCH) run e2e-azure
+	@FAIL_ON_SKIP=1 $(HATCH) run e2e-azure
 
 .PHONY: build
 build: ensure-hatch
