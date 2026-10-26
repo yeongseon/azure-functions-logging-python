@@ -1,6 +1,7 @@
 """Secure profile ownership and handler installation (no implicit instrumentation)."""
 
 import logging
+import re
 import threading
 
 from ._filters import RedactionFilter
@@ -23,11 +24,21 @@ _SECURE_KEYS = SENSITIVE_KEYS | frozenset(
     }
 )
 _lock = threading.RLock()
+_SECURE_PATTERNS = (
+    re.compile(r"(?P<keep>(?i:authorization)\s*[=:]\s*(?i:basic)\s+)[^\s,;'\"]+"),
+    re.compile(
+        r"(?P<keep>(?<![\w])['\"]?(?i:password|passwd|pwd|token|secret|"
+        r"api[_-]?key|access[_-]?token|client[_-]?secret|connection[_-]?string)"
+        r"['\"]?\s*[=:]\s*)"
+        r"(?:'[^']*'|\"[^\"]*\")"
+    ),
+    *DEFAULT_PATTERNS,
+)
 
 
 class _SecureRedactionFilter(RedactionFilter):
     def __init__(self) -> None:
-        super().__init__(sensitive_keys=_SECURE_KEYS, patterns=DEFAULT_PATTERNS, fail_closed=True)
+        super().__init__(sensitive_keys=_SECURE_KEYS, patterns=_SECURE_PATTERNS, fail_closed=True)
 
 
 def attach_secure_redaction(handler: logging.Handler) -> None:
