@@ -13,27 +13,19 @@ Closes #
 
 ## Changes
 
-## Verification
+## Validation
 
 <!-- Record what you actually ran, so a reviewer can tell verified from
      assumed. -->
 
-| Command | Environment | Result |
-| --- | --- | --- |
-| `make check-all` |  |  |
-| `make build` |  |  |
+<!-- Include command, environment and outcome (including the exact pytest summary).
+     Remove unused prompts; do not claim unrun checks passed. -->
 
 <!-- `check-all` does not build the distribution, so it can pass while the
      packaged artifact is broken. Run `make build` as well. -->
 
-## Not run
-
-<!-- Checks you did not run, and why. Leave this honest rather than empty. -->
-
-## Compatibility and documentation
-
-- [ ] This change affects the public API, supported versions, or output format
-- [ ] Documentation updated, or not needed because:
+<!-- State significant checks not run and compatibility/documentation changes
+     when relevant, rather than adding empty checklist sections. -->
 
 <!-- Version selection, tags, publication and repository labels are the
      release owner's, not yours. CHANGELOG.md is generated; write a good
