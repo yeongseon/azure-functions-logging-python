@@ -1,7 +1,10 @@
 from pathlib import Path
 import tomllib
 
+from packaging.requirements import Requirement
 import yaml
+
+LATEST_SDK = "azure-functions>=1.21.0,<2.0.0"
 
 
 def test_wheel_and_host_smokes_select_oldest_and_latest_sdk() -> None:
@@ -11,10 +14,31 @@ def test_wheel_and_host_smokes_select_oldest_and_latest_sdk() -> None:
         job = workflow["jobs"][name]
         assert job["strategy"]["matrix"]["sdk"] == [
             "azure-functions==1.21.0",
-            "azure-functions>=1.21.0",
+            LATEST_SDK,
         ]
         steps = job["steps"]
         assert any("matrix.sdk" in step.get("run", "") for step in steps)
     assert "artifact-build" in workflow["jobs"]["host-smoke"]["needs"]
+
+
+def test_dependency_markers_split_1x_and_2x_by_interpreter() -> None:
+    root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((root / "pyproject.toml").read_text())
-    assert "azure-functions>=1.21.0" in project["project"]["dependencies"]
+    reqs = [
+        Requirement(dep)
+        for dep in project["project"]["dependencies"]
+        if dep.startswith("azure-functions")
+    ]
+    assert len(reqs) == 2
+    assert all(req.marker is not None for req in reqs)
+
+    def active(python_version: str) -> Requirement:
+        matches = [r for r in reqs if r.marker.evaluate({"python_version": python_version})]
+        assert len(matches) == 1, matches
+        return matches[0]
+
+    assert str(active("3.11").specifier) == "<2.0.0,>=1.21.0"
+    assert str(active("3.13").specifier) == "<3.0.0,>=1.21.0"
+    assert not active("3.11").specifier.contains("2.0.0")
+    assert active("3.13").specifier.contains("2.0.0")
+    assert all(not req.specifier.contains("3.0.0") for req in reqs)
