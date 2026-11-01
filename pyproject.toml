@@ -8,7 +8,16 @@ readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dynamic = ["version"]
 dependencies = [
-    "azure-functions>=1.21.0",
+    # azure-functions 2.x already declares Requires-Python >=3.13 and pip
+    # respects that on its own, so this split does not change what resolves
+    # today: <2.0.0 on Python < 3.13 restates that boundary explicitly, and
+    # <3.0.0 on Python >= 3.13 is the cap that does real work — it stops a
+    # future, uncertified 3.x major from being pulled in silently (see #646).
+    # The 1.x bound is proven by the oldest/latest wheel and real-host lanes in
+    # ci-test.yml; the 2.x allowance is metadata-only until a 2.x wheel lane
+    # runs (see docs/sdk-compatibility.md).
+    "azure-functions>=1.21.0,<2.0.0; python_version < '3.13'",
+    "azure-functions>=1.21.0,<3.0.0; python_version >= '3.13'",
 ]
 
 classifiers = [
