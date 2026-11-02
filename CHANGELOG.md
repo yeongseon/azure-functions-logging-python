@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.16.1](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.16.0...v0.16.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** cap untested future azure-functions SDK majors ([#648](https://github.com/yeongseon/azure-functions-logging-python/issues/648)) ([3d4219a](https://github.com/yeongseon/azure-functions-logging-python/commit/3d4219a532a4fe7e2906485f8e62a3bcf73f995f))
+
 ## [0.16.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.3...v0.16.0) (2026-11-01)
 
 
