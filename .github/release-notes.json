@@ -1,0 +1,21 @@
+{
+  "repo": "yeongseon/azure-functions-logging-python",
+  "legacy_repos": [
+    "yeongseon/azure-functions-logging"
+  ],
+  "non_human_logins": [
+    "sisyphus-dev-ai"
+  ],
+  "protected": {
+    "v0.16.0": [
+      "optional secure logging mode"
+    ]
+  },
+  "annotations": {
+    "v0.16.0": {
+      "highlights": [
+        "- Opt-in secure logging mode: call `configure_secure_redaction()` after logging setup for fail-closed key/pattern masking on current handlers (use `attach_secure_redaction(handler)` for late handlers). Defaults are unchanged. This is defence in depth and does not guarantee protection of arbitrary secrets in free-text messages (#617)."
+      ]
+    }
+  }
+}
