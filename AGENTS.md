@@ -144,6 +144,23 @@ Three tools, one job each. Nothing else participates.
 - **`docs:`, `ci:`, `chore:`, `test:`, `build:`, `style:` and `refactor:` do not cut a release.** They are marked `"hidden": true` in `release-please-config.json`, which keeps them out of `CHANGELOG.md`; when a batch of commits contains nothing else, the release notes render empty and Release Please logs `No user facing commits found since <sha> - skipping` and opens no Release PR. Merging such a PR and seeing no version change is the intended outcome, not a broken pipeline. A breaking change still releases whatever its type is.
 - There are **no release Makefile targets**. `make release-*`, `make changelog`, `make tag-release`, and `make publish-pypi` were deleted; a local `hatch publish` would have skipped every gate below.
 
+### Release cadence (maintainer decision)
+
+- **Normal:** merge at most one planned Release Please release PR per week,
+  and only when meaningful user-facing changes are verified and ready.
+  Skip empty weeks. An open Release PR is a candidate, **not** a timer or
+  permission to publish immediately.
+- **Urgent exception:** confirmed sensitive-data exposure, a production-breaking logging regression, or failed tagged candidate. Record the
+  actual user impact and why waiting is unsafe in the Release PR. Never
+  apply an automated cooldown to a justified security/hotfix release.
+- Before merging a routine release, review the latest **actually published
+  PyPI version** (not merely the GitHub Release), grouped features/fixes,
+  pending corrective work, migration implications and certification.
+  For this repository, explicitly verify opt-in secure redaction, logging defaults, and prevention of sensitive-data leakage.
+- Release Please alone controls version, changelog, release PR and tags.
+  No release PR auto-merge, scheduled tag publication, tag movement or
+  PyPI-gate bypass. See [release process](docs/release_process.md#release-cadence).
+
 ### Flow
 
 ```
