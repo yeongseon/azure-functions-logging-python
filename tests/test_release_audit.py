@@ -110,7 +110,7 @@ class Clock:
         self.now += seconds
 
 
-# ------------------------------------------------------------ the six fixture cases from #904
+# ------------------------------------------------------------ the six fixture cases from #667
 
 
 def test_matching_release_is_clean() -> None:
