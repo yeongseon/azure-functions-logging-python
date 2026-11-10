@@ -163,7 +163,8 @@ Credit rules:
 
 Release-specific statements that must never be lost (for example a release that was not
 published) are listed under `protected` in `.github/release-notes.json`; the tool fails instead of
-dropping them.
+dropping them. Tags listed under `not_a_release` exist but were never real releases (there are none
+today); they are never used as the compare base of the next release.
 
 ```bash
 # Needs a token: export GH_TOKEN=$(gh auth token)
@@ -199,10 +200,14 @@ for the version, changelog, or tags — or push an ungated artifact to PyPI.
 
 | Situation | Action |
 |---|---|
-| Any gate failed | Nothing was uploaded. Fix the cause and re-run `publish-pypi.yml` on the same tag, or fix forward on `main` and let the next Release PR cut a new version. Never move or reuse a tag. |
+| Any gate failed | Nothing was uploaded. For a transient or environmental failure, re-run the *same unchanged* tag with `gh workflow run publish-pypi.yml --ref vX.Y.Z`. For a failure that needs a code or workflow correction, fix forward on `main` and let the next Release PR cut a new version: a dispatch runs the workflow file at the tag, so a fix on `main` does not apply to it. Never move or reuse a tag. |
 | Tag exists but was never published | A valid resting state. Re-run publish, or abandon the version and let the next release take the following number. |
 | Release PR stopped appearing | Check for a stale `autorelease: pending` label on an already-merged Release PR. Release Please treats that as a release in flight and will not open another. This failure is silent — the workflow still reports success. |
 | Automation unavailable (break-glass) | Bump `__version__`, match `.release-please-manifest.json`, commit, tag, push. The tag starts the same gated workflow — never bypass it. |
+
+Historical cases where a tag, a GitHub Release and a PyPI distribution do not line up (unpublished release
+candidates, tags without a Release) are recorded in [Release History](release_history.md). A GitHub
+Release is not proof of publication: use PyPI.
 
 ---
 

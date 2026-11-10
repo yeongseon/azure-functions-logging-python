@@ -5,14 +5,46 @@
     "yeongseon/azure-functions-logging"
   ],
   "non_human_logins": [
-    "sisyphus-dev-ai"
+    "sisyphus-dev-ai",
+    "Copilot"
   ],
   "protected": {
+    "v0.15.1": [
+      "was not published to PyPI"
+    ],
+    "v0.15.2": [
+      "was not published to PyPI"
+    ],
     "v0.16.0": [
       "optional secure logging mode"
     ]
   },
   "annotations": {
+    "v0.2.0": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.2.0` was uploaded to PyPI on 2026-03-12 from the existing `v0.2.0` tag (`d776dd1`), whose package source matches the PyPI files exactly. It is the first tagged version, so there is no compare range. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-logging-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.2.1": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.2.1` was uploaded to PyPI on 2026-03-12 from the existing `v0.2.1` tag (`00b9b3e`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-logging-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.2.2": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.2.2` was uploaded to PyPI on 2026-03-14 from the existing `v0.2.2` tag (`a5006b2`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-logging-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.15.1": {
+      "notes": [
+        "> **`v0.15.1` was not published to PyPI.** Its release candidate passed the build, library tests, cookbook smoke and real-Azure certification, but the cookbook host-boot smoke gate failed: its test-collection check ran with the cookbook's coverage threshold, so collecting (not running) the tests failed `Required test coverage of 95.0% not reached` (exit code 1), and the publish job was skipped. `0.15.3`, tagged about 40 minutes later, is the first published release after `0.15.0` and contains every change listed here. The tag is kept unchanged as an audit record; see [Release history and provenance](https://github.com/yeongseon/azure-functions-logging-python/blob/main/docs/release_history.md#v0151-and-v0152-unpublished-release-candidates)."
+      ]
+    },
+    "v0.15.2": {
+      "notes": [
+        "> **`v0.15.2` was not published to PyPI.** Its release candidate passed the build, library tests, cookbook smoke and real-Azure certification, but the cookbook host-boot smoke gate failed again: the host-smoke step's `run:` value was a multi-line plain YAML scalar, so its line-continuation backslash reached the shell as `\\ tests/e2e/test_package_runtime.py`, pytest reported `file or directory not found`, collected 0 items and exited with code 4, and the publish job was skipped. `0.15.3`, tagged about 22 minutes later, is the first published release after `0.15.0` and contains every change listed here. The tag is kept unchanged as an audit record; see [Release history and provenance](https://github.com/yeongseon/azure-functions-logging-python/blob/main/docs/release_history.md#v0151-and-v0152-unpublished-release-candidates)."
+      ]
+    },
     "v0.16.0": {
       "highlights": [
         "- Opt-in secure logging mode: call `configure_secure_redaction()` after logging setup for fail-closed key/pattern masking on current handlers (use `attach_secure_redaction(handler)` for late handlers). Defaults are unchanged. This is defence in depth and does not guarantee protection of arbitrary secrets in free-text messages (#617)."
