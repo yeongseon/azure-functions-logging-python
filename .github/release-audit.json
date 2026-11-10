@@ -1,0 +1,27 @@
+{
+  "repo": "yeongseon/azure-functions-logging-python",
+  "package": "azure-functions-logging",
+  "mainline": "main",
+  "tag_prefix": "v",
+  "version_files": [
+    "src/azure_functions_logging/__init__.py"
+  ],
+  "changelog": "CHANGELOG.md",
+  "grace_hours": 12,
+  "approved": {
+    "0.15.1": {
+      "codes": [
+        "RELEASE_WITHOUT_PYPI"
+      ],
+      "reason": "The Cookbook host-boot smoke job failed before publish; 0.15.3 is the first published version after 0.15.0 and contains its changes.",
+      "ref": "docs/release_history.md#v0151-and-v0152-unpublished-release-candidates"
+    },
+    "0.15.2": {
+      "codes": [
+        "RELEASE_WITHOUT_PYPI"
+      ],
+      "reason": "The Cookbook host-boot smoke job failed before publish; the workflow was fixed forward in 0.15.3, which contains its changes.",
+      "ref": "docs/release_history.md#v0151-and-v0152-unpublished-release-candidates"
+    }
+  }
+}
