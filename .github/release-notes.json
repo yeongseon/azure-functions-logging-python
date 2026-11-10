@@ -5,7 +5,8 @@
     "yeongseon/azure-functions-logging"
   ],
   "non_human_logins": [
-    "sisyphus-dev-ai"
+    "sisyphus-dev-ai",
+    "Copilot"
   ],
   "protected": {
     "v0.15.1": [
