@@ -167,6 +167,48 @@ not make arbitrary side effects inside the wrapped handler safe, and copying a
 large mutable payload adds per-record cost, so use it only where one handler needs
 a different record shape.
 
+## Optional semantic JSON profile
+
+`JsonFormatter(profile="otel")` is an **opt-in** output schema; the default schema and
+the KQL fields built on it (`invocation_id`, `function_name`, `cold_start`, `level`,
+`exception`, ...) are unchanged. It is pure Python: no OpenTelemetry package is
+imported, and the `[otel]` extra does not become a dependency. It only changes the
+JSON this formatter writes (for example `setup_logging(functions_formatter=JsonFormatter(profile="otel"))`),
+not the attributes that `ContextFilter` puts on records for an OpenTelemetry handler.
+
+| Default field | `profile="otel"` field | Notes |
+| --- | --- | --- |
+| `invocation_id` | `faas.invocation.id` | Semconv name (the older `faas.invocation_id` is deprecated upstream). |
+| `function_name` | `faas.name` | `<function app>/<function>` when `WEBSITE_SITE_NAME` is set (the Azure form defined by the convention), otherwise the bare function name. |
+| `cold_start` | `faas.coldstart` | Boolean. `false` is kept; only absent (`null`) values are omitted. |
+| `host_instance_id` | `faas.instance` | Best-effort mapping of the Functions host instance to the "execution environment ID". |
+| `level` | `level` + `severity_number` | Number follows the OpenTelemetry mapping (DEBUG 5, INFO 9, WARNING 13, ERROR 17, CRITICAL 21; verified equal to the SDK's `std_to_otel`). |
+| `exception` (string) | `exception` + `exception.type`, `exception.message`, `exception.stacktrace` | Sanitized values from redaction filters are used when present, so the secure profile still applies. These names are removed from `extra` in this profile. |
+| `trace_id`, `span_id` | unchanged | Kept: whether they are redundant next to OpenTelemetry's own trace fields was **not** verified against real ingestion, so they are not dropped. |
+
+Absent context fields and a missing `exception` are omitted instead of written as `null`.
+The semantic conventions for FaaS are in *development* status upstream
+([registry](https://opentelemetry.io/docs/specs/semconv/registry/attributes/faas/)),
+which is why the names are opt-in. Sample line:
+
+```json
+{"timestamp": "...", "level": "WARNING", "severity_number": 13, "logger": "svc",
+ "message": "hello", "faas.invocation.id": "af9d...", "faas.name": "myapp/fn",
+ "trace_id": "...", "span_id": "...", "faas.coldstart": false, "extra": {}}
+```
+
+Queries (Application Insights, JSON retained in `message`; adjust if your ingestion promotes fields):
+
+```kusto
+// default profile
+traces | extend j = parse_json(message) | where j.invocation_id == "<id>"
+// profile="otel": dotted names need bracket syntax
+traces | extend j = parse_json(message) | where j["faas.invocation.id"] == "<id>"
+```
+
+These are offline serialization contracts (golden tests). Real export / ingestion was
+not verified here.
+
 ## Known limitation: thread boundaries
 
 Trace-context activation uses `contextvars`, which do **not** automatically
