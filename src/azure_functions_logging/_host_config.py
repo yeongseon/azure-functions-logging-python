@@ -145,6 +145,31 @@ def _string_key_mapping(value: object) -> dict[str, object] | None:
     return result
 
 
+# App settings that let the Functions host stream Python worker OpenTelemetry
+# logs directly (Microsoft Learn: "Use OpenTelemetry with Azure Functions").
+# Microsoft documents both names, so either enables direct worker export.
+_OTEL_TELEMETRY_ENV_VARS: tuple[str, ...] = (
+    "PYTHON_ENABLE_OPENTELEMETRY",
+    "PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY",
+)
+_FALSY_FLAG_VALUES = frozenset({"", "0", "false", "no", "off"})
+
+
+def _env_flag_enabled(name: str) -> bool:
+    """Return True when app setting *name* is present and not explicitly false."""
+    value = os.environ.get(name)
+    return value is not None and value.strip().lower() not in _FALSY_FLAG_VALUES
+
+
+def _python_worker_exports_otel_directly() -> bool:
+    """Return True when an app setting enables direct Python worker OTel streaming."""
+    return any(_env_flag_enabled(name) for name in _OTEL_TELEMETRY_ENV_VARS)
+
+
+def _is_opentelemetry_mode(telemetry_mode: str | None) -> bool:
+    return telemetry_mode is not None and telemetry_mode.lower() == "opentelemetry"
+
+
 def warn_host_json_level_conflict(
     configured_level: int,
     *,
@@ -163,6 +188,19 @@ def warn_host_json_level_conflict(
     starting with ``Function``). Host-internal categories (``Host.Results``,
     ``Host.Aggregator``, etc.) are skipped because they cannot suppress user Python
     log output and generate false-positive warning fatigue.
+
+    **Telemetry-mode aware.** Microsoft Learn documents that, with
+    ``"telemetryMode": "OpenTelemetry"``, ``host.json`` logging filters apply only
+    to **host-process** logs: the Python worker's OpenTelemetry export is filtered
+    by language-specific OpenTelemetry settings instead. So when OpenTelemetry mode
+    is requested *and* ``PYTHON_ENABLE_OPENTELEMETRY`` or
+    ``PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY`` lets the worker stream logs
+    directly, no host ``logLevel`` can suppress the worker's records and this check
+    stays silent (it cannot claim a host filter hides them). In OpenTelemetry mode
+    without direct worker export the host exports the forwarded records, so the
+    general ``logging.logLevel`` entries **and** the OpenTelemetry-provider
+    ``logging.OpenTelemetry.logLevel`` entries are checked. Classic Application
+    Insights mode and an unknown mode keep the original behavior.
 
     Args:
         configured_level: The numeric logging level configured by the app.
@@ -184,8 +222,15 @@ def warn_host_json_level_conflict(
         discovered = discover_host_json()
         host_path = discovered
 
+    telemetry_mode = _telemetry_mode_from_file(host_path)
+    otel_mode = _is_opentelemetry_mode(telemetry_mode)
+    if otel_mode and _python_worker_exports_otel_directly():
+        # Worker-direct export: host.json filters govern host-process logs only.
+        return
+
     # Collect host.json log levels
     host_json_log_levels: dict[str, object] = {}
+    otel_provider_log_levels: dict[str, object] = {}
     if host_path is not None:
         try:
             host_config: object = json.loads(host_path.read_text(encoding="utf-8"))
@@ -196,6 +241,18 @@ def warn_host_json_level_conflict(
                     raw_levels = _string_key_mapping(logging_mapping.get("logLevel"))
                     if raw_levels is not None:
                         host_json_log_levels = raw_levels
+                if otel_mode:
+                    provider_mapping = _string_key_mapping(host_mapping.get("logging"))
+                    provider = (
+                        _string_key_mapping(provider_mapping.get("OpenTelemetry"))
+                        if provider_mapping is not None
+                        else None
+                    )
+                    provider_levels = (
+                        _string_key_mapping(provider.get("logLevel")) if provider else None
+                    )
+                    if provider_levels is not None:
+                        otel_provider_log_levels = provider_levels
         except Exception:  # nosec B110 — host.json read failure is non-fatal
             pass
 
@@ -216,7 +273,15 @@ def warn_host_json_level_conflict(
             normalized_app[norm_k] = v
         # else: unrecognized value — do not override host.json entry
 
-    effective_levels: dict[str, object] = {**normalized_host, **normalized_app}
+    normalized_provider: dict[str, object] = {
+        (k.lower() if k.lower() == "default" else k): v for k, v in otel_provider_log_levels.items()
+    }
+    # The provider-specific section is more specific than the general one.
+    effective_levels: dict[str, object] = {
+        **normalized_host,
+        **normalized_provider,
+        **normalized_app,
+    }
 
     if not effective_levels:
         return
@@ -282,6 +347,21 @@ def _any_otel_logging_handler() -> bool:
     return False
 
 
+def _telemetry_mode_from_file(host_path: Path | None) -> str | None:
+    """Return ``telemetryMode`` from an already-resolved ``host.json`` path, or ``None``."""
+    if host_path is None:
+        return None
+    try:
+        host_config: object = json.loads(host_path.read_text(encoding="utf-8"))
+        host_mapping = _string_key_mapping(host_config)
+        if host_mapping is None:
+            return None
+        mode = host_mapping.get("telemetryMode")
+        return mode if isinstance(mode, str) else None
+    except Exception:  # nosec B110 — host.json read failure is non-fatal
+        return None
+
+
 def _read_host_telemetry_mode(host_json_path: Path | str | None) -> str | None:
     """Return the ``telemetryMode`` string from ``host.json``, or ``None``.
 
@@ -298,25 +378,7 @@ def _read_host_telemetry_mode(host_json_path: Path | str | None) -> str | None:
             return None
     else:
         host_path = discover_host_json()
-    if host_path is None:
-        return None
-    try:
-        host_config: object = json.loads(host_path.read_text(encoding="utf-8"))
-        host_mapping = _string_key_mapping(host_config)
-        if host_mapping is None:
-            return None
-        mode = host_mapping.get("telemetryMode")
-        return mode if isinstance(mode, str) else None
-    except Exception:  # nosec B110 — host.json read failure is non-fatal
-        return None
-
-
-# App settings that signal the host will export OpenTelemetry logs. Microsoft
-# docs reference both names (likely a mid-rename), so either being set counts.
-_OTEL_TELEMETRY_ENV_VARS: tuple[str, ...] = (
-    "PYTHON_ENABLE_OPENTELEMETRY",
-    "PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY",
-)
+    return _telemetry_mode_from_file(host_path)
 
 
 # Generic OpenTelemetry SDK export settings. Their presence signals the user
@@ -383,12 +445,12 @@ def warn_otel_logging_misconfig(
         )
 
     # 6b: OTel handler present but no export signal is observable (tentative).
-    if has_otel_handler and not any(
-        os.environ.get(name)
-        for name in (
-            *_OTEL_TELEMETRY_ENV_VARS,
-            *_OTEL_GENERIC_EXPORT_ENV_VARS,
-            *_AZURE_MONITOR_EXPORT_ENV_VARS,
+    if (
+        has_otel_handler
+        and not _python_worker_exports_otel_directly()
+        and not any(
+            os.environ.get(name)
+            for name in (*_OTEL_GENERIC_EXPORT_ENV_VARS, *_AZURE_MONITOR_EXPORT_ENV_VARS)
         )
     ):
         joined = " or ".join(_OTEL_TELEMETRY_ENV_VARS)
@@ -405,7 +467,7 @@ def warn_otel_logging_misconfig(
     # 6c: host.json requests OpenTelemetry mode but no OTel handler detected.
     if not has_otel_handler:
         mode = _read_host_telemetry_mode(host_json_path)
-        if mode is not None and mode.lower() == "opentelemetry":
+        if _is_opentelemetry_mode(mode):
             warnings.warn(
                 (
                     "host.json sets telemetryMode 'OpenTelemetry' but no "

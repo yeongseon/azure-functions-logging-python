@@ -419,6 +419,29 @@ convention. Function-specific overrides such as
 `AzureFunctionsJobHost__logging__logLevel__Function__MyFunction=Warning` are
 reported as category `Function.MyFunction`.
 
+### Behavior by telemetry mode
+
+The check is telemetry-mode aware. Per Microsoft Learn
+([Use OpenTelemetry with Azure Functions](https://learn.microsoft.com/azure/azure-functions/opentelemetry-howto?pivots=programming-language-python)),
+`host.json` logging filters apply to **host-process** logs only; Python worker
+OpenTelemetry export is filtered by OpenTelemetry settings, not by `host.json`.
+With `"telemetryMode": "OpenTelemetry"`, the `logging.applicationInsights` section
+no longer applies.
+
+| `host.json` `telemetryMode` | `PYTHON_ENABLE_OPENTELEMETRY` / `PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY` | Level-conflict check |
+| --- | --- | --- |
+| absent or other (classic Application Insights) | any | Original behavior: `logging.logLevel` and `AzureFunctionsJobHost__logging__logLevel__...` are compared with your level. |
+| `OpenTelemetry` | unset or explicitly false (`false`/`0`/`no`/`off`) | Host exports forwarded worker logs, so `logging.logLevel` **and** `logging.OpenTelemetry.logLevel` are compared (the provider section overrides per category). |
+| `OpenTelemetry` | enabled | Silent: the worker streams logs directly, so host `logLevel` entries cannot suppress them. Filter worker logs with OpenTelemetry/Python settings. |
+
+An installed OpenTelemetry handler is not proof of export: the related
+"handler attached but no export signal" warning (6b) treats an explicitly false
+`PYTHON_*` flag as *no* signal, while `OTEL_LOGS_EXPORTER`/`OTEL_TRACES_EXPORTER` and
+`APPLICATIONINSIGHTS_CONNECTION_STRING` still count. The library makes no network
+call and cannot prove ingestion: verify delivery in Application Insights or your
+OTLP collector. This behavior is validated offline only; end-to-end ingestion has
+not been verified.
+
 ## Color vs JSON Format Selection
 
 Use `format="color"` when:

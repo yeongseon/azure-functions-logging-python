@@ -153,6 +153,9 @@ class JsonFormatter(logging.Formatter):
 
 ### Filters
 
+`DEFAULT_REDACTION_PATTERNS` is the curated pattern set to pass as
+`RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)`.
+
 ```python
 from azure_functions_logging import SamplingFilter, RedactionFilter
 import logging
@@ -371,6 +374,9 @@ from azure_functions_logging import (
     reset_context,          # test teardown only
 
     ContextTokens,          # type alias used by inject_context/restore_context
+    propagate_context,      # bind the invocation context to a callable for worker threads
+    propagating_executor,   # factory for an executor that auto-wraps submit/map
+    PropagatingExecutor,    # the executor class behind propagating_executor
 )
 ```
 
