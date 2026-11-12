@@ -92,6 +92,46 @@ Suppressed namespaces (`urllib3`, `azure`, `azure.core.pipeline.policies.http_lo
 
 > If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.logger` directly.
 
+## Rate-Limit One Noisy Library on an Isolated Handler
+
+Lowering a namespace level drops its INFO records for every handler. When you want to
+*sample* a chatty dependency on one handler only (and keep every record elsewhere),
+scope a `SamplingFilter` to the library's logger name and attach it to an
+`IsolatedHandler` wrapper. `examples/noise_filter.py` demonstrates this with a
+synthetic "third-party" logger in a private namespace, so it runs offline and never
+touches the root logger or real libraries:
+
+```bash
+pip install -e .
+python examples/noise_filter.py
+```
+
+```text
+INFO     ...thirdparty.http  connection pool event 0
+INFO     ...thirdparty.http  connection pool event 1
+WARNING  ...thirdparty.http  retrying request
+ERROR    ...thirdparty.http  request failed
+INFO     ...app              order received / validated / completed
+```
+
+Of five noisy INFO records only the first two (`rate=2` in a long window) survive; the
+library's WARNING and ERROR always pass (`SamplingFilter` never drops WARNING and above),
+and the application logger is not matched by the filter name. Because the filter runs on
+the wrapper's cloned record, a sibling handler on the same loggers still sees all ten
+records, and the wrapped target handler is not modified.
+
+In tests, keep the setup reversible: `install(stream)` returns an `undo()` that removes
+exactly the handler it added and restores the scope logger's level and `propagate`
+flag. Call it in a `finally` block or fixture teardown, and assert that the root logger's
+handlers, filters and level are unchanged. Sampling does not silence third-party
+errors and is not a substitute for fixing a library that logs secrets.
+
+Verify locally:
+
+```bash
+python -m pytest tests/test_examples.py -k TestNoiseFilter --no-cov
+```
+
 ## Suggested Namespace Policies
 
 | Namespace | Suggested Level | Reason |
