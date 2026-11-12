@@ -142,6 +142,8 @@ def setup_logging(
             ``format="json"`` without ``functions_formatter`` emits a warning.
         logger_name: Optional logger name to configure. When None, configures
             the root logger (local dev) or installs filter on root handlers (Azure).
+            In Azure/Core Tools mode it is **not** a target: root handlers are
+            always the ones configured and the name only keys setup bookkeeping.
         functions_formatter: Optional custom formatter applied to all root
             handlers when running inside Azure/Core Tools. Useful for
             injecting a custom JSON formatter or third-party formatter
