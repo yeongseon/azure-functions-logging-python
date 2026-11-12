@@ -82,6 +82,10 @@ The library detected host policy that can suppress lower log levels than your co
   override `host.json` in Azure.
 - Align defaults with operational visibility needs.
 - Keep stricter per-category levels only where justified.
+- In `telemetryMode: OpenTelemetry`, host filters govern host-process logs only; Python worker
+  logs streamed directly (`PYTHON_ENABLE_OPENTELEMETRY` or
+  `PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY` enabled) are filtered by OpenTelemetry
+  settings. See [behavior by telemetry mode](configuration.md#behavior-by-telemetry-mode).
 
 This warning is informational but usually points to real missing telemetry.
 

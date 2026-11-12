@@ -153,6 +153,9 @@ class JsonFormatter(logging.Formatter):
 
 ### Filters
 
+`DEFAULT_REDACTION_PATTERNS` is the curated pattern set to pass as
+`RedactionFilter(patterns=DEFAULT_REDACTION_PATTERNS)`.
+
 ```python
 from azure_functions_logging import SamplingFilter, RedactionFilter
 import logging
@@ -257,7 +260,7 @@ exc_info. Traversal masks cycles/10-level depth/4,096-node budget overflow; stri
 over 65,536 characters are masked in full. Mapping keys are sanitized; sets become lists.
 Ordinary bounded primitive observability fields are preserved. Unicode homographs,
 arbitrary unlabelled/encoded secrets, new data injected after filtering, direct stdout,
-unprotected future handlers and host-generated logs are not guaranteed covered.
+handlers added mid-invocation (until the next invocation entry) and host-generated logs are not guaranteed covered.
 Custom repr/mapping/regex code is not sandboxed. This is defence in depth, not an
 arbitrary-secret detector. Future default changes need a minor-release deprecation
 discussion; no date is promised. See docs/configuration.md for full trade-offs.
@@ -371,6 +374,9 @@ from azure_functions_logging import (
     reset_context,          # test teardown only
 
     ContextTokens,          # type alias used by inject_context/restore_context
+    propagate_context,      # bind the invocation context to a callable for worker threads
+    propagating_executor,   # factory for an executor that auto-wraps submit/map
+    PropagatingExecutor,    # the executor class behind propagating_executor
 )
 ```
 
