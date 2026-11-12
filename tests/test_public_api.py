@@ -85,3 +85,42 @@ class TestDocsCoverage:
             "Public symbols missing an mkdocstrings directive "
             f"(`::: azure_functions_logging.<name>`) in docs/api.md: {missing}"
         )
+
+
+class TestDocumentedInventory:
+    """Guard: the docs/architecture.md public-API inventory equals ``__all__``."""
+
+    _START = "<!-- public-api:start -->"
+    _END = "<!-- public-api:end -->"
+
+    def _documented(self) -> set[str]:
+        import re
+        from pathlib import Path
+
+        text = (Path(__file__).resolve().parents[1] / "docs" / "architecture.md").read_text(
+            encoding="utf-8"
+        )
+        assert self._START in text and self._END in text, "public-api markers missing"
+        block = text.split(self._START, 1)[1].split(self._END, 1)[0]
+        return set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", block))
+
+    def test_architecture_inventory_matches_all(self) -> None:
+        documented = self._documented()
+        exported = set(azure_functions_logging.__all__)
+        missing = sorted(exported - documented)
+        extra = sorted(documented - exported)
+        assert not missing and not extra, (
+            "docs/architecture.md public-API inventory drifted from __all__: "
+            f"undocumented exports={missing}, documented but not exported={extra}"
+        )
+
+    def test_assistant_indexes_name_every_public_symbol(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        for name in ("llms.txt", "llms-full.txt"):
+            text = (root / name).read_text(encoding="utf-8")
+            missing = sorted(
+                n for n in azure_functions_logging.__all__ if n != "__version__" and n not in text
+            )
+            assert not missing, f"{name} does not mention public symbols: {missing}"

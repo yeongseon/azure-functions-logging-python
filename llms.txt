@@ -42,6 +42,11 @@ Key features:
 - `setup_logging(use_record_factory=True)` — opt-in global LogRecordFactory so context flows to every record (mutually exclusive with the default `ContextFilter` mode)
 - `get_logging_metadata(func)` — Inspect `@with_context` metadata on a function; returns `dict[str, Any] | None`
 - `ContextTokens` — Type alias for the token bundle returned by `inject_context()`
+- `propagate_context(func, *, context=None)` — Advanced: bind the current invocation context to a callable so it stays correlated on worker threads
+- `propagating_executor(pool=None, *, context=None, **pool_kwargs)` / `PropagatingExecutor` — Advanced: executor that wraps every `submit` / `map` callable with `propagate_context`
+- `AttributeFlattenFilter` — Opt-in filter that flattens nested dict extras into dotted scalar attributes for OpenTelemetry
+- `DEFAULT_REDACTION_PATTERNS` — Curated high-confidence secret patterns to pass as `RedactionFilter(patterns=...)`
+- `__version__` — Package version string
 
 ## Quick Start
 
