@@ -41,7 +41,8 @@ def main() -> None:
     # Deliberately non-sensitive keys are left as-is.
     logger.info("order accepted", order_id="o-123", tenant_id="tenant-a", status="ok")
     # A recognizable ``key=value`` shape inside a message is masked as well.
-    logger.info("calling upstream with password=%s", CANARY_D)
+    upstream_note = f"calling upstream with api_key={CANARY_D}"
+    logger.info(upstream_note)
 
 
 if __name__ == "__main__":

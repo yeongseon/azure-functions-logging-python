@@ -150,7 +150,7 @@ class TestSecureLogging:
         signed_in, accepted, upstream = records
         assert signed_in["extra"] == {"token": "***", "password": "***", "api_key": "***"}
         assert accepted["extra"] == {"order_id": "o-123", "tenant_id": "tenant-a", "status": "ok"}
-        assert upstream["message"] == "calling upstream with password=***"
+        assert upstream["message"] == "calling upstream with api_key=***"
 
     def test_default_setup_without_the_preset_does_not_redact(
         self, capsys: pytest.CaptureFixture[str]

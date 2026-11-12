@@ -125,7 +125,7 @@ Development dependencies (not installed at runtime):
 [`examples/secure_logging.py`](https://github.com/yeongseon/azure-functions-logging-python/blob/main/examples/secure_logging.py)
 is a standalone, offline script that enables `configure_secure_redaction()` after
 `setup_logging()` and logs obviously fake values (`canary-*`). It shows that values of
-sensitive keys (`token`, `password`, `api_key`) and a `password=...` pattern inside a
+sensitive keys (`token`, `password`, `api_key`) and an `api_key=...` pattern inside a
 message are masked, while deliberately non-sensitive fields (`order_id`, `tenant_id`,
 `status`) stay visible. It does not claim blanket detection: a secret in free text with
 no recognizable key or shape is not masked, and ordinary `setup_logging()` without the
