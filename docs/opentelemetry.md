@@ -72,7 +72,8 @@ directly if you manage trace headers yourself.
 For the supported fail-closed preset, call
 `setup_logging(activate_trace_context=True)`, then `configure_secure_redaction()`
 **after** exporter configuration. The preset protects existing OTel handlers before native translation and
-export. For late handlers, use `attach_secure_redaction(handler)` before registering
+export. Handlers registered later are re-protected at the next invocation entry; for
+handlers added mid-invocation, use `attach_secure_redaction(handler)` before registering
 them; context factories do not redact `extra`. See
 [secure production configuration](configuration.md#secure-production-configuration)
 for ordering, isolation, limits, and migration details. The manual filter examples
