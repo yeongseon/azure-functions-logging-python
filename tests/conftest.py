@@ -44,3 +44,13 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if os.environ.get("FAIL_ON_SKIP") == "1" and _skipped and exitstatus == 0:
         print(f"\nFAIL_ON_SKIP=1: {len(_skipped)} skipped item(s) in a lane that forbids skips")
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+@pytest.fixture(autouse=True)
+def reset_secure_profile() -> Iterator[None]:
+    import azure_functions_logging._secure as secure_mod
+
+    previous = secure_mod._secure_enabled
+    secure_mod._secure_enabled = False
+    yield
+    secure_mod._secure_enabled = previous
