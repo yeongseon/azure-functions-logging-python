@@ -30,6 +30,7 @@ nav:
   - Examples:
       - Basic Setup: examples/basic_setup.md
       - JSON Output: examples/json_output.md
+      - Collision-Safe Logging: examples/collision_safe_logging.md
       - Context Injection: examples/context_injection.md
       - Context Binding: examples/context_binding.md
       - Cold Start Detection: examples/cold_start_detection.md
