@@ -94,8 +94,8 @@ class TestDocumentedInventory:
     _END = "<!-- public-api:end -->"
 
     def _documented(self) -> set[str]:
-        import re
         from pathlib import Path
+        import re
 
         text = (Path(__file__).resolve().parents[1] / "docs" / "architecture.md").read_text(
             encoding="utf-8"
