@@ -27,9 +27,8 @@ jobs:
           make install
 
       - name: Run lint and type checks
-        run: |
-          hatch run lint
-          hatch run typecheck
+        # `lint` already runs `style` and `typecheck`; a separate typecheck would run mypy twice.
+        run: hatch run lint
 
       - name: Run security scan (Bandit)
         run: make security
