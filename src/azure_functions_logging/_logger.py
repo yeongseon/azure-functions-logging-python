@@ -96,7 +96,11 @@ class FunctionLogger:
         return new
 
     def clear_context(self) -> None:
-        """Clear all bound context fields."""
+        """Clear all fields bound to **this** wrapper, in place, and return ``None``.
+
+        This mutates the receiver (other wrappers created by ``bind()`` are
+        unaffected) and does not touch ``bind_context()`` bindings.
+        """
         self._context = {}
 
     def _log(
