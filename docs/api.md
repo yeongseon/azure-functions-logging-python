@@ -142,6 +142,8 @@ except RuntimeError:
 - Includes context fields when available on log records.
 - Pass `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` characters (default 2048); truncated values are suffixed with `…`. Only strings in `extra` are affected (recursively through dicts/lists) — `message`, ints, floats, and booleans are left intact.
 
+- Pass `profile="otel"` for the opt-in OpenTelemetry-aligned schema (see [OpenTelemetry: semantic JSON profile](opentelemetry.md#optional-semantic-json-profile)). The default schema never changes.
+
 ### Example: Automatic Selection
 
 ```python

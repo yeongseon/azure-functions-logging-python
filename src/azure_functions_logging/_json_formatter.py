@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 import json
 import logging
 import math
-from typing import Any
+import os
+from typing import Any, Literal
 
 from ._host_instance import get_host_instance_id
 from ._logger import _LIBRARY_RESERVED_KEYS, _STDLIB_RECORD_KEYS
@@ -113,6 +114,51 @@ def _truncate_native_strings(value: Any, max_length: int) -> Any:
     return value
 
 
+_PROFILES: frozenset[str] = frozenset({"default", "otel"})
+_EXCEPTION_FIELDS: tuple[str, ...] = ("exception.type", "exception.message", "exception.stacktrace")
+
+
+def severity_number(levelno: int) -> int:
+    """Map a stdlib level number to an OpenTelemetry ``SeverityNumber`` (no OTel import).
+
+    Mirrors ``opentelemetry.sdk._logs.std_to_otel``: below 10 is ``UNSPECIFIED`` (0),
+    10-53 map to ``4 * (levelno // 10) + 1 + min(levelno % 10, 3)`` (DEBUG 5, INFO 9,
+    WARNING 13, ERROR 17, CRITICAL 21) and anything above 53 is ``FATAL4`` (24).
+    """
+    if levelno < 10:
+        return 0
+    if levelno > 53:
+        return 24
+    return 4 * (levelno // 10) + 1 + min(levelno % 10, 3)
+
+
+def _faas_name(function_name: Any) -> Any:
+    """Azure form of ``faas.name``: ``<function app>/<function>`` when the app is known."""
+    if function_name is None:
+        return None
+    site = os.environ.get("WEBSITE_SITE_NAME")
+    return f"{site}/{function_name}" if site else function_name
+
+
+def _exception_fields(record: logging.LogRecord, formatted: str | None) -> dict[str, Any]:
+    """Return ``exception.*`` values, preferring those a redaction filter already sanitized."""
+    fields: dict[str, Any] = {
+        name: record.__dict__[name] for name in _EXCEPTION_FIELDS if name in record.__dict__
+    }
+    if record.exc_info and not fields:
+        exc_type, exc_value, _ = record.exc_info
+        try:
+            message = str(exc_value) if exc_value is not None else None
+        except Exception:
+            message = f"<unrenderable exception: {type(exc_value).__name__}>"
+        fields = {
+            "exception.type": exc_type.__name__ if exc_type is not None else None,
+            "exception.message": message,
+            "exception.stacktrace": formatted,
+        }
+    return {name: value for name, value in fields.items() if value is not None}
+
+
 class JsonFormatter(logging.Formatter):
     """Structured JSON log formatter.
 
@@ -131,6 +177,18 @@ class JsonFormatter(logging.Formatter):
             ``max_string_length`` characters. Truncated strings are suffixed
             with ``…`` so callers can detect the truncation. Non-string scalar
             values (int, float, bool) are not affected. Default: ``False``.
+        profile: Output schema. ``"default"`` (the default) is the long-standing
+            schema and never changes. ``"otel"`` is an opt-in profile that needs no
+            OpenTelemetry package: it renames context fields to OpenTelemetry FaaS
+            semantic-convention names (``invocation_id`` -> ``faas.invocation.id``,
+            ``function_name`` -> ``faas.name`` as ``<app>/<function>`` when
+            ``WEBSITE_SITE_NAME`` is set, ``cold_start`` -> ``faas.coldstart``,
+            ``host_instance_id`` -> ``faas.instance``), omits absent (``None``)
+            context fields and ``exception``, adds ``severity_number`` and hoists
+            sanitized ``exception.type`` / ``exception.message`` /
+            ``exception.stacktrace`` out of ``extra``. ``trace_id`` / ``span_id``
+            keep their names. The semantic conventions are in *development* status
+            upstream, which is why this is opt-in.
     """
 
     def __init__(
@@ -138,12 +196,16 @@ class JsonFormatter(logging.Formatter):
         *,
         max_string_length: int = 2048,
         truncate_native_strings: bool = False,
+        profile: Literal["default", "otel"] = "default",
     ) -> None:
+        if profile not in _PROFILES:
+            raise ValueError(f"profile must be one of {sorted(_PROFILES)}, got {profile!r}")
         if max_string_length < 0:
             raise ValueError(f"max_string_length must be ≥ 0, got {max_string_length}")
         super().__init__()
         self._max_string_length = max_string_length
         self._truncate_native_strings = truncate_native_strings
+        self._profile = profile
 
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record as one NDJSON object.
@@ -169,9 +231,22 @@ class JsonFormatter(logging.Formatter):
 
         excluded_fields = _STANDARD_RECORD_FIELDS | _CONTEXT_FIELDS
         extra = {key: value for key, value in record.__dict__.items() if key not in excluded_fields}
+        otel_exception: dict[str, Any] = {}
+        if self._profile == "otel":
+            otel_exception = _exception_fields(record, exception)
+            for name in _EXCEPTION_FIELDS:
+                extra.pop(name, None)
         extra = _to_json_safe(extra)
         if self._truncate_native_strings:
             extra = _truncate_native_strings(extra, self._max_string_length)
+
+        if self._profile == "otel":
+            return self._dump(
+                self._otel_payload(
+                    record, timestamp, message, exception, extra, otel_exception, stack_info
+                ),
+                record,
+            )
 
         payload = {
             "timestamp": timestamp,
@@ -190,6 +265,45 @@ class JsonFormatter(logging.Formatter):
         if stack_info is not None:
             payload["stack_info"] = stack_info
 
+        return self._dump(payload, record)
+
+    @staticmethod
+    def _otel_payload(
+        record: logging.LogRecord,
+        timestamp: str,
+        message: str,
+        exception: str | None,
+        extra: Any,
+        otel_exception: dict[str, Any],
+        stack_info: str | None,
+    ) -> dict[str, Any]:
+        """Build the opt-in ``otel`` profile payload (absent context fields omitted)."""
+        host_instance = getattr(record, "host_instance_id", None) or get_host_instance_id()
+        candidates: dict[str, Any] = {
+            "faas.invocation.id": getattr(record, "invocation_id", None),
+            "faas.name": _faas_name(getattr(record, "function_name", None)),
+            "trace_id": getattr(record, "trace_id", None),
+            "span_id": getattr(record, "span_id", None),
+            "faas.coldstart": getattr(record, "cold_start", None),
+            "faas.instance": host_instance,
+            "exception": exception,
+        }
+        payload: dict[str, Any] = {
+            "timestamp": timestamp,
+            "level": record.levelname,
+            "severity_number": severity_number(record.levelno),
+            "logger": record.name,
+            "message": message,
+        }
+        payload.update({k: v for k, v in candidates.items() if v is not None})
+        payload.update(otel_exception)
+        payload["extra"] = extra
+        if stack_info is not None:
+            payload["stack_info"] = stack_info
+        return payload
+
+    @staticmethod
+    def _dump(payload: dict[str, Any], record: logging.LogRecord) -> str:
         try:
             return json.dumps(payload, ensure_ascii=False, default=_json_default)
         except Exception:
