@@ -89,6 +89,55 @@ The library detected host policy that can suppress lower log levels than your co
 
 This warning is informational but usually points to real missing telemetry.
 
+### Worked example (offline)
+
+The setup below runs in Azure/Core Tools mode (`FUNCTIONS_WORKER_RUNTIME` set) with this
+`host.json`:
+
+<!-- host-json-fixture: conflicting.json -->
+```json
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Warning"
+    }
+  }
+}
+```
+
+`setup_logging(level=logging.INFO)` then emits this `UserWarning` once at startup:
+
+```text
+host configuration logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
+```
+
+Safe minimal fix: raise the host default to the level you need, or override it with an
+app setting (`AzureFunctionsJobHost__logging__logLevel__default=Information`) without
+touching the file. The corrected `host.json` is silent:
+
+<!-- host-json-fixture: corrected.json -->
+```json
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Information"
+    }
+  }
+}
+```
+
+Opening only one function (`"Function.OrdersHttp": "Information"` beside
+`"default": "Warning"`) does not silence this warning: the strict default is still
+more restrictive than your configured level, which is what the warning reports.
+
+The library only detects and warns. It does not edit `host.json`, does not override
+host-level filters and does not correct anything automatically; the Azure Functions
+host remains authoritative for what is emitted in Azure. The scenarios above are
+reproduced by `tests/test_host_json_remediation.py` using the synthetic fixtures in
+`tests/data/host_json/`, with no Azure resources or credentials.
+
 ## Cold Start Not Detected
 
 ### Symptoms
