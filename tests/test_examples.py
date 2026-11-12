@@ -7,13 +7,16 @@ so ``setup_logging()`` idempotency and ``_cold_start`` toggling do not leak.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from importlib.util import module_from_spec, spec_from_file_location
+import json
 import logging
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from azure_functions_logging import configure_secure_redaction, get_logger, setup_logging
 import azure_functions_logging._context as ctx_mod
 import azure_functions_logging._setup as setup_mod
 
@@ -46,6 +49,7 @@ def _reset_logging_state() -> None:
         "example_context_injection",
         "example_context_binding",
         "example_cold_start_detection",
+        "examples.secure_logging",
     ):
         lgr = logging.getLogger(logger_name)
         lgr.handlers.clear()
@@ -111,6 +115,63 @@ class TestColdStartDetection:
         module.main()
         # After two logging_context entries, cold_start should be False
         assert ctx_mod._cold_start is False
+
+
+class TestSecureLogging:
+    """Offline checks for examples/secure_logging.py (synthetic canaries only)."""
+
+    @pytest.fixture(autouse=True)
+    def _disable_secure_profile(self) -> Iterator[None]:
+        yield
+        configure_secure_redaction(enabled=False)
+
+    def _fresh(self, module: Any) -> None:
+        """Drop any handler already on the example logger so setup_logging installs its own."""
+        logging.getLogger(module.LOGGER_NAME).handlers.clear()
+
+    def _records(self, capsys: pytest.CaptureFixture[str]) -> tuple[list[dict[str, Any]], str]:
+        raw = capsys.readouterr().err
+        return [json.loads(line) for line in raw.splitlines()], raw
+
+    def test_secure_preset_masks_sensitive_values_and_keeps_non_sensitive_fields(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        module = _load_example("secure_logging")
+        self._fresh(module)
+        module.main()
+        records, raw = self._records(capsys)
+        for canary in (
+            module.CANARY_A,
+            module.CANARY_B,
+            module.CANARY_C,
+            module.CANARY_D,
+        ):
+            assert canary not in raw
+        signed_in, accepted, upstream = records
+        assert signed_in["extra"] == {"token": "***", "password": "***", "api_key": "***"}
+        assert accepted["extra"] == {"order_id": "o-123", "tenant_id": "tenant-a", "status": "ok"}
+        assert upstream["message"] == "calling upstream with password=***"
+
+    def test_default_setup_without_the_preset_does_not_redact(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        module = _load_example("secure_logging")
+        self._fresh(module)
+        setup_logging(format="json", logger_name=module.LOGGER_NAME)
+        get_logger(module.LOGGER_NAME).info("plain", token=module.CANARY_A)
+        _, raw = self._records(capsys)
+        assert module.CANARY_A in raw
+
+    def test_free_text_without_a_recognizable_key_is_not_promised_masked(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        module = _load_example("secure_logging")
+        self._fresh(module)
+        module.main()
+        capsys.readouterr()
+        get_logger(module.LOGGER_NAME).info("note %s", "canary-free-text-0000")
+        _, raw = self._records(capsys)
+        assert "canary-free-text-0000" in raw
 
 
 class TestOtelApp:
