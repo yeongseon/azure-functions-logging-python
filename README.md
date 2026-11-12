@@ -405,8 +405,9 @@ For an opt-in secure production preset, use
 `setup_logging(functions_formatter=JsonFormatter())` on Azure host handlers
 (or `format="json"` standalone), then call `configure_secure_redaction()`.
 It installs fail-closed key/pattern
-masking after enrichment on current handlers, including OTel handlers. Protect
-late handlers with `attach_secure_redaction(handler)` before registering them.
+masking after enrichment on current handlers, including OTel handlers. Handlers
+registered later are re-protected at the next invocation entry; protect handlers added
+mid-invocation with `attach_secure_redaction(handler)` before registering them.
 Defaults remain unchanged. See [secure production configuration](docs/configuration.md#secure-production-configuration)
 for exporter call order, limits and trade-offs: this is defence in depth, not a
 guarantee against arbitrary secrets in free text.

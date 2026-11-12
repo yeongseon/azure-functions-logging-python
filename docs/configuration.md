@@ -81,10 +81,28 @@ logging.getLogger().addHandler(handler)
 ```
 
 The helper also protects an `IsolatedHandler`'s target, after target-local filters.
-For late host handlers you do not create, rerun `configure_secure_redaction()`
-once they exist. There is no monkeypatch that automatically protects future
-handlers: records emitted before attachment are outside this guarantee.
-`use_record_factory=True` covers late-handler **context**, not redaction.
+
+**Late handlers and the coverage boundary.** `configure_secure_redaction()` turns
+the profile on for the process lifetime. Every `logging_context(...)` /
+`@with_context` entry then reconciles handlers registered since the previous
+entry: root and named loggers (including `propagate=False`) and `IsolatedHandler`
+targets. Reconciliation attaches the package-owned secure filter at most once,
+keeps it **last** (after `ContextFilter`, flattening and your own filters) and
+never changes formatters, levels or handler ownership. Replacing a handler with
+another one (same handler count) is detected because the scan is identity-based,
+not count-based. Under Azure/Core Tools the package `ContextFilter` is likewise
+attached to late root handlers at entry unless `use_record_factory=True`, which
+attaches no filter and covers late-handler **context** only; redaction is still
+reconciled. `setup_logging()` never downgrades the secure profile; only
+`configure_secure_redaction(enabled=False)` does.
+
+The guarantee is bounded: a handler added **during** an invocation, after the
+entry scan, or a record emitted before the next entry, is outside it. Protect such
+handlers with `attach_secure_redaction(handler)` before registering them. A
+handler in a logging graph the stdlib does not expose (for example a private
+logger tree) is also outside the automatic scan. Entry-time reconciliation is
+therefore not an unconditional fail-closed guarantee. The scan walks the logger
+registry once per invocation entry.
 
 ### Ordering and reconfiguration
 
