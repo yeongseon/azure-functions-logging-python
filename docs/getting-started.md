@@ -92,13 +92,12 @@ Why `logging_context(context)` matters:
 
 ### Which context API do I use?
 
-Three ways to attach invocation context — pick one:
+Two entry points — pick one:
 
-- `with logging_context(context):` — **recommended.** Scoped, always restores prior context on exit (even on exceptions).
+- `with logging_context(context):` — scoped, always restores prior context on exit (even on exceptions).
 - `@with_context` — decorator form of the same behavior; good when you want the whole handler wrapped implicitly.
-- `tokens = inject_context(context)` / `restore_context(tokens)` — manual token form for middleware or framework integrations where you cannot use a `with` block. You are responsible for calling `restore_context(tokens)` in a `finally`.
 
-Bare `inject_context(context)` without a paired `restore_context()` can leak context between invocations in a reused worker — prefer `logging_context`.
+**Low-level (advanced):** `tokens = inject_context(context)` / `restore_context(tokens)` is the manual token form for middleware or framework integrations where you cannot use a `with` block. You are responsible for calling `restore_context(tokens)` in a `finally`; a bare `inject_context(context)` without a paired `restore_context()` can leak context between invocations in a reused worker. Cross-thread propagation (`propagate_context`, `propagating_executor`) is a separate advanced topic, not a third entry point.
 
 ## Expected Local Output
 

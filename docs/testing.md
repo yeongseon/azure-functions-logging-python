@@ -50,99 +50,49 @@ pytest -k "test_json"
 pytest -v tests/
 ```
 
-## Test Structure
+## Test Levels: what each one proves
 
-All tests reside in the `tests/` directory:
+Only the last two rows involve a real Functions host or Azure telemetry. Everything in
+`tests/` that runs under `make test` is an **in-process** check of Python logging
+objects (records, handlers, formatters); it does not prove host behavior or
+Application Insights ingestion.
 
-```
-tests/
--- test_context.py          # Context injection, binding, and ContextFilter tests
--- test_formatter.py        # ColorFormatter tests
--- test_host_config.py      # host.json conflict detection tests
--- test_integration.py      # End-to-end integration tests
--- test_json_formatter.py   # JsonFormatter tests
--- test_logger.py           # FunctionLogger wrapper tests
--- test_setup.py            # Logging setup and configuration tests
-```
+| Level | Where it runs | Command | Needs | Proves |
+| --- | --- | --- | --- | --- |
+| Unit / in-process | every PR, Python 3.11-3.14 (`.github/workflows/ci-test.yml`) | `make test` (or `pytest tests/`) | nothing | Library logic: records, formatters, filters, redaction, setup, decorator. Coverage gate 95% (`fail_under` in `pyproject.toml`). |
+| Wheel / minimum-dependency smoke | every PR (`ci-test.yml`) | CI-only jobs | built wheel | The built wheel installs and imports outside the checkout, and the full suite also passes against minimum runtime dependencies. |
+| Local host smoke | every PR (`ci-test.yml`, "Real Functions host smoke") | CI-only job using `tests/host_smoke/` | Core Tools v4 + Azurite | A real `func` host boots the decorated handlers and serves HTTP. It does **not** check telemetry ingestion. |
+| Scheduled host matrix / OTel canary | weekly or nightly (`.github/workflows/e2e-host-matrix.yml`, `.github/workflows/otel-nightly.yml`) | scheduled workflows | Core Tools + Azurite; latest OpenTelemetry packages | Host-boot drift across Core Tools versions; drift against the newest OpenTelemetry SDK. |
+| Local e2e (HTTP) | on demand | `make e2e-local` | a running host at `E2E_BASE_URL` (default `http://localhost:7071`) | `/api/*` endpoints respond; the App Insights test skips without `APPINSIGHTS_NAME`. Cannot create a certification record. |
+| Real Azure e2e | release gate (`.github/workflows/e2e-azure.yml`, called by `publish-pypi.yml`) | `make e2e-azure` | `E2E_BASE_URL`, `E2E_EXPECTED_VERSION`, `APPINSIGHTS_NAME`, `E2E_RESOURCE_GROUP`, Azure login with CLI query access | The deployed host runs the candidate wheel and structured fields reach Application Insights (`tests/e2e/test_logging_e2e.py`). Opt-in; credentials and cloud resources required. |
 
-### test_setup.py
+The benchmark (`benchmarks/bench.py`, `make bench`) is opt-in and is not part of the
+required unit suite. It measures in-process CPU cost per operation; it is **not**
+end-to-end telemetry latency and says nothing about gRPC, host ingestion or
+Application Insights.
 
-Tests for the `setup_logging()` function and overall logging system configuration:
+## Test Map (by behavior)
 
-- Default setup creates a handler with `ColorFormatter`
-- `format="json"` creates a handler with `JsonFormatter`
-- Idempotent setup (multiple calls do not add duplicate handlers)
-- Custom log level configuration
-- Invalid format raises `ValueError`
+Names below are real files under `tests/`; `tests/test_testing_docs_map.py` fails
+if a documented path disappears.
 
-### test_formatter.py
+| Behavior | Test modules |
+| --- | --- |
+| Context injection, `with_context` / `logging_context`, record-factory strategy and strategy lifetime | `tests/test_context.py`, `tests/test_decorator.py`, `tests/test_strategy_lifetime.py`, `tests/test_postponed_annotations.py`, `tests/test_host_instance.py` |
+| Setup, idempotency and configuration limits | `tests/test_setup.py`, `tests/test_setup_api_ceiling.py`, `tests/test_integration.py` |
+| Formatting and `FunctionLogger` | `tests/test_formatter.py`, `tests/test_json_formatter.py`, `tests/test_logger.py`, `tests/test_structured_field_extraction.py` |
+| Redaction and secure profile | `tests/test_filters.py`, `tests/test_redaction.py`, `tests/test_redaction_authorization.py`, `tests/test_redacted_exceptions.py`, `tests/test_nested_redaction_policy.py`, `tests/test_secure_setup.py`, `tests/test_secure_redaction.py`, `tests/test_secure_sinks.py`, `tests/test_secure_limits.py`, `tests/test_secure_review_regressions.py`, `tests/test_isolated_handler.py` |
+| `host.json` diagnostics and OpenTelemetry | `tests/test_host_config.py`, `tests/test_host_config_otel.py`, `tests/test_otel.py`, `tests/test_otel_contract.py`, `tests/test_otel_filters.py` |
+| Public API, packaging and compatibility contracts | `tests/test_public_api.py`, `tests/test_contracts.py`, `tests/test_metadata_contract.py`, `tests/test_toolkit_metadata.py`, `tests/test_python_version_metadata.py`, `tests/test_sdk_compatibility_policy.py`, `tests/test_examples.py` |
+| Correlation assertions | `tests/test_assert_correlation.py` |
+| CI, release and security contracts (offline checks of workflows and tools) | `tests/test_ci_workflow_gates.py`, `tests/test_ci_classify_changes.py`, `tests/test_ci_skip_policy.py`, `tests/test_workflow_pin_hygiene.py`, `tests/test_hatch_matrix_lint.py`, `tests/test_makefile_contract.py`, `tests/test_check_pr_format.py`, `tests/test_classify_review_evidence.py`, `tests/test_doc_link_tag_integrity.py`, `tests/test_release_audit.py`, `tests/test_release_audit_history.py`, `tests/test_release_notes.py`, `tests/test_release_verification_workflows.py`, `tests/test_release_workflow_pins.py`, `tests/test_publish_workflow_selection.py`, `tests/test_runtime_advisory_exceptions.py`, `tests/test_runtime_audit_workflow.py`, `tests/test_security_gates.py`, `tests/test_security_reports.py`, `tests/test_deployment_output_security.py`, `tests/test_e2e_marker_entrypoint_contract.py` |
+| Local host smoke app | `tests/host_smoke/function_app.py` (executed by CI, not by pytest) |
+| Real Azure / Application Insights e2e (opt-in, `-m e2e`) | `tests/e2e/test_logging_e2e.py` |
 
-Tests for `ColorFormatter`:
-
-- Format string structure: `HH:MM:SS LEVEL logger message`
-- Color codes per level (DEBUG gray, INFO blue, WARNING yellow, ERROR red, CRITICAL bold red)
-- Context fields appended when present
-- Exception formatting with readable stack traces
-- Cold start indicator in output
-
-### test_json_formatter.py
-
-Tests for `JsonFormatter`:
-
-- Output is valid JSON (single line per record)
-- All required fields present: timestamp, level, logger, message
-- Context fields included when set: invocation_id, function_name, trace_id, span_id, cold_start, host_instance_id
-- Extra fields from `bind()` and keyword arguments included in `extra` object
-- Exception traceback included in `exception` field
-- Timestamp format is ISO 8601
-
-### test_context.py
-
-Tests for context injection, binding, and the ContextFilter:
-
-**inject_context tests**:
-
-- Extracts invocation_id, function_name, trace_id, span_id from context object
-- Trace ID and span ID extracted from W3C traceparent header (second and third fields of `trace_parent`)
-- Cold start detection (first call returns True, subsequent calls return False)
-- Handles missing attributes gracefully (defaults to None)
-- Handles None context without raising
-- Thread safety via contextvars
-
-**ContextFilter tests**:
-
-- Filter attaches context fields to LogRecord
-- Filter works with no context set (fields default to None)
-- Filter does not raise on any input
-
-### test_logger.py
-
-Tests for the `FunctionLogger` wrapper class:
-
-- All standard log methods delegate to the wrapped logger (debug, info, warning, error, critical, exception)
-- `bind()` returns a new `FunctionLogger` with merged context
-- Binding is immutable (original logger is not modified)
-- Cumulative binding (bind on a bound logger combines both contexts)
-- `clear_context()` removes all bound fields
-- `setLevel()`, `isEnabledFor()`, `getEffectiveLevel()` delegate correctly
-- `name` property returns the underlying logger name
-
-### test_host_config.py
-
-Tests for `host.json` conflict detection:
-
-- Warns when host.json logLevel is more restrictive than configured level
-- No warning when host.json logLevel matches or is less restrictive
-- No warning when host.json is missing
-- Handles malformed host.json gracefully
-
-### test_integration.py
-
-End-to-end integration tests:
-
-- Full logging pipeline with ColorFormatter produces expected output
-- Full logging pipeline with JsonFormatter produces valid JSON with all fields
-- Context injection and log output work together correctly
+Pytest options come from `pyproject.toml`: `-m 'not e2e'` keeps e2e tests out of
+`make test`, and `--cov` is on by default. The `e2e` marker selects the lanes above.
+`FAIL_ON_SKIP=1` makes an unexpectedly skipped test fail the lane (used by
+`make e2e-azure`, the OpenTelemetry canary and release checks).
 
 ## Writing Tests
 

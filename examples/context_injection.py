@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import types
 
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 
 def _make_fake_context(
@@ -23,15 +23,14 @@ def _make_fake_context(
 
 
 def main() -> None:
-    """Show how inject_context adds invocation metadata to every log line."""
+    """Show how logging_context adds invocation metadata to every log line."""
     setup_logging(level=logging.DEBUG)
     logger = get_logger(__name__)
 
     context = _make_fake_context()
-    inject_context(context)
-
-    logger.info("Handling request")
-    logger.warning("Slow upstream call")
+    with logging_context(context):  # restores the previous context on exit
+        logger.info("Handling request")
+        logger.warning("Slow upstream call")
 
 
 if __name__ == "__main__":
