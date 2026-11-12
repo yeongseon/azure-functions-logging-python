@@ -34,6 +34,7 @@ Key features:
 - `attach_secure_redaction(handler) -> None` — Protect a late handler before registration, after enrichment/flatten filters. Idempotent; also protects IsolatedHandler targets. No automatic future-handler interception.
 - `IsolatedHandler(target)` — opt-in wrapper that clones each `LogRecord` before wrapper filters run, keeping mutating transformations local to one output; register the wrapper instead of `target`
 - `SamplingFilter(rate=100, window=1.0, name="", per_logger=False)` — Filter for log sampling/rate-limiting noisy loggers. Set `per_logger=True` for independent buckets per logger name.
+- `bind_context(**fields)` — Context manager that binds request-scoped fields for plain `logging.Logger` records (nested, restored on exit, per-task isolated; renames reserved keys to `extra_<key>`)
 - `logging_context(context)` — **Recommended** context manager: injects on enter, always restores on exit
 - `inject_context(context)` → `ContextTokens` — Set contextvars; returns tokens for paired restore
 - `restore_context(tokens)` — Restore previous contextvars from tokens (paired with `inject_context`)

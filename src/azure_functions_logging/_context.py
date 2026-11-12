@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from contextlib import contextmanager
 import contextvars
 import functools
 import logging
 import threading
+from types import MappingProxyType
 from typing import Any, NamedTuple, ParamSpec, TypeVar
 
 from ._constants import _CONTEXT_FIELD_NAMES
 from ._host_instance import get_host_instance_id
+from ._logger import _sanitize_extra
 
 # Type alias for the token mapping returned by inject_context()
 ContextTokens = dict[contextvars.ContextVar[Any], contextvars.Token[Any]]
@@ -39,6 +41,25 @@ span_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("span_i
 cold_start_var: contextvars.ContextVar[bool | None] = contextvars.ContextVar(
     "cold_start", default=None
 )
+
+# Request-scoped fields added by ``bind_context``. The mapping is immutable and
+# replaced (never mutated) on bind, so a token-restore on exit is exact and
+# concurrent tasks/threads never see each other's bindings.
+_EMPTY_BOUND: Mapping[str, Any] = MappingProxyType({})
+bound_context_var: contextvars.ContextVar[Mapping[str, Any]] = contextvars.ContextVar(
+    "bound_context", default=_EMPTY_BOUND
+)
+
+
+def _apply_bound_context(record: logging.LogRecord) -> None:
+    """Copy ``bind_context`` fields onto *record* without overriding existing keys."""
+    bound = bound_context_var.get()
+    if bound:
+        record_dict = record.__dict__
+        for key, value in bound.items():
+            if key not in record_dict:  # explicit ``extra`` / FunctionLogger.bind() wins
+                record_dict[key] = value
+
 
 # Cold start detection — lock ensures exactly one concurrent first invocation
 # sees cold_start=True even when multiple threads call inject_context() simultaneously.
@@ -150,6 +171,7 @@ class ContextFilter(logging.Filter):
         record.host_instance_id = get_host_instance_id()
         for field_name, var in self._extra_context_vars.items():
             setattr(record, field_name, _get_extra_context_value(var))
+        _apply_bound_context(record)
         return True
 
 
@@ -275,6 +297,7 @@ def reset_context() -> None:
     trace_id_var.set(None)
     span_id_var.set(None)
     cold_start_var.set(None)
+    bound_context_var.set(_EMPTY_BOUND)
 
 
 def restore_context(tokens: ContextTokens) -> None:
@@ -303,6 +326,7 @@ _PROPAGATED_CONTEXT_VARS: tuple[contextvars.ContextVar[Any], ...] = (
     trace_id_var,
     span_id_var,
     cold_start_var,
+    bound_context_var,
 )
 
 _MISSING = object()
@@ -579,6 +603,45 @@ def _read_trace_headers(context: Any) -> tuple[str | None, str | None]:
 
 
 @contextmanager
+def bind_context(**fields: Any) -> Iterator[None]:
+    """Bind request-scoped fields to every record emitted inside the ``with`` block.
+
+    Works with plain ``logging.Logger`` objects (no wrapper required)::
+
+        logger = logging.getLogger(__name__)
+        with bind_context(order_id="A-42", tenant="demo"):
+            logger.info("started")  # record carries order_id and tenant
+
+    * **Scoped and nested.** Inner bindings add to / override outer ones for the
+      block; the previous bindings are restored on exit, even when the body raises.
+    * **Isolated.** Bindings live in a :class:`contextvars.ContextVar`: parallel
+      asyncio tasks and concurrent invocations never see each other's fields. They
+      do **not** follow work handed to a new thread; wrap such callables with
+      :func:`propagate_context` (opt-in), which carries the bindings too.
+    * **Precedence.** Built-in invocation fields cannot be bound. A key that collides
+      with a reserved ``LogRecord`` attribute or a built-in context field is renamed
+      to ``extra_<key>`` (the same rule as :class:`FunctionLogger`) instead of being
+      dropped or raising ``KeyError``. Explicit stdlib ``extra=`` and
+      ``FunctionLogger.bind()`` values win over a bound value for the same key, and
+      ``setup_logging(extra_context_vars=...)`` names win over bound values.
+    * **Injection.** Fields are copied onto records by the package ``ContextFilter``
+      (default strategy, installed by ``setup_logging()``) or by the global record
+      factory (``use_record_factory=True``). A handler that carries neither (for
+      example a raw handler attached later, see the secure-redaction docs) does not
+      receive the fields.
+
+    Args:
+        **fields: Field names and values to attach.
+    """
+    sanitized = _sanitize_extra(dict(fields)) if fields else {}
+    token = bound_context_var.set(MappingProxyType({**bound_context_var.get(), **sanitized}))
+    try:
+        yield
+    finally:
+        bound_context_var.reset(token)
+
+
+@contextmanager
 def logging_context(context: Any, *, activate_trace_context: bool | None = None) -> Iterator[None]:
     """Context manager wrapping ``inject_context`` + ``restore_context``.
 
@@ -681,10 +744,15 @@ def _install_context_factory(
         record.span_id = span_id_var.get()
         record.cold_start = cold_start_var.get()
         record.host_instance_id = get_host_instance_id()
+        bound = bound_context_var.get()
+        record.__dict__.update(bound)
         for field_name, var in extra.items():
             setattr(record, field_name, _get_extra_context_value(var))
-        if extra:
-            record.__dict__ = _ContextRecordDict(record.__dict__, frozenset(extra))
+        # Names in ``extra`` (setup-time vars) and ``bound`` stay overridable so a later
+        # stdlib ``extra=`` on the same key replaces them instead of raising KeyError.
+        overridable = frozenset(extra) | frozenset(bound)
+        if overridable:
+            record.__dict__ = _ContextRecordDict(record.__dict__, overridable)
         return record
 
     setattr(context_record_factory, _CONTEXT_FACTORY_MARKER, True)
