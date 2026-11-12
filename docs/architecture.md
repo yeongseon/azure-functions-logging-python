@@ -28,24 +28,27 @@ Core modules and responsibilities:
 
 ## Public API Boundary
 
-Public symbols intentionally kept small:
+The public surface is exactly the names in `azure_functions_logging.__all__`. They are
+grouped below by role; the table between the markers is the checked inventory:
+`tests/test_public_api.py` fails if it differs from `__all__` (missing or extra names
+are listed in the failure). Names starting with an underscore, and everything in
+private `_*.py` modules, are internal.
 
-- `setup_logging`
-- `get_logger`
-- `FunctionLogger`
-- `JsonFormatter`
-- `inject_context`
-- `logging_context`
-- `reset_context`
-- `restore_context`
-- `ContextTokens`
-- `with_context`
-- `get_logging_metadata`
-- `RedactionFilter`
-- `SamplingFilter`
-- `AttributeFlattenFilter`
-- `__version__`
-Everything else remains internal to keep migration and evolution manageable. (`__version__` is exported for programmatic version checks.)
+Start with the first group. The others are advanced or integration APIs that
+remain public and supported.
+
+<!-- public-api:start -->
+| Group | Symbols |
+| --- | --- |
+| Primary invocation entry points | `with_context`, `logging_context` |
+| Setup, loggers and formatters | `setup_logging`, `get_logger`, `FunctionLogger`, `JsonFormatter` |
+| Context advanced APIs (low-level tokens and threads) | `inject_context`, `restore_context`, `reset_context`, `ContextTokens`, `get_logging_metadata`, `propagate_context`, `propagating_executor`, `PropagatingExecutor` |
+| Redaction and handler integrations | `RedactionFilter`, `SamplingFilter`, `AttributeFlattenFilter`, `IsolatedHandler`, `configure_secure_redaction`, `attach_secure_redaction`, `DEFAULT_REDACTION_PATTERNS` |
+| Helpers | `__version__` |
+<!-- public-api:end -->
+
+`__version__` is exported for programmatic version checks. See the
+[API reference](api.md) for signatures.
 
 ## Setup Pipeline
 
@@ -54,7 +57,7 @@ Everything else remains internal to keep migration and evolution manageable. (`_
 Behavior summary:
 
 1. Validate input (`format` must be `color` or `json`).
-2. Enforce idempotency (per `logger_name` — repeated calls are no-ops).
+2. Enforce idempotency. Local mode: per `logger_name` (a repeat call is a no-op). Azure/Core Tools mode: per `(logger_name, use_record_factory)` at the handler level, so a repeat call picks up handlers the host attached since the previous call without duplicating filters.
 3. Build `ContextFilter`.
 4. Detect runtime environment.
 5. Apply local or runtime-safe setup strategy.
@@ -74,7 +77,7 @@ In Functions runtime contexts, setup avoids replacing host handler graph.
 Instead, it:
 
 - Installs `ContextFilter` onto existing root handlers.
-- Installs filter on root logger for future handler coverage.
+- Installs the filter on the root logger itself, so records emitted directly on the root logger carry context. It does **not** cover records that propagate from named child loggers (only handler-level filters see those) and it does not reach handlers added later; a repeat `setup_logging()` call attaches the filter to those. See [Configuration](configuration.md).
 - Optionally sets `functions_formatter` on existing handlers when provided.
 - Preserves host-managed output pipeline.
 

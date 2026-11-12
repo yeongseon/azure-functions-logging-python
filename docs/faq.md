@@ -7,14 +7,14 @@ Answers to common production and day-to-day questions about `azure-functions-log
 Yes.
 
 The package works in any Python process because it builds on standard `logging`.
-Outside Azure Functions, `inject_context()` simply sets fields from whatever object you pass, and Azure-specific fields may remain `None` if not present.
+Outside Azure Functions, `logging_context()` simply sets fields from whatever object you pass, and Azure-specific fields may remain `None` if not present.
 
 ## How do I use it with an existing logging configuration?
 
 Call `setup_logging()` early, and avoid duplicate handler setup.
 
 If your app already configures handlers manually, keep one clear owner for handler creation.
-You can still use `get_logger()` and `inject_context()` while preserving your existing formatter strategy.
+You can still use `get_logger()` and `logging_context()` while preserving your existing formatter strategy.
 
 !!! warning
     Calling both `logging.basicConfig()` and custom root handler setup in the same process often causes duplicate output.
@@ -31,7 +31,7 @@ Decision rule:
 
 ## How does cold start detection work?
 
-Cold start is derived automatically on `inject_context()`:
+Cold start is derived automatically on the first invocation context entry (`logging_context()` / `@with_context`):
 
 - First invocation in a process: `cold_start=True`
 - Later invocations in same process: `cold_start=False`
@@ -102,9 +102,9 @@ Inspect your logger graph and keep one primary handler chain.
 
 ## Why are `invocation_id` or `trace_id` missing?
 
-Usually `inject_context(context)` was not called early enough, or the context object lacks expected fields.
+Usually the handler is not running inside `logging_context(context)` / `@with_context` early enough, or the context object lacks expected fields.
 
-Call `inject_context(context)` at the top of each function entrypoint before logging business events.
+Wrap each function entrypoint body in `with logging_context(context):` (or decorate it with `@with_context`) before logging business events.
 
 ## Can I pass extra structured fields with each log call?
 

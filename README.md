@@ -31,7 +31,7 @@ Azure Functions Python logging has specific failure modes that generic logging l
 |---------|-------------|--------------|
 | `host.json` log level conflict | Your `INFO` logs silently disappear in Azure | Detects and warns at startup |
 | No `invocation_id` in logs | Impossible to correlate logs to a specific execution | Auto-injects from `context` object |
-| Cold start invisible | No signal when a new worker instance starts | Detects automatically on first `inject_context()` |
+| Cold start invisible | No signal when a new worker instance starts | Detects automatically on the first invocation context entry |
 | Noisy third-party loggers | `azure-core`, `urllib3` flood your Application Insights | `SamplingFilter` / `RedactionFilter` |
 | Local vs cloud output mismatch | Colorized output breaks in production pipelines | Environment-aware formatter switching |
 | PII leaking into logs | Sensitive values accidentally logged as extra fields | `RedactionFilter` with key-based redaction |
@@ -103,7 +103,7 @@ Prefer per-call activation? Skip the process-wide default and pass it directly: 
 flowchart TD
     A["setup_logging()"] -->|Azure / Core Tools| B[Azure host handler]
     A -->|local dev| C[Console/Color handler]
-    D["inject_context() / with_context / logging_context"] --> E[contextvars]
+    D["with_context / logging_context"] --> E[contextvars]
     E --> F{injection mode}
     F -->|"default"| G[ContextFilter]
     F -->|"use_record_factory=True"| H[LogRecordFactory]
@@ -196,7 +196,7 @@ The following screenshots are from a real deployed Azure Functions app queried i
 
 ![App Insights Logs — before](docs/assets/portal-before.png)
 
-**After** — `azure-functions-logging` with `inject_context(context)` (`invocation_id`, `function_name`, `cold_start` populated):
+**After** — `azure-functions-logging` with `logging_context(context)` (`invocation_id`, `function_name`, `cold_start` populated):
 
 ![App Insights Logs — after](docs/assets/portal-after.png)
 
@@ -288,22 +288,7 @@ def hello(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
         return func.HttpResponse("OK")
 ```
 
-`logging_context` is the recommended primary pattern: it injects context on enter and **always** restores the previous context on exit (even when the handler raises), which prevents stale context from leaking into the next invocation on a reused worker.
-
-For lower-level control or when integrating with custom middleware, use token-based restore:
-
-```python
-from azure_functions_logging import inject_context, restore_context
-
-# Assumes `logger` and `context` are in scope (see Quick Start).
-tokens = inject_context(context)
-try:
-    logger.info("Request received")
-finally:
-    restore_context(tokens)
-```
-
-Use `reset_context()` only when you intentionally want to clear all context (e.g. test teardown).
+`logging_context` injects context on enter and **always** restores the previous context on exit (even when the handler raises), which prevents stale context from leaking into the next invocation on a reused worker. The decorator form, `@with_context`, does the same for the whole handler (see [Invocation context](#invocation-context)). These two are the invocation-context entry points; the token APIs are low-level and live in [Invocation context](#invocation-context) below.
 
 Start the Functions host locally (using the [e2e example app](examples/e2e_app)):
 
@@ -343,7 +328,19 @@ Every capability below has a full how-to on the [documentation site](https://yeo
 
 ### Invocation context
 
-`logging_context(context)` (see [Quick Start](#quick-start)) binds `invocation_id`, `function_name`, `trace_id`, and `cold_start` for the duration of a handler and always restores the previous context on exit. For lower-level control use `inject_context()` / `restore_context()`, or the `@with_context` decorator to inject implicitly (sync and async handlers).
+`logging_context(context)` (see [Quick Start](#quick-start)) binds `invocation_id`, `function_name`, `trace_id`, and `cold_start` for the duration of a handler and always restores the previous context on exit. Use the `@with_context` decorator to inject implicitly for the whole handler (sync and async handlers).
+
+**Low-level token API (advanced).** For middleware or framework integrations where a `with` block is not possible, `tokens = inject_context(context)` returns `ContextTokens`; you **must** pair it with `restore_context(tokens)` in a `finally`. A bare `inject_context(context)` without restore can leak context into the next invocation on a reused worker. `reset_context()` clears everything and is for test teardown. Thread/coroutine propagation (`propagate_context`, `propagating_executor`) is separate advanced behavior, not another entry point.
+
+```python
+from azure_functions_logging import inject_context, restore_context
+
+tokens = inject_context(context)
+try:
+    logger.info("Request received")
+finally:
+    restore_context(tokens)
+```
 
 For decorated generators, context is active only while generator code executes.
 Each yield restores the caller's prior context; each `next`, `send`, `throw`, or
@@ -395,7 +392,7 @@ Pass `setup_logging(functions_formatter=JsonFormatter())` to emit Application In
 
 ### host.json conflict detection
 
-At startup the library warns when your `host.json` — or `AzureFunctionsJobHost__logging__logLevel__...` app-setting overrides — suppresses levels your app emits. `host.json` is auto-discovered by walking up from the working directory (or `AzureWebJobsScriptRoot`); pass `host_json_path=` to override.
+At startup the library warns when your `host.json` — or `AzureFunctionsJobHost__logging__logLevel__...` app-setting overrides — suppresses levels your app emits (in `telemetryMode: OpenTelemetry` with direct Python worker export enabled, host filters do not govern worker logs, so it stays silent; see [behavior by telemetry mode](docs/configuration.md#behavior-by-telemetry-mode)). `host.json` is auto-discovered by walking up from the working directory (or `AzureWebJobsScriptRoot`); pass `host_json_path=` to override.
 
 → [Configuration: host.json conflict](https://yeongseon.dev/azure-functions-python/logging/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/#hostjson-conflict-warning-appears)
 
@@ -405,8 +402,9 @@ For an opt-in secure production preset, use
 `setup_logging(functions_formatter=JsonFormatter())` on Azure host handlers
 (or `format="json"` standalone), then call `configure_secure_redaction()`.
 It installs fail-closed key/pattern
-masking after enrichment on current handlers, including OTel handlers. Protect
-late handlers with `attach_secure_redaction(handler)` before registering them.
+masking after enrichment on current handlers, including OTel handlers. Handlers
+registered later are re-protected at the next invocation entry; protect handlers added
+mid-invocation with `attach_secure_redaction(handler)` before registering them.
 Defaults remain unchanged. See [secure production configuration](docs/configuration.md#secure-production-configuration)
 for exporter call order, limits and trade-offs: this is defence in depth, not a
 guarantee against arbitrary secrets in free text.
@@ -613,7 +611,7 @@ with logging_context(context):
 <details>
 <summary><strong>My <code>invocation_id</code> doesn't match Application Insights <code>operation_Id</code></strong></summary>
 
-These are **different identifiers with different owners.** `invocation_id` is this library's field — present on every record emitted within a bound invocation context (`logging_context()` / `inject_context()`), one per invocation, read from the host's gRPC contract. It can be absent outside that context — for example on records from background threads that did not call `propagate_context()`. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; that is expected, not a bug.
+These are **different identifiers with different owners.** `invocation_id` is this library's field — present on every record emitted within a bound invocation context (`logging_context()` / `@with_context`), one per invocation, read from the host's gRPC contract. It can be absent outside that context — for example on records from background threads that did not call `propagate_context()`. `operation_Id` is owned by the host/ingestion pipeline and the W3C trace context. A record can carry an `invocation_id` while `operation_Id` is absent or different; that is expected, not a bug.
 
 → [How correlation works: vs Application Insights](https://yeongseon.dev/azure-functions-python/logging/how-correlation-works/#5-relationship-to-application-insights-operation_id) · [OpenTelemetry trace correlation](#opentelemetry-trace-correlation)
 </details>
