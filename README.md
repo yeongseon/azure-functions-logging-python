@@ -460,7 +460,19 @@ breaks `%`-style message interpolation.
 
 ### Context binding
 
-`logger.bind(key=value)` returns a logger that attaches request-scoped metadata to every subsequent log without threading it through each call. Create bound loggers per-invocation; don't cache them at module level.
+With a plain stdlib logger, `bind_context(...)` attaches request-scoped fields to every record emitted inside the block (nested, restored on exit, isolated per asyncio task and per concurrent invocation):
+
+```python
+import logging
+from azure_functions_logging import bind_context
+
+logger = logging.getLogger(__name__)
+
+with bind_context(order_id="A-42", tenant="demo"):
+    logger.info("started")  # record carries order_id and tenant
+```
+
+Fields are injected by the package `ContextFilter` / record factory configured by `setup_logging()`; a raw handler without either is not guaranteed to receive them. Threads do not inherit bindings; wrap callables with `propagate_context()` (opt-in). `FunctionLogger` is an optional ergonomic wrapper: `logger.bind(key=value)` returns a logger that attaches request-scoped metadata to every subsequent log without threading it through each call. Create bound loggers per-invocation; don't cache them at module level.
 
 → [Usage: context binding](https://yeongseon.dev/azure-functions-python/logging/usage/#4-context-binding-with-functionloggerbind)
 

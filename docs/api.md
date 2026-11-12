@@ -345,6 +345,29 @@ metadata = get_logging_metadata(handler)
 # -> {"version": 1, "context_param": "context"} or None if not decorated
 ```
 
+## bind_context
+
+::: azure_functions_logging.bind_context
+
+### Usage Notes
+
+- Works with plain `logging.getLogger(__name__)` loggers; `FunctionLogger` is an optional wrapper.
+- Scoped, nestable, restored on exit (even on exceptions); isolated per asyncio task and per concurrent invocation.
+- Threads do not inherit bindings; wrap callables with [`propagate_context`](#propagate_context) (opt-in).
+- Precedence: explicit `extra=` and `FunctionLogger.bind()` > `setup_logging(extra_context_vars=...)` > `bind_context`. Reserved keys (`name`, `message`, built-in invocation fields, ...) are renamed `extra_<key>`, not dropped.
+- Injection happens through the package `ContextFilter` (default) or the global record factory. A raw handler that has neither (for example one attached later without `setup_logging()`/secure reconciliation) is not guaranteed to receive the fields.
+
+```python
+import logging
+from azure_functions_logging import bind_context, setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+with bind_context(order_id="A-42", tenant="demo"):
+    logger.info("started")  # record carries order_id and tenant
+```
+
 ## logging_context
 
 ::: azure_functions_logging.logging_context

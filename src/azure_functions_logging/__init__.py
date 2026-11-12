@@ -5,6 +5,7 @@ from __future__ import annotations
 from ._context import (
     ContextTokens,
     PropagatingExecutor,
+    bind_context,
     inject_context,
     logging_context,
     propagate_context,
@@ -24,6 +25,7 @@ from ._setup import setup_logging
 __all__ = [
     "__version__",
     "AttributeFlattenFilter",
+    "bind_context",
     "attach_secure_redaction",
     "configure_secure_redaction",
     "ContextTokens",
