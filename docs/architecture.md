@@ -42,7 +42,7 @@ remain public and supported.
 | --- | --- |
 | Primary invocation entry points | `with_context`, `logging_context` |
 | Setup, loggers and formatters | `setup_logging`, `get_logger`, `FunctionLogger`, `JsonFormatter` |
-| Context advanced APIs (low-level tokens and threads) | `inject_context`, `restore_context`, `reset_context`, `ContextTokens`, `get_logging_metadata`, `propagate_context`, `propagating_executor`, `PropagatingExecutor` |
+| Context advanced APIs (low-level tokens and threads) | `bind_context`, `inject_context`, `restore_context`, `reset_context`, `ContextTokens`, `get_logging_metadata`, `propagate_context`, `propagating_executor`, `PropagatingExecutor` |
 | Redaction and handler integrations | `RedactionFilter`, `SamplingFilter`, `AttributeFlattenFilter`, `IsolatedHandler`, `configure_secure_redaction`, `attach_secure_redaction`, `DEFAULT_REDACTION_PATTERNS` |
 | Helpers | `__version__` |
 <!-- public-api:end -->
