@@ -366,6 +366,7 @@ supported API surface and may change without notice).
 ```python
 from azure_functions_logging import (
     logging_context,        # primary: context manager
+    bind_context,           # request-scoped fields for plain stdlib loggers (nested, restored on exit)
     inject_context,         # low-level: returns ContextTokens
     restore_context,        # low-level: pair with inject_context()
     reset_context,          # test teardown only
