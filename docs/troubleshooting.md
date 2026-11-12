@@ -98,7 +98,7 @@ This warning is informational but usually points to real missing telemetry.
 
 ### Root Causes
 
-- `inject_context(context)` not called.
+- Neither `with logging_context(context):` nor `@with_context` is applied to the handler.
 - Context injection occurs after first log event.
 - Warm worker process already handled previous invocation.
 
@@ -187,7 +187,7 @@ Idempotency: first setup call wins.
 
 ### Root Causes
 
-- `inject_context(context)` omitted.
+- `logging_context(context)` / `@with_context` omitted.
 - Context object lacks expected attributes.
 - Logging occurs before context injection.
 
@@ -366,7 +366,7 @@ See [How correlation works: vs Application Insights](how-correlation-works.md#5-
 Run through this list during incidents:
 
 1. Confirm `setup_logging()` called exactly once.
-2. Confirm `inject_context(context)` called first in handler.
+2. Confirm the handler body runs inside `with logging_context(context):` (or is decorated with `@with_context`).
 3. Confirm output format matches sink expectations.
 4. Confirm `host.json` level policy allows required severity.
 5. Confirm no duplicate root handlers.

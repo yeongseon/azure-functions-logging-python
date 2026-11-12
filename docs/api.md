@@ -142,6 +142,8 @@ except RuntimeError:
 - Includes context fields when available on log records.
 - Pass `truncate_native_strings=True` to clip string values in `extra` at `max_string_length` characters (default 2048); truncated values are suffixed with `…`. Only strings in `extra` are affected (recursively through dicts/lists) — `message`, ints, floats, and booleans are left intact.
 
+- Pass `profile="otel"` for the opt-in OpenTelemetry-aligned schema (see [OpenTelemetry: semantic JSON profile](opentelemetry.md#optional-semantic-json-profile)). The default schema never changes.
+
 ### Example: Automatic Selection
 
 ```python
@@ -275,8 +277,9 @@ handler.addFilter(AttributeFlattenFilter())
 
 ### Usage Notes
 
-- Call at the start of every function invocation.
-- Sets invocation metadata in context variables.
+- **Low-level API.** Prefer [`logging_context`](#logging_context) or [`with_context`](#with_context); use this only where a `with` block is impossible (middleware, framework hooks).
+- Sets invocation metadata in context variables and returns `ContextTokens`.
+- You **must** pass the tokens to [`restore_context`](#restore_context) in a `finally`; a bare call can leak context into the next invocation on a reused worker.
 - Enables automatic cold start field in output.
 
 ### Example: Azure Function Entrypoint
@@ -437,7 +440,7 @@ def handler(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
 ```python
 import logging
 import azure.functions as func
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 setup_logging(level=logging.INFO, format="json")
 logger = get_logger(__name__)
@@ -447,11 +450,11 @@ app = func.FunctionApp()
 
 @app.route(route="orders")
 def orders(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    inject_context(context)
-    req_logger = logger.bind(route="/orders", method=req.method)
-    req_logger.info("orders request started")
-    req_logger.info("orders request completed")
-    return func.HttpResponse("ok")
+    with logging_context(context):
+        req_logger = logger.bind(route="/orders", method=req.method)
+        req_logger.info("orders request started")
+        req_logger.info("orders request completed")
+        return func.HttpResponse("ok")
 ```
 
 ## Cross-Reference

@@ -259,9 +259,21 @@ When `logger_name` is set:
 - Local standalone: named logger is configured.
 - Azure/Core Tools: filter installation still follows runtime-safe behavior.
 
+In Azure/Core Tools mode `logger_name` does **not** select a target: the
+`ContextFilter` always goes on the root logger's existing handlers, and `logger_name`
+only keys the per-call-signature bookkeeping `(logger_name, use_record_factory)`.
+
 Practical recommendation:
 
 - Prefer root configuration unless you have a clear logger isolation strategy.
+
+### `level`, `format` and `logger_name` by mode
+
+| Parameter | Standalone local | Azure / Core Tools |
+| --- | --- | --- |
+| `level` | Sets the target logger level. | Ignored (`host.json` owns levels); only used for the host-level conflict warning. |
+| `format` | `"color"` or `"json"` selects the formatter of the handler it creates. | Ignored; `format="json"` without `functions_formatter` emits a warning because it has no effect on host handlers. |
+| `logger_name` | Target logger (`None` = root); a named logger gets its own handler and `propagate=False`. | Not a target: root handlers are configured; it only keys setup bookkeeping. |
 
 ## Parameter: `use_record_factory`
 

@@ -41,6 +41,7 @@ nav:
   - Contributing:
       - Development: development.md
       - Testing: testing.md
+      - CI Inventory: ci-inventory.md
       - Guidelines: contributing.md
       - Release Process: release_process.md
       - Release History: release_history.md
