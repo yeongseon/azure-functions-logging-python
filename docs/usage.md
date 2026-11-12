@@ -146,6 +146,8 @@ Binding behavior:
 - Merge-friendly: chaining adds keys.
 - Predictable: no hidden global mutable context.
 
+For request-scoped fields that should end with a `with` block instead of travelling with a logger object, see [Nested Context Binding](examples/nested_context_binding.md#loggerbind-versus-scoped-context).
+
 ### Chaining Example
 
 ```python
