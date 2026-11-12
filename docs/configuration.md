@@ -104,6 +104,19 @@ logger tree) is also outside the automatic scan. Entry-time reconciliation is
 therefore not an unconditional fail-closed guarantee. The scan walks the logger
 registry once per invocation entry.
 
+### One sanitization engine
+
+Both the default `RedactionFilter` and the secure preset traverse values through a
+single bounded engine (`_secure_values.ValueMasker`) driven by a `RedactionProfile`
+(sensitive keys, patterns, `fail_closed`). The default profile keeps its documented
+best-effort behavior (errors preserve the original value, opaque objects pass
+through); the fail-closed profile adds the 4,096-node and 65,536-character bounds
+and masks anything it cannot convert. The depth limit (10) is shared; formatter,
+flattening and isolated-record-copy limits are separate, intentionally unrelated
+budgets. Output of both profiles is pinned by a recorded characterization suite
+(`tests/test_redaction_characterization.py`). Generic key/pattern scanning cannot
+mask every possible secret.
+
 ### Ordering and reconfiguration
 
 The secure preset places the package-owned filter last on each handler, after existing

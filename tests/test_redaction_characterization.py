@@ -264,3 +264,30 @@ _COMPUTED = compute() if GOLDEN.exists() else {}
 @pytest.mark.parametrize("cname", list(CASES))
 def test_redaction_output_matches_recorded_baseline(fname: str, cname: str) -> None:
     assert _COMPUTED[fname][cname] == _golden()[fname][cname]
+
+
+@pytest.mark.parametrize("fail_closed", [False, True])
+def test_every_profile_traverses_through_the_single_shared_engine(
+    monkeypatch: pytest.MonkeyPatch, fail_closed: bool
+) -> None:
+    from azure_functions_logging import _secure_values
+
+    calls: list[bool] = []
+    original = _secure_values.ValueMasker.mask
+
+    def spy(self: Any, *args: Any, **kwargs: Any) -> object:
+        calls.append(self.profile.fail_closed)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(_secure_values.ValueMasker, "mask", spy)
+    record = logging.makeLogRecord({"msg": "m", "payload": {"password": CANARY}})
+    RedactionFilter(fail_closed=fail_closed).filter(record)
+    assert calls
+    assert set(calls) == {fail_closed}
+    assert record.__dict__["payload"]["password"] == "***"
+
+
+def test_no_second_recursive_converter_remains_in_filters() -> None:
+    from azure_functions_logging import _filters
+
+    assert not hasattr(_filters, "_redact_value")
