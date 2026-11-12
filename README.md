@@ -395,7 +395,7 @@ Pass `setup_logging(functions_formatter=JsonFormatter())` to emit Application In
 
 ### host.json conflict detection
 
-At startup the library warns when your `host.json` — or `AzureFunctionsJobHost__logging__logLevel__...` app-setting overrides — suppresses levels your app emits. `host.json` is auto-discovered by walking up from the working directory (or `AzureWebJobsScriptRoot`); pass `host_json_path=` to override.
+At startup the library warns when your `host.json` — or `AzureFunctionsJobHost__logging__logLevel__...` app-setting overrides — suppresses levels your app emits (in `telemetryMode: OpenTelemetry` with direct Python worker export enabled, host filters do not govern worker logs, so it stays silent; see [behavior by telemetry mode](docs/configuration.md#behavior-by-telemetry-mode)). `host.json` is auto-discovered by walking up from the working directory (or `AzureWebJobsScriptRoot`); pass `host_json_path=` to override.
 
 → [Configuration: host.json conflict](https://yeongseon.dev/azure-functions-python/logging/configuration/#hostjson-level-conflict-warning) · [Troubleshooting](https://yeongseon.dev/azure-functions-python/logging/troubleshooting/#hostjson-conflict-warning-appears)
 
