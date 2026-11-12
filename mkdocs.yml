@@ -35,6 +35,7 @@ nav:
       - Cold Start Detection: examples/cold_start_detection.md
       - Host JSON Conflicts: examples/host_json_conflicts.md
       - Logger Name Targeting: examples/logger_name_targeting.md
+      - Repeated Setup: examples/repeated_setup.md
       - Third-Party Noise Control: examples/third_party_noise_control.md
       - With azure-functions-scaffold: examples/with_scaffold.md
   - API Reference: api.md
