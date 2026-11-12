@@ -36,7 +36,8 @@ This library addresses those gaps with a small API surface.
 - Local colorized output (`format="color"`) for fast visual scanning.
 - Structured NDJSON output (`format="json"`) for production ingestion.
 - `logging_context(context)` context manager that always restores prior context on exit (recommended).
-- `inject_context(context)` returns `ContextTokens` for paired `restore_context(tokens)` use in middleware.
+- `@with_context` decorator form of the same behavior.
+- Low-level (advanced): `inject_context(context)` returns `ContextTokens` for paired `restore_context(tokens)` use in middleware.
 - `setup_logging(use_record_factory=True)` opt-in global LogRecordFactory so context flows to every `LogRecord`.
 - `JsonFormatter` for host-managed handlers via `setup_logging(functions_formatter=JsonFormatter())`.
 - Automatic `cold_start` flag detection on first invocation per process.
@@ -95,7 +96,7 @@ Use these defaults unless you have a specific reason to diverge:
 - Production (standalone): `setup_logging(format="json")`
 - Production (Azure Functions / Core Tools): `setup_logging(functions_formatter=JsonFormatter())` — `format="json"` alone is ignored on host-managed handlers
 - Logger creation: `get_logger(__name__)`
-- Function entrypoint: `with logging_context(context):` wrapping the body, or `tokens = inject_context(context); try: ...; finally: restore_context(tokens)`
+- Function entrypoint: `with logging_context(context):` wrapping the body, or the `@with_context` decorator (low-level token form `inject_context`/`restore_context` is for middleware only)
 
 ## Documentation Map
 

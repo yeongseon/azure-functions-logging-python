@@ -7,9 +7,9 @@ every public API feature. Each script runs without Azure Functions installed.
 | --- | --- | --- |
 | Representative | `examples/basic_setup.py` | One-liner `setup_logging()` + `get_logger()` with all log levels. |
 | Focused | `examples/json_output.py` | JSON structured output via `setup_logging(format="json")`. |
-| Focused | `examples/context_injection.py` | `inject_context()` with a mock `func.Context` for invocation metadata. |
+| Focused | `examples/context_injection.py` | `logging_context()` with a mock `func.Context` for invocation metadata. |
 | Focused | `examples/context_binding.py` | `logger.bind()` for per-request extra fields. |
-| Focused | `examples/cold_start_detection.py` | Cold start toggle across consecutive `inject_context()` calls. |
+| Focused | `examples/cold_start_detection.py` | Cold start toggle across consecutive `logging_context()` entries. |
 
 Run any example directly:
 
