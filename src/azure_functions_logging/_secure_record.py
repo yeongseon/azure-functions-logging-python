@@ -1,4 +1,4 @@
-"""Opt-in fail-closed record sanitization before downstream formatting/export."""
+"""Record sanitization for every redaction profile, on top of the shared value engine."""
 
 from collections.abc import Mapping
 import json
@@ -7,9 +7,10 @@ import re
 import traceback
 
 from . import _secure_values
-from ._constants import _STDLIB_RECORD_KEYS
+from ._constants import _RESERVED_LOG_RECORD_KEYS, _STDLIB_RECORD_KEYS
 from ._redaction import DEFAULT_PATTERNS, MASK, is_sensitive
-from ._secure_values import ValueMasker
+from ._redaction import mask_patterns as _mask_patterns
+from ._secure_values import RedactionProfile, ValueMasker
 
 
 def _failed_message(record: logging.LogRecord) -> None:
@@ -83,10 +84,9 @@ def _exception(record: logging.LogRecord, patterns: tuple[re.Pattern[str], ...])
         record.__dict__["exc_info"] = None
 
 
-def sanitize_record(
-    record: logging.LogRecord, keys: frozenset[str], patterns: tuple[re.Pattern[str], ...]
-) -> bool:
-    masker = ValueMasker(keys, patterns)
+def _sanitize_closed(record: logging.LogRecord, profile: RedactionProfile) -> bool:
+    keys, patterns = profile.keys, profile.patterns
+    masker = ValueMasker(profile)
     try:
         for key in tuple(record.__dict__):
             if key in _STDLIB_RECORD_KEYS and key not in {
@@ -110,3 +110,81 @@ def sanitize_record(
         record.__dict__ = {k: v for k, v in record.__dict__.items() if k in _STDLIB_RECORD_KEYS}
         _failed_message(record)
     return True
+
+
+def _legacy_message(record: logging.LogRecord, profile: RedactionProfile) -> None:
+    """Mask secrets embedded in the rendered message; preserve the record on any error."""
+    try:
+        rendered = record.getMessage()
+        masked = rendered
+        try:
+            parsed = json.loads(rendered)
+            if isinstance(parsed, (dict, list)):
+                # Key-based only: patterns are applied to the whole rendered text below.
+                keys_only = ValueMasker(RedactionProfile(profile.keys))
+                masked = json.dumps(keys_only.mask(parsed), separators=(",", ":"))
+        except (json.JSONDecodeError, TypeError):
+            pass
+        if profile.patterns:
+            masked = _mask_patterns(masked, profile.patterns)
+        if masked != rendered:
+            record.msg = masked
+            record.args = ()
+    except Exception:  # nosec B110 -- message masking must never raise
+        pass
+
+
+def _legacy_exception(record: logging.LogRecord, profile: RedactionProfile) -> None:
+    """Render and mask exception text before a formatter can expose it."""
+    if record.exc_info is None and record.exc_text is None:
+        return
+    try:
+        patterns = (*DEFAULT_PATTERNS, *profile.patterns)
+        if record.exc_info is not None:
+            exc_type, exc_value, _ = record.exc_info
+            if exc_type is None:
+                return
+            rendered = "".join(traceback.format_exception(*record.exc_info))
+            message = "".join(traceback.format_exception_only(exc_type, exc_value)).strip()
+            record.exc_text = _mask_patterns(rendered, patterns)
+            setattr(record, "exception.type", exc_type.__name__)
+            setattr(record, "exception.message", _mask_patterns(message, patterns))
+            setattr(record, "exception.stacktrace", record.exc_text)
+        elif record.exc_text is not None:
+            record.exc_text = _mask_patterns(record.exc_text, patterns)
+        record.exc_info = None
+    except Exception:  # nosec B110 -- exception masking must never raise
+        pass
+
+
+def _sanitize_legacy(record: logging.LogRecord, profile: RedactionProfile) -> bool:
+    masker = ValueMasker(profile)
+    try:
+        for key in list(record.__dict__.keys()):
+            try:
+                if key in _RESERVED_LOG_RECORD_KEYS:
+                    continue
+                if is_sensitive(key, profile.keys):
+                    setattr(record, key, MASK)
+                    continue
+                value = record.__dict__[key]
+                if isinstance(value, (dict, list, tuple)):
+                    setattr(record, key, masker.mask(value))
+                elif profile.patterns and isinstance(value, str):
+                    setattr(record, key, _mask_patterns(value, profile.patterns))
+            except Exception:  # nosec B110 -- one broken field must not stop others
+                pass
+        _legacy_message(record, profile)
+        _legacy_exception(record, profile)
+    except Exception:  # nosec B110 -- filter must never raise
+        pass
+    return True
+
+
+def sanitize_record(record: logging.LogRecord, profile: RedactionProfile) -> bool:
+    """Sanitize *record* in place under *profile*; always returns True (never drops)."""
+    return (
+        _sanitize_closed(record, profile)
+        if profile.fail_closed
+        else _sanitize_legacy(record, profile)
+    )

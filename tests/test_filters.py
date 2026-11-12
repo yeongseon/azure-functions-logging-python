@@ -443,7 +443,7 @@ class TestRedactionFilterHardening:
         assert flt.filter(record) is True
 
     def test_deeply_nested_dict_is_handled_gracefully(self) -> None:
-        from azure_functions_logging._filters import _REDACT_MAX_DEPTH
+        from azure_functions_logging._secure_values import MAX_DEPTH as _REDACT_MAX_DEPTH
 
         flt = RedactionFilter()
         record = logging.LogRecord(
@@ -540,14 +540,17 @@ class TestRedactionFilterNameScoping:
 
 
 def test_redact_value_at_depth_limit_is_masked_not_returned() -> None:
-    """At _REDACT_MAX_DEPTH the function must return the mask string (fail-closed)
+    """At MAX_DEPTH the shared engine must return the mask string (fail-closed)
     rather than the original value, so sensitive data buried below the depth
     limit cannot leak through unredacted."""
-    from azure_functions_logging._filters import _REDACT_MAX_DEPTH, _redact_value
+    from azure_functions_logging._secure_values import (
+        MAX_DEPTH as _REDACT_MAX_DEPTH,
+    )
+    from azure_functions_logging._secure_values import RedactionProfile, ValueMasker
 
     sensitive: frozenset[str] = frozenset({"password"})
     payload = {"safe_key": "safe_value"}  # non-sensitive; would pass through without limit
-    result = _redact_value(payload, sensitive, _depth=_REDACT_MAX_DEPTH)
+    result = ValueMasker(RedactionProfile(sensitive)).mask(payload, depth=_REDACT_MAX_DEPTH)
     assert result == "***", f"Expected mask at depth limit but got: {result!r}"
 
 

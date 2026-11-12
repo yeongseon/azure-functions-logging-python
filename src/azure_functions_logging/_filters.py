@@ -10,24 +10,18 @@ Provides:
 from __future__ import annotations
 
 from collections.abc import Iterable
-import json
 import logging
 import re
 import threading
 import time
-import traceback
 from typing import Any
 
 from ._constants import _RESERVED_LOG_RECORD_KEYS
-from ._redaction import DEFAULT_PATTERNS as _DEFAULT_PATTERNS
-from ._redaction import MASK as _MASK
 from ._redaction import SENSITIVE_KEYS as _DEFAULT_SENSITIVE_KEYS
-from ._redaction import is_sensitive as _is_sensitive
-from ._redaction import mask_patterns as _mask_patterns
 from ._redaction import normalize_key as _normalize_key
 from ._secure_record import sanitize_record
+from ._secure_values import RedactionProfile
 
-_REDACT_MAX_DEPTH = 10  # default depth limit for recursive redaction
 _FLATTEN_MAX_DEPTH = 10  # default depth limit for recursive flattening
 
 
@@ -76,73 +70,6 @@ def _flatten_dict(
         elif new_key not in result:  # keep-first-wins on collision
             result[new_key] = item
     return result
-
-
-def _redact_value(
-    value: Any,
-    sensitive_keys: frozenset[str],
-    mask: str = _MASK,
-    patterns: tuple[re.Pattern[str], ...] = (),
-    *,
-    _seen: set[int] | None = None,
-    _depth: int = 0,
-) -> Any:
-    """Recursively redact sensitive keys from dicts/lists.
-
-    Guarded against:
-    - Cyclic references (via id-based seen set)
-    - Pathologically deep structures (via _depth / _REDACT_MAX_DEPTH);
-      over-limit values are masked (fail-closed) to prevent leaking sensitive
-      data buried in unexpectedly deep payloads
-    - All exceptions (returns value unmodified on any error)
-    """
-    try:
-        if _depth >= _REDACT_MAX_DEPTH:
-            return mask  # treat over-deep structures as potentially sensitive
-        if isinstance(value, str):
-            return _mask_patterns(value, patterns) if patterns else value
-        if isinstance(value, dict):
-            seen = _seen if _seen is not None else set()
-            obj_id = id(value)
-            if obj_id in seen:
-                return mask  # cyclic reference detected
-            seen = seen | {obj_id}  # copy to avoid cross-branch pollution
-            return {
-                key: (
-                    mask
-                    if isinstance(key, str) and _is_sensitive(key, sensitive_keys)
-                    else _redact_value(
-                        item,
-                        sensitive_keys,
-                        mask,
-                        patterns,
-                        _seen=seen,
-                        _depth=_depth + 1,
-                    )
-                )
-                for key, item in value.items()
-            }
-        if isinstance(value, (list, tuple)):
-            seen = _seen if _seen is not None else set()
-            obj_id = id(value)
-            if obj_id in seen:
-                return mask
-            seen = seen | {obj_id}
-            redacted = [
-                _redact_value(
-                    item,
-                    sensitive_keys,
-                    mask,
-                    patterns,
-                    _seen=seen,
-                    _depth=_depth + 1,
-                )
-                for item in value
-            ]
-            return tuple(redacted) if isinstance(value, tuple) else redacted
-        return value
-    except Exception:  # nosec B110 — filter must never raise
-        return value
 
 
 class SamplingFilter(logging.Filter):
@@ -317,7 +244,6 @@ class RedactionFilter(logging.Filter):
         fail_closed: bool = False,
     ) -> None:
         super().__init__(name)
-        self._fail_closed = fail_closed
         self._sensitive_keys: frozenset[str] = (
             frozenset(_normalize_key(k) for k in sensitive_keys)
             if sensitive_keys is not None
@@ -328,6 +254,7 @@ class RedactionFilter(logging.Filter):
             if patterns is not None
             else ()
         )
+        self._profile = RedactionProfile(self._sensitive_keys, self._patterns, fail_closed)
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Redact sensitive fields on the record. Always returns True."""
@@ -335,81 +262,7 @@ class RedactionFilter(logging.Filter):
         if not super().filter(record):
             return True  # bypass redaction for non-matching loggers
 
-        if self._fail_closed:
-            return sanitize_record(record, self._sensitive_keys, self._patterns)
-
-        try:
-            for key in list(record.__dict__.keys()):
-                try:
-                    if key in _RESERVED_LOG_RECORD_KEYS:
-                        continue
-                    if _is_sensitive(key, self._sensitive_keys):
-                        setattr(record, key, _MASK)
-                        continue
-                    value = record.__dict__[key]
-                    if isinstance(value, (dict, list, tuple)):
-                        setattr(
-                            record,
-                            key,
-                            _redact_value(value, self._sensitive_keys, patterns=self._patterns),
-                        )
-                    elif self._patterns and isinstance(value, str):
-                        setattr(record, key, _mask_patterns(value, self._patterns))
-                except Exception:  # nosec B110 — one broken field must not stop others
-                    pass
-            self._mask_message(record)
-            self._mask_exception(record)
-        except Exception:  # nosec B110 — filter must never raise
-            pass
-        return True
-
-    def _mask_message(self, record: logging.LogRecord) -> None:
-        """Mask secrets embedded in the rendered message via ``self._patterns``.
-
-        Renders the message (applying ``args``) once, masks it, and — only when
-        something changed — replaces ``record.msg`` with the masked text and
-        clears ``record.args`` so formatters do not re-interpolate. Never raises.
-        """
-        try:
-            rendered = record.getMessage()
-            masked = rendered
-            try:
-                parsed = json.loads(rendered)
-                if isinstance(parsed, (dict, list)):
-                    masked = json.dumps(
-                        _redact_value(parsed, self._sensitive_keys), separators=(",", ":")
-                    )
-            except (json.JSONDecodeError, TypeError):
-                pass
-            if self._patterns:
-                masked = _mask_patterns(masked, self._patterns)
-            if masked != rendered:
-                record.msg = masked
-                record.args = ()
-        except Exception:  # nosec B110 — message masking must never raise
-            pass
-
-    def _mask_exception(self, record: logging.LogRecord) -> None:
-        """Render and mask exception text before a formatter can expose it."""
-        if record.exc_info is None and record.exc_text is None:
-            return
-        try:
-            patterns = (*_DEFAULT_PATTERNS, *self._patterns)
-            if record.exc_info is not None:
-                exc_type, exc_value, _ = record.exc_info
-                if exc_type is None:
-                    return
-                rendered = "".join(traceback.format_exception(*record.exc_info))
-                message = "".join(traceback.format_exception_only(exc_type, exc_value)).strip()
-                record.exc_text = _mask_patterns(rendered, patterns)
-                setattr(record, "exception.type", exc_type.__name__)
-                setattr(record, "exception.message", _mask_patterns(message, patterns))
-                setattr(record, "exception.stacktrace", record.exc_text)
-            elif record.exc_text is not None:
-                record.exc_text = _mask_patterns(record.exc_text, patterns)
-            record.exc_info = None
-        except Exception:  # nosec B110 — exception masking must never raise
-            pass
+        return sanitize_record(record, self._profile)
 
 
 class AttributeFlattenFilter(logging.Filter):
