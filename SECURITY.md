@@ -87,7 +87,8 @@ reuse, SHA pins, OIDC publishing or Azure release certification.
 
 Production redaction is opt-in: configure exporters and logging first, then call
 `configure_secure_redaction()`. It applies bounded fail-closed key/pattern masking
-to current handlers; protect late handlers explicitly. Ordinary `setup_logging()`
+to current handlers and, at each invocation entry, to handlers registered since;
+handlers added mid-invocation need `attach_secure_redaction`. Ordinary `setup_logging()`
 does not disable it. The eight-keyword setup ceiling is unchanged. See
 [secure configuration](docs/configuration.md#secure-production-configuration) for
 ordering, exception behavior, Unicode and arbitrary-secret limitations. Synthetic

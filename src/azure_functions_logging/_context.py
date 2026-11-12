@@ -11,6 +11,7 @@ import logging
 import threading
 from types import MappingProxyType
 from typing import Any, NamedTuple, ParamSpec, TypeVar
+import warnings
 
 from ._constants import _CONTEXT_FIELD_NAMES
 from ._host_instance import get_host_instance_id
@@ -602,6 +603,32 @@ def _read_trace_headers(context: Any) -> tuple[str | None, str | None]:
         return None, None
 
 
+# Invocation-entry reconciliation hooks, run in priority order. Context-filter
+# reconciliation (priority 10) must precede secure redaction (priority 20) so the
+# secure filter stays the last package-controlled mutating filter on each handler.
+_entry_hooks: list[tuple[int, Callable[[], None]]] = []
+
+
+def _register_entry_hook(priority: int, hook: Callable[[], None]) -> None:
+    """Register *hook* to run at each ``logging_context`` entry (idempotent)."""
+    if all(existing is not hook for _, existing in _entry_hooks):
+        _entry_hooks.append((priority, hook))
+        _entry_hooks.sort(key=lambda item: item[0])
+
+
+def _run_entry_hooks() -> None:
+    """Reconcile late-registered handlers; never let a failure reach the application."""
+    for _, hook in tuple(_entry_hooks):
+        try:
+            hook()
+        except Exception as exc:  # Principle 3: context failures never break the app
+            warnings.warn(
+                f"azure-functions-logging handler reconciliation failed: {type(exc).__name__}",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+
+
 @contextmanager
 def bind_context(**fields: Any) -> Iterator[None]:
     """Bind request-scoped fields to every record emitted inside the ``with`` block.
@@ -670,6 +697,7 @@ def logging_context(context: Any, *, activate_trace_context: bool | None = None)
         if activate_trace_context is None
         else activate_trace_context
     )
+    _run_entry_hooks()
     tokens = inject_context(context)
     try:
         if should_activate:
