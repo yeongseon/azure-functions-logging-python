@@ -15,6 +15,7 @@ import weakref
 from ._context import (
     ContextFilter,
     _install_context_factory,
+    _register_entry_hook,
     _uninstall_context_factory,
     _validate_extra_context_vars,
     set_default_trace_context_activation,
@@ -56,6 +57,31 @@ def _remove_context_filters(logger: logging.Logger) -> None:
         for f in tuple(handler.filters):
             if type(f) is ContextFilter:
                 handler.removeFilter(f)
+
+
+def _reconcile_azure_handlers() -> None:
+    """Give handlers registered after ``setup_logging()`` the package ``ContextFilter``.
+
+    Runs at invocation entry. Only root handlers not already tracked in the weak
+    per-signature state are touched, so repeated entry never duplicates filters.
+    Formatters are never changed here (a third-party formatter is not overwritten);
+    the record-factory strategy attaches no filter at all.
+    """
+    if not _is_functions_environment():
+        return
+    with _configured_lock:
+        for context_filter, configured in tuple(_azure_state.values()):
+            if context_filter is None:
+                continue
+            for handler in tuple(logging.getLogger().handlers):
+                if handler in configured:
+                    continue
+                if context_filter not in handler.filters:
+                    handler.addFilter(context_filter)
+                configured.add(handler)
+
+
+_register_entry_hook(10, _reconcile_azure_handlers)
 
 
 def _is_functions_environment() -> bool:
@@ -142,6 +168,8 @@ def setup_logging(
             ``format="json"`` without ``functions_formatter`` emits a warning.
         logger_name: Optional logger name to configure. When None, configures
             the root logger (local dev) or installs filter on root handlers (Azure).
+            In Azure/Core Tools mode it is **not** a target: root handlers are
+            always the ones configured and the name only keys setup bookkeeping.
         functions_formatter: Optional custom formatter applied to all root
             handlers when running inside Azure/Core Tools. Useful for
             injecting a custom JSON formatter or third-party formatter

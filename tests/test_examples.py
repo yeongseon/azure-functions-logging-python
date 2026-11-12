@@ -104,12 +104,12 @@ class TestColdStartDetection:
         module = _load_example("cold_start_detection")
         module.main()
 
-    def test_cold_start_flips_after_first_inject(self) -> None:
+    def test_cold_start_flips_after_first_entry(self) -> None:
         module = _load_example("cold_start_detection")
         # Before any injection, cold_start should be True
         assert ctx_mod._cold_start is True
         module.main()
-        # After two inject_context calls, cold_start should be False
+        # After two logging_context entries, cold_start should be False
         assert ctx_mod._cold_start is False
 
 

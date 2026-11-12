@@ -81,10 +81,28 @@ logging.getLogger().addHandler(handler)
 ```
 
 The helper also protects an `IsolatedHandler`'s target, after target-local filters.
-For late host handlers you do not create, rerun `configure_secure_redaction()`
-once they exist. There is no monkeypatch that automatically protects future
-handlers: records emitted before attachment are outside this guarantee.
-`use_record_factory=True` covers late-handler **context**, not redaction.
+
+**Late handlers and the coverage boundary.** `configure_secure_redaction()` turns
+the profile on for the process lifetime. Every `logging_context(...)` /
+`@with_context` entry then reconciles handlers registered since the previous
+entry: root and named loggers (including `propagate=False`) and `IsolatedHandler`
+targets. Reconciliation attaches the package-owned secure filter at most once,
+keeps it **last** (after `ContextFilter`, flattening and your own filters) and
+never changes formatters, levels or handler ownership. Replacing a handler with
+another one (same handler count) is detected because the scan is identity-based,
+not count-based. Under Azure/Core Tools the package `ContextFilter` is likewise
+attached to late root handlers at entry unless `use_record_factory=True`, which
+attaches no filter and covers late-handler **context** only; redaction is still
+reconciled. `setup_logging()` never downgrades the secure profile; only
+`configure_secure_redaction(enabled=False)` does.
+
+The guarantee is bounded: a handler added **during** an invocation, after the
+entry scan, or a record emitted before the next entry, is outside it. Protect such
+handlers with `attach_secure_redaction(handler)` before registering them. A
+handler in a logging graph the stdlib does not expose (for example a private
+logger tree) is also outside the automatic scan. Entry-time reconciliation is
+therefore not an unconditional fail-closed guarantee. The scan walks the logger
+registry once per invocation entry.
 
 ### Ordering and reconfiguration
 
@@ -228,9 +246,21 @@ When `logger_name` is set:
 - Local standalone: named logger is configured.
 - Azure/Core Tools: filter installation still follows runtime-safe behavior.
 
+In Azure/Core Tools mode `logger_name` does **not** select a target: the
+`ContextFilter` always goes on the root logger's existing handlers, and `logger_name`
+only keys the per-call-signature bookkeeping `(logger_name, use_record_factory)`.
+
 Practical recommendation:
 
 - Prefer root configuration unless you have a clear logger isolation strategy.
+
+### `level`, `format` and `logger_name` by mode
+
+| Parameter | Standalone local | Azure / Core Tools |
+| --- | --- | --- |
+| `level` | Sets the target logger level. | Ignored (`host.json` owns levels); only used for the host-level conflict warning. |
+| `format` | `"color"` or `"json"` selects the formatter of the handler it creates. | Ignored; `format="json"` without `functions_formatter` emits a warning because it has no effect on host handlers. |
+| `logger_name` | Target logger (`None` = root); a named logger gets its own handler and `propagate=False`. | Not a target: root handlers are configured; it only keys setup bookkeeping. |
 
 ## Parameter: `use_record_factory`
 
@@ -387,6 +417,29 @@ overrides using the `AzureFunctionsJobHost__logging__logLevel__...` naming
 convention. Function-specific overrides such as
 `AzureFunctionsJobHost__logging__logLevel__Function__MyFunction=Warning` are
 reported as category `Function.MyFunction`.
+
+### Behavior by telemetry mode
+
+The check is telemetry-mode aware. Per Microsoft Learn
+([Use OpenTelemetry with Azure Functions](https://learn.microsoft.com/azure/azure-functions/opentelemetry-howto?pivots=programming-language-python)),
+`host.json` logging filters apply to **host-process** logs only; Python worker
+OpenTelemetry export is filtered by OpenTelemetry settings, not by `host.json`.
+With `"telemetryMode": "OpenTelemetry"`, the `logging.applicationInsights` section
+no longer applies.
+
+| `host.json` `telemetryMode` | `PYTHON_ENABLE_OPENTELEMETRY` / `PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY` | Level-conflict check |
+| --- | --- | --- |
+| absent or other (classic Application Insights) | any | Original behavior: `logging.logLevel` and `AzureFunctionsJobHost__logging__logLevel__...` are compared with your level. |
+| `OpenTelemetry` | unset or explicitly false (`false`/`0`/`no`/`off`) | Host exports forwarded worker logs, so `logging.logLevel` **and** `logging.OpenTelemetry.logLevel` are compared (the provider section overrides per category). |
+| `OpenTelemetry` | enabled | Silent: the worker streams logs directly, so host `logLevel` entries cannot suppress them. Filter worker logs with OpenTelemetry/Python settings. |
+
+An installed OpenTelemetry handler is not proof of export: the related
+"handler attached but no export signal" warning (6b) treats an explicitly false
+`PYTHON_*` flag as *no* signal, while `OTEL_LOGS_EXPORTER`/`OTEL_TRACES_EXPORTER` and
+`APPLICATIONINSIGHTS_CONNECTION_STRING` still count. The library makes no network
+call and cannot prove ingestion: verify delivery in Application Insights or your
+OTLP collector. This behavior is validated offline only; end-to-end ingestion has
+not been verified.
 
 ## Color vs JSON Format Selection
 

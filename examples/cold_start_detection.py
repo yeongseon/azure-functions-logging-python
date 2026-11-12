@@ -1,11 +1,11 @@
-"""Detect cold start via inject_context."""
+"""Detect cold start via logging_context."""
 
 from __future__ import annotations
 
 import logging
 import types
 
-from azure_functions_logging import get_logger, inject_context, setup_logging
+from azure_functions_logging import get_logger, logging_context, setup_logging
 
 
 def _make_fake_context(
@@ -28,13 +28,13 @@ def main() -> None:
 
     # First invocation - cold start
     ctx1 = _make_fake_context(invocation_id="inv-001")
-    inject_context(ctx1)
-    logger.info("First invocation (should show cold_start=true)")
+    with logging_context(ctx1):
+        logger.info("First invocation (should show cold_start=true)")
 
     # Second invocation - warm
     ctx2 = _make_fake_context(invocation_id="inv-002")
-    inject_context(ctx2)
-    logger.info("Second invocation (should show cold_start=false)")
+    with logging_context(ctx2):
+        logger.info("Second invocation (should show cold_start=false)")
 
 
 if __name__ == "__main__":
