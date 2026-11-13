@@ -115,10 +115,30 @@ Development dependencies (not installed at runtime):
 
 ### For users of this library
 
-- **Log sanitization**: Do not log sensitive data (passwords, API keys, tokens) directly. The library does not filter or redact log content.
+- **Log sanitization**: Do not log sensitive data (passwords, API keys, tokens) directly. The library does not filter or redact log content. Redaction is opt-in (see below); by default nothing is masked.
 - **host.json**: Configure `host.json` log levels appropriately for your environment. The library warns about conflicts but cannot override Azure's host-level configuration.
 - **Version pinning**: Pin the package version in your `requirements.txt` or `pyproject.toml` to avoid unexpected behavior from new releases.
 - **Context data**: Be aware that `inject_context()` fields (invocation_id, function_name, trace_id, span_id) plus the separately-resolved host_instance_id are included in log output. Configure log sinks and retention policies accordingly.
+
+### Try opt-in secure logging locally
+
+[`examples/secure_logging.py`](https://github.com/yeongseon/azure-functions-logging-python/blob/main/examples/secure_logging.py)
+is a standalone, offline script that enables `configure_secure_redaction()` after
+`setup_logging()` and logs obviously fake values (`canary-*`). It shows that values of
+sensitive keys (`token`, `password`, `api_key`) and an `api_key=...` pattern inside a
+message are masked, while deliberately non-sensitive fields (`order_id`, `tenant_id`,
+`status`) stay visible. It does not claim blanket detection: a secret in free text with
+no recognizable key or shape is not masked, and ordinary `setup_logging()` without the
+opt-in leaves values unchanged. Run it and its tests with:
+
+```bash
+pip install -e .
+python examples/secure_logging.py
+python -m pytest tests/test_examples.py -k TestSecureLogging --no-cov
+```
+
+See [secure production configuration](configuration.md#secure-production-configuration)
+for ordering and limits.
 
 ### For contributors
 
