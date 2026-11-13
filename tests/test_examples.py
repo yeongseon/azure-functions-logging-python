@@ -58,6 +58,7 @@ def _reset_logging_state() -> None:
         "example_context_injection",
         "example_context_binding",
         "example_cold_start_detection",
+        "examples.nested_context_binding",
         "examples.generator_context",
         "examples.secure_logging",
         "example_request_correlation",
@@ -126,6 +127,76 @@ class TestColdStartDetection:
         module.main()
         # After two logging_context entries, cold_start should be False
         assert ctx_mod._cold_start is False
+
+
+class TestNestedContextBinding:
+    """Request-local cleanup assertions for examples/nested_context_binding.py."""
+
+    def _capture(self, module: Any) -> io.StringIO:
+        stream = io.StringIO()
+        target = logging.getLogger(module.LOGGER_NAME)
+        target.handlers.clear()
+        setup_logging(format="json", level=logging.INFO, logger_name=module.LOGGER_NAME)
+        assert len(target.handlers) == 1
+        target.handlers[0].setStream(stream)  # type: ignore[attr-defined]
+        return stream
+
+    @staticmethod
+    def _rows(stream: io.StringIO) -> list[tuple[str, str | None, dict[str, Any]]]:
+        records = [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [(r["message"], r["invocation_id"], r["extra"]) for r in records]
+
+    def test_main_runs_without_error(self) -> None:
+        module = _load_example("nested_context_binding")
+        self._capture(module)
+        module.main()
+
+    def test_inner_scope_adds_and_overrides_then_restores_the_outer_values(self) -> None:
+        module = _load_example("nested_context_binding")
+        stream = self._capture(module)
+        module.handle_request("r-1", "tenant-a")
+        outer = {"request_id": "r-1", "tenant": "tenant-a", "stage": "request"}
+        assert self._rows(stream) == [
+            ("request started", "inv-r-1", outer),
+            ("item processed", "inv-r-1", {**outer, "stage": "item", "item_id": "item-1"}),
+            ("after inner scope", "inv-r-1", outer),
+            ("request finished", "inv-r-1", outer),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+        assert ctx_mod.bound_context_var.get() == {}
+
+    def test_values_do_not_carry_into_an_unrelated_sequential_request(self) -> None:
+        module = _load_example("nested_context_binding")
+        stream = self._capture(module)
+        module.handle_request("r-1", "tenant-a")
+        stream.truncate(0)
+        stream.seek(0)
+        module.handle_request("r-2", "tenant-b")
+        for _, invocation_id, extra in self._rows(stream):
+            assert invocation_id == "inv-r-2"
+            assert extra["request_id"] == "r-2" and extra["tenant"] == "tenant-b"
+        logging.getLogger(module.LOGGER_NAME).info("after both requests")
+        assert self._rows(stream)[-1] == ("after both requests", None, {})
+
+    def test_concurrent_tasks_keep_only_their_own_bindings(self) -> None:
+        module = _load_example("nested_context_binding")
+        stream = self._capture(module)
+        asyncio.run(module.concurrent_requests())
+        rows = self._rows(stream)
+        assert len(rows) == 4
+        for _, invocation_id, extra in rows:
+            assert invocation_id == f"inv-{extra['request_id']}"
+            assert extra["tenant"] == {"r-3": "tenant-c", "r-4": "tenant-d"}[extra["request_id"]]
+        assert ctx_mod.bound_context_var.get() == {}
+
+    def test_logger_bound_fields_follow_the_logger_scoped_fields_follow_the_scope(self) -> None:
+        module = _load_example("nested_context_binding")
+        stream = self._capture(module)
+        module.bind_versus_scope()
+        assert self._rows(stream) == [
+            ("inside the scope", None, {"source": "logger-bound", "source_scope": "scope-bound"}),
+            ("outside the scope", None, {"source": "logger-bound"}),
+        ]
 
 
 class TestNoiseFilter:
