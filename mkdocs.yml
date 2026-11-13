@@ -33,6 +33,7 @@ nav:
       - Collision-Safe Logging: examples/collision_safe_logging.md
       - Context Injection: examples/context_injection.md
       - Context Binding: examples/context_binding.md
+      - Nested Context Binding: examples/nested_context_binding.md
       - Generator Context: examples/generator_context.md
       - Request Correlation: examples/request_correlation.md
       - Cold Start Detection: examples/cold_start_detection.md
