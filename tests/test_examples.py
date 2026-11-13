@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 from azure_functions_logging import (
+    IsolatedHandler,
     JsonFormatter,
     configure_secure_redaction,
     get_logger,
@@ -125,6 +126,89 @@ class TestColdStartDetection:
         module.main()
         # After two logging_context entries, cold_start should be False
         assert ctx_mod._cold_start is False
+
+
+class TestNoiseFilter:
+    """Isolated-handler verification for examples/noise_filter.py."""
+
+    @pytest.fixture
+    def module(self) -> Any:
+        return _load_example("noise_filter")
+
+    @staticmethod
+    def _seen(stream: io.StringIO) -> list[tuple[str, str, str]]:
+        rows = [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [(r["level"], r["logger"], r["message"]) for r in rows]
+
+    def test_main_runs_without_error(self, module: Any) -> None:
+        module.main()
+
+    def test_noisy_info_is_sampled_while_warnings_errors_and_app_logs_pass(
+        self, module: Any
+    ) -> None:
+        stream = io.StringIO()
+        undo = module.install(stream)
+        try:
+            module.emit_traffic()
+        finally:
+            undo()
+        noisy, app = module.THIRD_PARTY, module.APP
+        assert self._seen(stream) == [
+            ("INFO", noisy, "connection pool event 0"),
+            ("INFO", noisy, "connection pool event 1"),
+            ("WARNING", noisy, "retrying request"),
+            ("ERROR", noisy, "request failed"),
+            ("INFO", app, "order received"),
+            ("INFO", app, "order validated"),
+            ("INFO", app, "order completed"),
+        ]
+
+    def test_other_handlers_and_unrelated_loggers_are_left_intact(self, module: Any) -> None:
+        root = logging.getLogger()
+        root_before = (list(root.handlers), list(root.filters), root.level)
+        scope = logging.getLogger(module.SCOPE)
+        full, sampled = io.StringIO(), io.StringIO()
+        sibling = logging.StreamHandler(full)
+        sibling.setFormatter(JsonFormatter())
+        scope.addHandler(sibling)
+        unrelated_out = io.StringIO()
+        unrelated = logging.getLogger("examples_noise_unrelated.lib")
+        unrelated_handler = logging.StreamHandler(unrelated_out)
+        unrelated.addHandler(unrelated_handler)
+        unrelated.setLevel(logging.INFO)
+        unrelated.propagate = False
+        undo = module.install(sampled)
+        try:
+            module.emit_traffic()
+            for index in range(5):
+                unrelated.info("unrelated %d", index)
+        finally:
+            undo()
+            scope.removeHandler(sibling)
+            unrelated.removeHandler(unrelated_handler)
+
+        assert len(self._seen(sampled)) == 7  # sampled on the isolated handler only
+        assert len(self._seen(full)) == 10  # the sibling handler saw every record
+        assert len(unrelated_out.getvalue().splitlines()) == 5
+        assert sibling.filters == [] and unrelated_handler.filters == []
+        assert (list(root.handlers), list(root.filters), root.level) == root_before
+
+    def test_undo_removes_the_handler_and_restores_the_scope(self, module: Any) -> None:
+        scope = logging.getLogger(module.SCOPE)
+        scope.setLevel(logging.WARNING)  # distinct from what install() sets
+        scope.propagate = True
+        before = (list(scope.handlers), scope.level, scope.propagate)
+        stream = io.StringIO()
+        undo = module.install(stream)
+        installed = [h for h in scope.handlers if h not in before[0]]
+        assert len(installed) == 1
+        isolated = installed[0]
+        assert isinstance(isolated, IsolatedHandler)
+        assert isolated.target.filters == []  # the wrapped target is not mutated
+        undo()
+        module.emit_traffic()
+        assert stream.getvalue() == ""
+        assert (list(scope.handlers), scope.level, scope.propagate) == before
 
 
 class TestCollisionSafeLogging:
