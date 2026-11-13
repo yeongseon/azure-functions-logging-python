@@ -1,6 +1,22 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.17.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.16.0...v0.17.0) (2026-11-13)
+
+
+### Features
+
+* **context:** add scoped bind_context for plain stdlib loggers ([#688](https://github.com/yeongseon/azure-functions-logging-python/issues/688)) ([e32d9d5](https://github.com/yeongseon/azure-functions-logging-python/commit/e32d9d51f605a5a80aa6aebbc805c70ca6b002db))
+* **otel:** add opt-in semantic JSON profile with severity and exception fields ([#689](https://github.com/yeongseon/azure-functions-logging-python/issues/689)) ([dd2a6a4](https://github.com/yeongseon/azure-functions-logging-python/commit/dd2a6a459cf013594a60527ad6d2f9dabaafd16e))
+* **otel:** add opt-in semantic JSON profile with severity number and structured exception fields ([dd2a6a4](https://github.com/yeongseon/azure-functions-logging-python/commit/dd2a6a459cf013594a60527ad6d2f9dabaafd16e))
+
+
+### Bug Fixes
+
+* **deps:** cap untested future azure-functions SDK majors ([#648](https://github.com/yeongseon/azure-functions-logging-python/issues/648)) ([3d4219a](https://github.com/yeongseon/azure-functions-logging-python/commit/3d4219a532a4fe7e2906485f8e62a3bcf73f995f))
+* **otel:** make host.json level diagnostics telemetry-mode aware ([#684](https://github.com/yeongseon/azure-functions-logging-python/issues/684)) ([de00de9](https://github.com/yeongseon/azure-functions-logging-python/commit/de00de92f34e0783426e65c608751ce7564e9195))
+* **security:** reconcile late-added handlers at invocation entry for secure redaction ([#682](https://github.com/yeongseon/azure-functions-logging-python/issues/682)) ([8e922ff](https://github.com/yeongseon/azure-functions-logging-python/commit/8e922ff4b173847ab6bc6678df6bf07b2196fa1e))
+
 ## [0.16.0](https://github.com/yeongseon/azure-functions-logging-python/compare/v0.15.3...v0.16.0) (2026-11-01)
 
 
