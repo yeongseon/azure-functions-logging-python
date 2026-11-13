@@ -19,7 +19,12 @@ from typing import Any
 
 import pytest
 
-from azure_functions_logging import configure_secure_redaction, get_logger, setup_logging
+from azure_functions_logging import (
+    JsonFormatter,
+    configure_secure_redaction,
+    get_logger,
+    setup_logging,
+)
 import azure_functions_logging._context as ctx_mod
 import azure_functions_logging._setup as setup_mod
 
@@ -120,6 +125,56 @@ class TestColdStartDetection:
         module.main()
         # After two logging_context entries, cold_start should be False
         assert ctx_mod._cold_start is False
+
+
+class TestCollisionSafeLogging:
+    """Metadata-preservation checks for examples/collision_safe_logging.py."""
+
+    def _emit(self) -> tuple[dict[str, Any], str, Any]:
+        module = _load_example("collision_safe_logging")
+        stream = io.StringIO()
+        module.emit(stream)
+        raw = stream.getvalue()
+        assert len(raw.splitlines()) == 1
+        return json.loads(raw), raw, module
+
+    def test_main_runs_without_error(self) -> None:
+        _load_example("collision_safe_logging").main()
+
+    def test_record_metadata_survives_every_collision(self) -> None:
+        record, _, module = self._emit()
+        assert record["logger"] == module.LOGGER_NAME
+        assert record["message"] == "order accepted"
+        assert record["level"] == "INFO"
+        assert record["exception"] is None  # LogRecord.exc_info was not overwritten
+
+    def test_reserved_extra_keys_are_renamed_not_dropped(self) -> None:
+        record, _, _ = self._emit()
+        assert record["extra"]["extra_name"] == "user-supplied-name"
+        assert record["extra"]["extra_message"] == "user-supplied-message"
+
+    def test_generated_flatten_key_colliding_with_metadata_is_dropped_not_renamed(self) -> None:
+        record, raw, _ = self._emit()
+        assert "user-supplied-detail" not in raw
+        assert not any(key.startswith("extra_exc") for key in record["extra"])
+        assert "exc_info" not in record["extra"]
+
+    def test_literal_extra_key_wins_over_generated_one_and_others_flatten(self) -> None:
+        record, _, _ = self._emit()
+        assert record["extra"]["a_b"] == 999
+        assert record["extra"]["order_id"] == 7
+        assert set(record["extra"]) == {"extra_name", "extra_message", "a_b", "order_id"}
+
+    def test_emit_leaves_the_example_logger_without_handlers(self) -> None:
+        _, _, module = self._emit()
+        # pytest may attach its own capture handlers to non-propagating loggers; only
+        # the handler the example installed must be gone.
+        leftover = [
+            h
+            for h in logging.getLogger(module.LOGGER_NAME).handlers
+            if isinstance(h.formatter, JsonFormatter)
+        ]
+        assert leftover == []
 
 
 class TestGeneratorContext:
