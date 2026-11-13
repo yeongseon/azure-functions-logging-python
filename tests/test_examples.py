@@ -144,6 +144,8 @@ class TestRepeatedSetup:
     @staticmethod
     def _json_handlers(logger: logging.Logger) -> list[logging.Handler]:
         return [h for h in logger.handlers if isinstance(h.formatter, JsonFormatter)]
+
+
 class TestNestedContextBinding:
     """Request-local cleanup assertions for examples/nested_context_binding.py."""
 
