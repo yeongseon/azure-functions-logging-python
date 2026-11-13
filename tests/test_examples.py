@@ -7,6 +7,7 @@ so ``setup_logging()`` idempotency and ``_cold_start`` toggling do not leak.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from importlib.util import module_from_spec, spec_from_file_location
 import io
@@ -57,6 +58,7 @@ def _reset_logging_state() -> None:
         "example_context_injection",
         "example_context_binding",
         "example_cold_start_detection",
+        "examples.generator_context",
         "examples.secure_logging",
         "example_request_correlation",
     ):
@@ -207,6 +209,125 @@ class TestNoiseFilter:
         module.emit_traffic()
         assert stream.getvalue() == ""
         assert (list(scope.handlers), scope.level, scope.propagate) == before
+class TestCollisionSafeLogging:
+    """Metadata-preservation checks for examples/collision_safe_logging.py."""
+
+    def _emit(self) -> tuple[dict[str, Any], str, Any]:
+        module = _load_example("collision_safe_logging")
+        stream = io.StringIO()
+        module.emit(stream)
+        raw = stream.getvalue()
+        assert len(raw.splitlines()) == 1
+        return json.loads(raw), raw, module
+
+    def test_main_runs_without_error(self) -> None:
+        _load_example("collision_safe_logging").main()
+
+    def test_record_metadata_survives_every_collision(self) -> None:
+        record, _, module = self._emit()
+        assert record["logger"] == module.LOGGER_NAME
+        assert record["message"] == "order accepted"
+        assert record["level"] == "INFO"
+        assert record["exception"] is None  # LogRecord.exc_info was not overwritten
+
+    def test_reserved_extra_keys_are_renamed_not_dropped(self) -> None:
+        record, _, _ = self._emit()
+        assert record["extra"]["extra_name"] == "user-supplied-name"
+        assert record["extra"]["extra_message"] == "user-supplied-message"
+
+    def test_generated_flatten_key_colliding_with_metadata_is_dropped_not_renamed(self) -> None:
+        record, raw, _ = self._emit()
+        assert "user-supplied-detail" not in raw
+        assert not any(key.startswith("extra_exc") for key in record["extra"])
+        assert "exc_info" not in record["extra"]
+
+    def test_literal_extra_key_wins_over_generated_one_and_others_flatten(self) -> None:
+        record, _, _ = self._emit()
+        assert record["extra"]["a_b"] == 999
+        assert record["extra"]["order_id"] == 7
+        assert set(record["extra"]) == {"extra_name", "extra_message", "a_b", "order_id"}
+
+    def test_emit_leaves_the_example_logger_without_handlers(self) -> None:
+        _, _, module = self._emit()
+        # pytest may attach its own capture handlers to non-propagating loggers; only
+        # the handler the example installed must be gone.
+        leftover = [
+            h
+            for h in logging.getLogger(module.LOGGER_NAME).handlers
+            if isinstance(h.formatter, JsonFormatter)
+        ]
+        assert leftover == []
+
+
+class TestGeneratorContext:
+    """Externally visible context assertions for examples/generator_context.py."""
+
+    def _capture(self, module: Any) -> io.StringIO:
+        stream = io.StringIO()
+        target = logging.getLogger(module.LOGGER_NAME)
+        target.handlers.clear()
+        setup_logging(format="json", level=logging.INFO, logger_name=module.LOGGER_NAME)
+        assert len(target.handlers) == 1
+        target.handlers[0].setStream(stream)  # type: ignore[attr-defined]
+        return stream
+
+    @staticmethod
+    def _seen(stream: io.StringIO) -> list[tuple[str | None, str]]:
+        rows = [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [(row["invocation_id"], row["message"]) for row in rows]
+
+    def test_main_runs_without_error(self) -> None:
+        module = _load_example("generator_context")
+        self._capture(module)
+        module.main()
+
+    def test_sync_generator_runs_in_its_context_and_restores_the_callers(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.sync_demo()
+        assert self._seen(stream) == [
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("outer-request", "after iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_context_is_cleaned_up_after_the_generator_raises(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.sync_demo(fail_after=2)
+        assert self._seen(stream)[-4:] == [
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer saw the failure"),
+            ("outer-request", "after iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_async_generator_has_the_same_contract(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        asyncio.run(module.async_demo())
+        assert self._seen(stream) == [
+            ("stream-invocation", "async producer yielding"),
+            ("outer-request", "async consumer received"),
+            ("stream-invocation", "async producer yielding"),
+            ("outer-request", "async consumer received"),
+            ("outer-request", "after async iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_plain_generator_is_not_bound_to_its_creation_scope(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.scope_restoration_counterpart()
+        assert self._seen(stream) == [(None, "plain generator body runs")]
 
 
 class TestSecureLogging:

@@ -102,6 +102,10 @@ with logging_context(context):
 !!! note "asyncio needs no helper"
     `contextvars` **are** propagated automatically to `asyncio` tasks (`asyncio.create_task()` copies the current context — see the [CPython `contextvars` docs](https://docs.python.org/3.12/library/contextvars.html)). `propagate_context()` is only for OS threads (`threading.Thread` / `ThreadPoolExecutor`); using it around coroutines or tasks is unnecessary.
 
+### Generators
+
+With `@with_context`, a generator's context is applied on each resume and the caller's is restored at every `yield`; see [Context Around Sync and Async Generators](examples/generator_context.md) for a runnable, offline demonstration and its limits.
+
 ## 5. Relationship to Application Insights `operation_Id`
 
 `invocation_id` is **this library's** field: a stable key you control, present on every record, ideal for `where invocation_id == "..."` queries. Application Insights has its own distributed-correlation model built on the W3C [Trace Context](https://www.w3.org/TR/2021/REC-trace-context-1-20211123/) recommendation, where telemetry is stitched together by `operation_Id` / `operation_ParentId` — see [Azure Monitor telemetry correlation](https://learn.microsoft.com/en-us/azure/azure-monitor/app/distributed-trace-data).
