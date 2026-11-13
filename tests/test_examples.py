@@ -12,6 +12,7 @@ import io
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any
 
 import pytest
@@ -26,7 +27,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 def _load_example(name: str) -> Any:
     """Import an example script as a module and return it."""
     module_path = EXAMPLES_DIR / f"{name}.py"
-    spec = spec_from_file_location(f"example_{name}", module_path)
+    spec = spec_from_file_location(f"example_{name.replace('/', '_')}", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Failed to load example from {module_path}")
     module = module_from_spec(spec)
@@ -209,6 +210,93 @@ class TestOtelApp:
         assert "activate_trace_context=True" in source
         assert "RedactionFilter()" in source
         assert ".addFilter(" in source
+
+    def test_app_runs_offline_with_in_memory_exporter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Run the real handler with a stubbed exporter: correlation and redaction hold.
+
+        ``azure.monitor.opentelemetry`` is replaced by an in-memory OTel pipeline, so
+        this proves the app's wiring order, trace activation and redaction, and
+        nothing about delivery to Azure Monitor.
+        """
+        pytest.importorskip("opentelemetry.sdk._logs")
+        import sys
+        import types
+
+        import azure.functions as func
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import InMemoryLogExporter, SimpleLogRecordProcessor
+
+        exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+        provider = LoggerProvider()
+        provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+        calls: list[str] = []
+        root = logging.getLogger()
+        original_level = root.level
+
+        def configure_azure_monitor(**_: Any) -> None:
+            calls.append("configure_azure_monitor")
+            root.addHandler(LoggingHandler(level=logging.INFO, logger_provider=provider))
+
+        stub = types.ModuleType("azure.monitor.opentelemetry")
+        stub.configure_azure_monitor = configure_azure_monitor  # type: ignore[attr-defined]
+        for name in ("azure.monitor", "azure.monitor.opentelemetry"):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+        monkeypatch.setitem(sys.modules, "azure.monitor", types.ModuleType("azure.monitor"))
+        monkeypatch.setitem(sys.modules, "azure.monitor.opentelemetry", stub)
+        try:
+            module = _load_example("otel_app/function_app")
+            handler_fn = module.process_order._function.get_user_function()
+            trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+            context = types.SimpleNamespace(
+                invocation_id="inv-otel-1",
+                function_name="process_order",
+                trace_context=types.SimpleNamespace(
+                    trace_parent=f"00-{trace_id}-00f067aa0ba902b7-01"
+                ),
+            )
+            request = func.HttpRequest(
+                method="GET",
+                url="/api/orders",
+                params={"order_id": "o-42"},
+                body=b"",
+            )
+            response = handler_fn(request, context)
+        finally:
+            for handler in list(root.handlers):
+                if isinstance(handler, LoggingHandler):
+                    root.removeHandler(handler)
+            root.setLevel(original_level)
+            provider.shutdown()
+
+        assert calls == ["configure_azure_monitor"]
+        assert response.status_code == 200
+        emitted = [r.log_record for r in exporter.get_finished_logs()]
+        assert [r.body for r in emitted][0] == "Request received"
+        assert len(emitted) == 4
+        for record in emitted:
+            assert format(record.trace_id, "032x") == trace_id
+            assert dict(record.attributes or {})["order_id"] == "o-42"
+        processing = emitted[2]
+        assert dict(processing.attributes or {})["password"] != "should-be-masked"
+
+    def test_readme_otel_walkthrough_matches_the_app(self) -> None:
+        """Every path and requirement the README names for otel_app must exist."""
+        readme = (EXAMPLES_DIR / "README.md").read_text(encoding="utf-8")
+        start = readme.index("## OpenTelemetry app")
+        section = readme[start:]
+        for rel in set(re.findall(r"examples/[A-Za-z0-9_./-]+\.(?:py|json|txt)\b", section)):
+            assert (EXAMPLES_DIR.parent / rel).is_file(), f"README names a missing file: {rel}"
+        command = re.search(r"^func start --script-root (\S+)$", section, re.M)
+        assert command is not None
+        assert (EXAMPLES_DIR.parent / command.group(1) / "function_app.py").is_file()
+        requirements = (EXAMPLES_DIR / "otel_app" / "requirements.txt").read_text(encoding="utf-8")
+        for package in ("azure-functions-logging[otel]", "azure-monitor-opentelemetry"):
+            assert package in section
+            assert package in requirements
+        assert "tests/test_examples.py -k TestOtelApp" in section
+        assert "does **not** prove" in section
 
     def test_host_json_enables_opentelemetry_mode(self) -> None:
         import json as _json
