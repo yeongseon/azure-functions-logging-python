@@ -32,6 +32,7 @@ nav:
       - JSON Output: examples/json_output.md
       - Context Injection: examples/context_injection.md
       - Context Binding: examples/context_binding.md
+      - Request Correlation: examples/request_correlation.md
       - Cold Start Detection: examples/cold_start_detection.md
       - Host JSON Conflicts: examples/host_json_conflicts.md
       - Logger Name Targeting: examples/logger_name_targeting.md
