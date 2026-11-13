@@ -235,6 +235,11 @@ root context yourself before starting it.
 A minimal Function App wiring `azure-monitor-opentelemetry` together with this
 package lives in [`examples/otel_app`](https://github.com/yeongseon/azure-functions-logging-python/tree/main/examples/otel_app).
 
+The [examples index](https://github.com/yeongseon/azure-functions-logging-python/blob/main/examples/README.md#opentelemetry-app-examplesotel_app)
+lists its optional dependencies and an offline check (`python -m pytest tests/test_examples.py -k TestOtelApp --no-cov`)
+that exercises the real handler with an in-memory exporter. That check does **not** prove
+export to Azure Monitor; only a run against a real Application Insights resource does.
+
 ## Verified in Azure Application Insights
 
 The [`examples/otel_app`](https://github.com/yeongseon/azure-functions-logging-python/tree/main/examples/otel_app)
