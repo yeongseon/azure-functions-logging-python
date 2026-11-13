@@ -131,6 +131,8 @@ class TestColdStartDetection:
 
 class TestNestedContextBinding:
     """Request-local cleanup assertions for examples/nested_context_binding.py."""
+
+
 class TestNoiseFilter:
     """Isolated-handler verification for examples/noise_filter.py."""
 
@@ -332,6 +334,7 @@ class TestGeneratorContext:
             ("inside the scope", None, {"source": "logger-bound", "source_scope": "scope-bound"}),
             ("outside the scope", None, {"source": "logger-bound"}),
         ]
+
     def _seen(stream: io.StringIO) -> list[tuple[str | None, str]]:
         rows = [json.loads(line) for line in stream.getvalue().splitlines()]
         return [(row["invocation_id"], row["message"]) for row in rows]
