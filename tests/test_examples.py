@@ -7,6 +7,7 @@ so ``setup_logging()`` idempotency and ``_cold_start`` toggling do not leak.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from importlib.util import module_from_spec, spec_from_file_location
 import io
@@ -51,6 +52,7 @@ def _reset_logging_state() -> None:
         "example_context_injection",
         "example_context_binding",
         "example_cold_start_detection",
+        "examples.generator_context",
         "examples.secure_logging",
         "example_request_correlation",
     ):
@@ -118,6 +120,77 @@ class TestColdStartDetection:
         module.main()
         # After two logging_context entries, cold_start should be False
         assert ctx_mod._cold_start is False
+
+
+class TestGeneratorContext:
+    """Externally visible context assertions for examples/generator_context.py."""
+
+    def _capture(self, module: Any) -> io.StringIO:
+        stream = io.StringIO()
+        target = logging.getLogger(module.LOGGER_NAME)
+        target.handlers.clear()
+        setup_logging(format="json", level=logging.INFO, logger_name=module.LOGGER_NAME)
+        assert len(target.handlers) == 1
+        target.handlers[0].setStream(stream)  # type: ignore[attr-defined]
+        return stream
+
+    @staticmethod
+    def _seen(stream: io.StringIO) -> list[tuple[str | None, str]]:
+        rows = [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [(row["invocation_id"], row["message"]) for row in rows]
+
+    def test_main_runs_without_error(self) -> None:
+        module = _load_example("generator_context")
+        self._capture(module)
+        module.main()
+
+    def test_sync_generator_runs_in_its_context_and_restores_the_callers(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.sync_demo()
+        assert self._seen(stream) == [
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("outer-request", "after iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_context_is_cleaned_up_after_the_generator_raises(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.sync_demo(fail_after=2)
+        assert self._seen(stream)[-4:] == [
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer saw the failure"),
+            ("outer-request", "after iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_async_generator_has_the_same_contract(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        asyncio.run(module.async_demo())
+        assert self._seen(stream) == [
+            ("stream-invocation", "async producer yielding"),
+            ("outer-request", "async consumer received"),
+            ("stream-invocation", "async producer yielding"),
+            ("outer-request", "async consumer received"),
+            ("outer-request", "after async iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_plain_generator_is_not_bound_to_its_creation_scope(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.scope_restoration_counterpart()
+        assert self._seen(stream) == [(None, "plain generator body runs")]
 
 
 class TestSecureLogging:
