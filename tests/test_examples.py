@@ -143,6 +143,8 @@ class TestRepeatedSetup:
     @staticmethod
     def _json_handlers(logger: logging.Logger) -> list[logging.Handler]:
         return [h for h in logger.handlers if isinstance(h.formatter, JsonFormatter)]
+
+
 class TestNoiseFilter:
     """Isolated-handler verification for examples/noise_filter.py."""
 
@@ -221,6 +223,7 @@ class TestNoiseFilter:
         module.teardown()
         module.configure()  # still registered: a no-op, not a reinstall
         assert self._json_handlers(logger) == []
+
     def test_noisy_info_is_sampled_while_warnings_errors_and_app_logs_pass(
         self, module: Any
     ) -> None:
