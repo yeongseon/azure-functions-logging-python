@@ -114,7 +114,7 @@ With the **corrected** `host.json` (`"default": "Information"`), both the `INFO`
 
 With a **conflicting** `host.json` (`"default": "Warning"`), the `INFO` line never reaches Application Insights — only the `WARNING` row is ingested, and the `INFO` row silently disappears from the result above.
 
-The library's startup conflict warning tells you *before* you go hunting for these missing rows.
+The library's startup conflict warning tells you *before* you go hunting for these missing rows. See [Troubleshooting: host.json conflict warning](../troubleshooting.md#hostjson-conflict-warning-appears) for the exact warning text and an offline reproduction.
 
 > If your pipeline parses the JSON into `customDimensions` instead, drop `parse_json(message)` and read `customDimensions.function_name` / `severityLevel` directly.
 
