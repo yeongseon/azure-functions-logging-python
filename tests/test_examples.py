@@ -19,7 +19,13 @@ from typing import Any
 
 import pytest
 
-from azure_functions_logging import configure_secure_redaction, get_logger, setup_logging
+from azure_functions_logging import (
+    IsolatedHandler,
+    JsonFormatter,
+    configure_secure_redaction,
+    get_logger,
+    setup_logging,
+)
 import azure_functions_logging._context as ctx_mod
 import azure_functions_logging._setup as setup_mod
 
@@ -53,6 +59,7 @@ def _reset_logging_state() -> None:
         "example_context_binding",
         "example_cold_start_detection",
         "examples.nested_context_binding",
+        "examples.generator_context",
         "examples.secure_logging",
         "example_request_correlation",
     ):
@@ -124,6 +131,141 @@ class TestColdStartDetection:
 
 class TestNestedContextBinding:
     """Request-local cleanup assertions for examples/nested_context_binding.py."""
+class TestNoiseFilter:
+    """Isolated-handler verification for examples/noise_filter.py."""
+
+    @pytest.fixture
+    def module(self) -> Any:
+        return _load_example("noise_filter")
+
+    @staticmethod
+    def _seen(stream: io.StringIO) -> list[tuple[str, str, str]]:
+        rows = [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [(r["level"], r["logger"], r["message"]) for r in rows]
+
+    def test_main_runs_without_error(self, module: Any) -> None:
+        module.main()
+
+    def test_noisy_info_is_sampled_while_warnings_errors_and_app_logs_pass(
+        self, module: Any
+    ) -> None:
+        stream = io.StringIO()
+        undo = module.install(stream)
+        try:
+            module.emit_traffic()
+        finally:
+            undo()
+        noisy, app = module.THIRD_PARTY, module.APP
+        assert self._seen(stream) == [
+            ("INFO", noisy, "connection pool event 0"),
+            ("INFO", noisy, "connection pool event 1"),
+            ("WARNING", noisy, "retrying request"),
+            ("ERROR", noisy, "request failed"),
+            ("INFO", app, "order received"),
+            ("INFO", app, "order validated"),
+            ("INFO", app, "order completed"),
+        ]
+
+    def test_other_handlers_and_unrelated_loggers_are_left_intact(self, module: Any) -> None:
+        root = logging.getLogger()
+        root_before = (list(root.handlers), list(root.filters), root.level)
+        scope = logging.getLogger(module.SCOPE)
+        full, sampled = io.StringIO(), io.StringIO()
+        sibling = logging.StreamHandler(full)
+        sibling.setFormatter(JsonFormatter())
+        scope.addHandler(sibling)
+        unrelated_out = io.StringIO()
+        unrelated = logging.getLogger("examples_noise_unrelated.lib")
+        unrelated_handler = logging.StreamHandler(unrelated_out)
+        unrelated.addHandler(unrelated_handler)
+        unrelated.setLevel(logging.INFO)
+        unrelated.propagate = False
+        undo = module.install(sampled)
+        try:
+            module.emit_traffic()
+            for index in range(5):
+                unrelated.info("unrelated %d", index)
+        finally:
+            undo()
+            scope.removeHandler(sibling)
+            unrelated.removeHandler(unrelated_handler)
+
+        assert len(self._seen(sampled)) == 7  # sampled on the isolated handler only
+        assert len(self._seen(full)) == 10  # the sibling handler saw every record
+        assert len(unrelated_out.getvalue().splitlines()) == 5
+        assert sibling.filters == [] and unrelated_handler.filters == []
+        assert (list(root.handlers), list(root.filters), root.level) == root_before
+
+    def test_undo_removes_the_handler_and_restores_the_scope(self, module: Any) -> None:
+        scope = logging.getLogger(module.SCOPE)
+        scope.setLevel(logging.WARNING)  # distinct from what install() sets
+        scope.propagate = True
+        before = (list(scope.handlers), scope.level, scope.propagate)
+        stream = io.StringIO()
+        undo = module.install(stream)
+        installed = [h for h in scope.handlers if h not in before[0]]
+        assert len(installed) == 1
+        isolated = installed[0]
+        assert isinstance(isolated, IsolatedHandler)
+        assert isolated.target.filters == []  # the wrapped target is not mutated
+        undo()
+        module.emit_traffic()
+        assert stream.getvalue() == ""
+        assert (list(scope.handlers), scope.level, scope.propagate) == before
+
+
+class TestCollisionSafeLogging:
+    """Metadata-preservation checks for examples/collision_safe_logging.py."""
+
+    def _emit(self) -> tuple[dict[str, Any], str, Any]:
+        module = _load_example("collision_safe_logging")
+        stream = io.StringIO()
+        module.emit(stream)
+        raw = stream.getvalue()
+        assert len(raw.splitlines()) == 1
+        return json.loads(raw), raw, module
+
+    def test_main_runs_without_error(self) -> None:
+        _load_example("collision_safe_logging").main()
+
+    def test_record_metadata_survives_every_collision(self) -> None:
+        record, _, module = self._emit()
+        assert record["logger"] == module.LOGGER_NAME
+        assert record["message"] == "order accepted"
+        assert record["level"] == "INFO"
+        assert record["exception"] is None  # LogRecord.exc_info was not overwritten
+
+    def test_reserved_extra_keys_are_renamed_not_dropped(self) -> None:
+        record, _, _ = self._emit()
+        assert record["extra"]["extra_name"] == "user-supplied-name"
+        assert record["extra"]["extra_message"] == "user-supplied-message"
+
+    def test_generated_flatten_key_colliding_with_metadata_is_dropped_not_renamed(self) -> None:
+        record, raw, _ = self._emit()
+        assert "user-supplied-detail" not in raw
+        assert not any(key.startswith("extra_exc") for key in record["extra"])
+        assert "exc_info" not in record["extra"]
+
+    def test_literal_extra_key_wins_over_generated_one_and_others_flatten(self) -> None:
+        record, _, _ = self._emit()
+        assert record["extra"]["a_b"] == 999
+        assert record["extra"]["order_id"] == 7
+        assert set(record["extra"]) == {"extra_name", "extra_message", "a_b", "order_id"}
+
+    def test_emit_leaves_the_example_logger_without_handlers(self) -> None:
+        _, _, module = self._emit()
+        # pytest may attach its own capture handlers to non-propagating loggers; only
+        # the handler the example installed must be gone.
+        leftover = [
+            h
+            for h in logging.getLogger(module.LOGGER_NAME).handlers
+            if isinstance(h.formatter, JsonFormatter)
+        ]
+        assert leftover == []
+
+
+class TestGeneratorContext:
+    """Externally visible context assertions for examples/generator_context.py."""
 
     def _capture(self, module: Any) -> io.StringIO:
         stream = io.StringIO()
@@ -190,6 +332,62 @@ class TestNestedContextBinding:
             ("inside the scope", None, {"source": "logger-bound", "source_scope": "scope-bound"}),
             ("outside the scope", None, {"source": "logger-bound"}),
         ]
+    def _seen(stream: io.StringIO) -> list[tuple[str | None, str]]:
+        rows = [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [(row["invocation_id"], row["message"]) for row in rows]
+
+    def test_main_runs_without_error(self) -> None:
+        module = _load_example("generator_context")
+        self._capture(module)
+        module.main()
+
+    def test_sync_generator_runs_in_its_context_and_restores_the_callers(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.sync_demo()
+        assert self._seen(stream) == [
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer received"),
+            ("outer-request", "after iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_context_is_cleaned_up_after_the_generator_raises(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.sync_demo(fail_after=2)
+        assert self._seen(stream)[-4:] == [
+            ("stream-invocation", "producer yielding"),
+            ("outer-request", "consumer saw the failure"),
+            ("outer-request", "after iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_async_generator_has_the_same_contract(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        asyncio.run(module.async_demo())
+        assert self._seen(stream) == [
+            ("stream-invocation", "async producer yielding"),
+            ("outer-request", "async consumer received"),
+            ("stream-invocation", "async producer yielding"),
+            ("outer-request", "async consumer received"),
+            ("outer-request", "after async iteration"),
+            (None, "outside any context"),
+        ]
+        assert ctx_mod.invocation_id_var.get() is None
+
+    def test_plain_generator_is_not_bound_to_its_creation_scope(self) -> None:
+        module = _load_example("generator_context")
+        stream = self._capture(module)
+        module.scope_restoration_counterpart()
+        assert self._seen(stream) == [(None, "plain generator body runs")]
 
 
 class TestSecureLogging:
