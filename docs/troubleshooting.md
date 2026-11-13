@@ -227,6 +227,7 @@ Idempotency: first setup call wins.
 
 - Ensure desired setup call executes first.
 - Consolidate startup configuration in one module.
+- See [Repeated Setup Without Duplicates](examples/repeated_setup.md) for a runnable demonstration of what a repeat call does and does not change.
 
 ## Invocation Fields Are Missing
 
