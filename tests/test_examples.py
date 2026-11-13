@@ -175,6 +175,8 @@ class TestCollisionSafeLogging:
             if isinstance(h.formatter, JsonFormatter)
         ]
         assert leftover == []
+
+
 class TestGeneratorContext:
     """Externally visible context assertions for examples/generator_context.py."""
 
