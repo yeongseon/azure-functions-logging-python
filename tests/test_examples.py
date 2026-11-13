@@ -12,11 +12,12 @@ import io
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any
 
 import pytest
 
-from azure_functions_logging import IsolatedHandler, JsonFormatter
+from azure_functions_logging import IsolatedHandler, JsonFormatter, setup_logging
 import azure_functions_logging._context as ctx_mod
 import azure_functions_logging._setup as setup_mod
 
@@ -26,7 +27,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 def _load_example(name: str) -> Any:
     """Import an example script as a module and return it."""
     module_path = EXAMPLES_DIR / f"{name}.py"
-    spec = spec_from_file_location(f"example_{name}", module_path)
+    spec = spec_from_file_location(f"example_{name.replace('/', '_')}", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Failed to load example from {module_path}")
     module = module_from_spec(spec)
@@ -49,6 +50,7 @@ def _reset_logging_state() -> None:
         "example_context_injection",
         "example_context_binding",
         "example_cold_start_detection",
+        "example_request_correlation",
     ):
         lgr = logging.getLogger(logger_name)
         lgr.handlers.clear()
@@ -199,6 +201,65 @@ class TestNoiseFilter:
         assert (list(scope.handlers), scope.level, scope.propagate) == before
 
 
+class TestRequestCorrelation:
+    """Offline checks for examples/request_correlation.py (synthetic canaries only)."""
+
+    CANARIES = ("canary-bearer-token-0000", "canary-api-key-0000")
+
+    def _run(self, module: Any, headers: dict[str, str]) -> tuple[list[dict[str, Any]], str]:
+        stream = io.StringIO()
+        # Dedicated logger: setup_logging attaches the context filter and JSON
+        # formatter here, and the root logger is left untouched.
+        target = logging.getLogger(module.__name__)
+        target.handlers.clear()
+        setup_logging(format="json", level=logging.INFO, logger_name=module.__name__)
+        assert len(target.handlers) == 1
+        target.handlers[0].setStream(stream)  # type: ignore[attr-defined]
+        status = module.handle_request(
+            module._make_fake_request(headers), module._make_fake_context()
+        )
+        assert status == 200
+        raw = stream.getvalue()
+        return [json.loads(line) for line in raw.splitlines()], raw
+
+    def test_main_runs_without_error(self) -> None:
+        _load_example("request_correlation").main()
+
+    def test_records_carry_invocation_and_request_correlation(self) -> None:
+        module = _load_example("request_correlation")
+        records, _ = self._run(module, {"x-correlation-id": "order-7f3a"})
+        assert [r["message"] for r in records] == ["request received", "request completed"]
+        for record in records:
+            assert record["invocation_id"] == "11111111-2222-3333-4444-555555555555"
+            assert record["function_name"] == "OrdersHttp"
+            assert record["trace_id"] == "abcdef1234567890abcdef1234567890"
+            assert record["extra"]["correlation_id"] == "order-7f3a"
+            assert record["extra"]["method"] == "POST"
+
+    def test_credentials_and_raw_headers_never_reach_the_output(self) -> None:
+        module = _load_example("request_correlation")
+        headers = {
+            "x-correlation-id": "order-7f3a",
+            "Authorization": f"Bearer {self.CANARIES[0]}",
+            "x-api-key": self.CANARIES[1],
+        }
+        records, raw = self._run(module, headers)
+        for canary in self.CANARIES:
+            assert canary not in raw
+        for record in records:
+            assert "headers" not in record["extra"]
+            assert "Authorization" not in raw
+
+    def test_unsafe_correlation_header_falls_back_to_invocation_id(self) -> None:
+        module = _load_example("request_correlation")
+        pasted = f"Bearer {self.CANARIES[0]}"
+        records, raw = self._run(module, {"x-correlation-id": pasted})
+        assert self.CANARIES[0] not in raw
+        assert {r["extra"]["correlation_id"] for r in records} == {
+            "11111111-2222-3333-4444-555555555555"
+        }
+
+
 class TestOtelApp:
     """Structural guard for examples/otel_app (a deployable Function App).
 
@@ -232,6 +293,93 @@ class TestOtelApp:
         assert "activate_trace_context=True" in source
         assert "RedactionFilter()" in source
         assert ".addFilter(" in source
+
+    def test_app_runs_offline_with_in_memory_exporter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Run the real handler with a stubbed exporter: correlation and redaction hold.
+
+        ``azure.monitor.opentelemetry`` is replaced by an in-memory OTel pipeline, so
+        this proves the app's wiring order, trace activation and redaction, and
+        nothing about delivery to Azure Monitor.
+        """
+        pytest.importorskip("opentelemetry.sdk._logs")
+        import sys
+        import types
+
+        import azure.functions as func
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import InMemoryLogExporter, SimpleLogRecordProcessor
+
+        exporter = InMemoryLogExporter()  # type: ignore[no-untyped-call]
+        provider = LoggerProvider()
+        provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+        calls: list[str] = []
+        root = logging.getLogger()
+        original_level = root.level
+
+        def configure_azure_monitor(**_: Any) -> None:
+            calls.append("configure_azure_monitor")
+            root.addHandler(LoggingHandler(level=logging.INFO, logger_provider=provider))
+
+        stub = types.ModuleType("azure.monitor.opentelemetry")
+        stub.configure_azure_monitor = configure_azure_monitor  # type: ignore[attr-defined]
+        for name in ("azure.monitor", "azure.monitor.opentelemetry"):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+        monkeypatch.setitem(sys.modules, "azure.monitor", types.ModuleType("azure.monitor"))
+        monkeypatch.setitem(sys.modules, "azure.monitor.opentelemetry", stub)
+        try:
+            module = _load_example("otel_app/function_app")
+            handler_fn = module.process_order._function.get_user_function()
+            trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+            context = types.SimpleNamespace(
+                invocation_id="inv-otel-1",
+                function_name="process_order",
+                trace_context=types.SimpleNamespace(
+                    trace_parent=f"00-{trace_id}-00f067aa0ba902b7-01"
+                ),
+            )
+            request = func.HttpRequest(
+                method="GET",
+                url="/api/orders",
+                params={"order_id": "o-42"},
+                body=b"",
+            )
+            response = handler_fn(request, context)
+        finally:
+            for handler in list(root.handlers):
+                if isinstance(handler, LoggingHandler):
+                    root.removeHandler(handler)
+            root.setLevel(original_level)
+            provider.shutdown()
+
+        assert calls == ["configure_azure_monitor"]
+        assert response.status_code == 200
+        emitted = [r.log_record for r in exporter.get_finished_logs()]
+        assert [r.body for r in emitted][0] == "Request received"
+        assert len(emitted) == 4
+        for record in emitted:
+            assert format(record.trace_id, "032x") == trace_id
+            assert dict(record.attributes or {})["order_id"] == "o-42"
+        processing = emitted[2]
+        assert dict(processing.attributes or {})["password"] != "should-be-masked"
+
+    def test_readme_otel_walkthrough_matches_the_app(self) -> None:
+        """Every path and requirement the README names for otel_app must exist."""
+        readme = (EXAMPLES_DIR / "README.md").read_text(encoding="utf-8")
+        start = readme.index("## OpenTelemetry app")
+        section = readme[start:]
+        for rel in set(re.findall(r"examples/[A-Za-z0-9_./-]+\.(?:py|json|txt)\b", section)):
+            assert (EXAMPLES_DIR.parent / rel).is_file(), f"README names a missing file: {rel}"
+        command = re.search(r"^func start --script-root (\S+)$", section, re.M)
+        assert command is not None
+        assert (EXAMPLES_DIR.parent / command.group(1) / "function_app.py").is_file()
+        requirements = (EXAMPLES_DIR / "otel_app" / "requirements.txt").read_text(encoding="utf-8")
+        for package in ("azure-functions-logging[otel]", "azure-monitor-opentelemetry"):
+            assert package in section
+            assert package in requirements
+        assert "tests/test_examples.py -k TestOtelApp" in section
+        assert "does **not** prove" in section
 
     def test_host_json_enables_opentelemetry_mode(self) -> None:
         import json as _json
