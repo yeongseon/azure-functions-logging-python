@@ -18,8 +18,13 @@ from typing import Any
 
 import pytest
 
-from azure_functions_logging import IsolatedHandler, JsonFormatter, setup_logging
-from azure_functions_logging import configure_secure_redaction, get_logger, setup_logging
+from azure_functions_logging import (
+    IsolatedHandler,
+    JsonFormatter,
+    configure_secure_redaction,
+    get_logger,
+    setup_logging,
+)
 import azure_functions_logging._context as ctx_mod
 import azure_functions_logging._setup as setup_mod
 
@@ -202,6 +207,8 @@ class TestNoiseFilter:
         module.emit_traffic()
         assert stream.getvalue() == ""
         assert (list(scope.handlers), scope.level, scope.propagate) == before
+
+
 class TestSecureLogging:
     """Offline checks for examples/secure_logging.py (synthetic canaries only)."""
 
