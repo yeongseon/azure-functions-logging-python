@@ -7,9 +7,12 @@ every public API feature. Each script runs without Azure Functions installed.
 | --- | --- | --- |
 | Representative | `examples/basic_setup.py` | One-liner `setup_logging()` + `get_logger()` with all log levels. |
 | Focused | `examples/json_output.py` | JSON structured output via `setup_logging(format="json")`. |
+| Focused | `examples/collision_safe_logging.py` | User fields that collide with `LogRecord` attributes: renamed, dropped or literal-wins, with metadata intact. |
 | Focused | `examples/context_injection.py` | `logging_context()` with a mock `func.Context` for invocation metadata. |
 | Focused | `examples/context_binding.py` | `logger.bind()` for per-request extra fields. |
 | Focused | `examples/repeated_setup.py` | Repeated `setup_logging()` in a warm worker: no duplicate handlers or output, root logger untouched, teardown for tests. |
+| Focused | `examples/noise_filter.py` | `SamplingFilter` scoped to a noisy library on an `IsolatedHandler`, with an undo for tests; root logger and other handlers untouched. |
+| Focused | `examples/generator_context.py` | When context is active around sync/async generators and what is restored at each `yield`. |
 | Focused | `examples/secure_logging.py` | Opt-in `configure_secure_redaction()` with fake secrets: masked fields vs deliberately visible ones (not blanket detection). |
 | Focused | `examples/request_correlation.py` | Request correlation (`correlation_id`, invocation fields) with allowlisted fields; credentials and raw headers are never logged. |
 | Focused | `examples/cold_start_detection.py` | Cold start toggle across consecutive `logging_context()` entries. |
