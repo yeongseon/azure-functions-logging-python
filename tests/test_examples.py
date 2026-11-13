@@ -191,6 +191,8 @@ class TestGeneratorContext:
         stream = self._capture(module)
         module.scope_restoration_counterpart()
         assert self._seen(stream) == [(None, "plain generator body runs")]
+
+
 class TestSecureLogging:
     """Offline checks for examples/secure_logging.py (synthetic canaries only)."""
 
