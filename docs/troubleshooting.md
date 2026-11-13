@@ -89,6 +89,55 @@ The library detected host policy that can suppress lower log levels than your co
 
 This warning is informational but usually points to real missing telemetry.
 
+### Worked example (offline)
+
+The setup below runs in Azure/Core Tools mode (`FUNCTIONS_WORKER_RUNTIME` set) with this
+`host.json`:
+
+<!-- host-json-fixture: conflicting.json -->
+```json
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Warning"
+    }
+  }
+}
+```
+
+`setup_logging(level=logging.INFO)` then emits this `UserWarning` once at startup:
+
+```text
+host configuration logLevel for default is set to 'Warning' which is more restrictive than the configured level 'INFO'. Logs below 'Warning' will be suppressed by the Azure Functions host.
+```
+
+Safe minimal fix: raise the host default to the level you need, or override it with an
+app setting (`AzureFunctionsJobHost__logging__logLevel__default=Information`) without
+touching the file. The corrected `host.json` is silent:
+
+<!-- host-json-fixture: corrected.json -->
+```json
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Information"
+    }
+  }
+}
+```
+
+Opening only one function (`"Function.OrdersHttp": "Information"` beside
+`"default": "Warning"`) does not silence this warning: the strict default is still
+more restrictive than your configured level, which is what the warning reports.
+
+The library only detects and warns. It does not edit `host.json`, does not override
+host-level filters and does not correct anything automatically; the Azure Functions
+host remains authoritative for what is emitted in Azure. The scenarios above are
+reproduced by `tests/test_host_json_remediation.py` using the synthetic fixtures in
+`tests/data/host_json/`, with no Azure resources or credentials.
+
 ## Cold Start Not Detected
 
 ### Symptoms
@@ -361,6 +410,118 @@ See [How correlation works: background threads](how-correlation-works.md#4-why-b
 
 See [How correlation works: vs Application Insights](how-correlation-works.md#5-relationship-to-application-insights-operation_id).
 
+## A Secret Still Appears in a Log (opt-in secure redaction)
+
+Secure redaction is **opt-in** and **bounded**. This section is a local diagnosis
+for "I called `configure_secure_redaction()` and a value is still visible". It does
+not reimplement the preset; the contract lives in
+[Configuration: secure production configuration](configuration.md#secure-production-configuration),
+the OpenTelemetry boundary in [OpenTelemetry correlation](opentelemetry.md), and the
+project policy in [SECURITY.md](https://github.com/yeongseon/azure-functions-logging-python/blob/main/SECURITY.md).
+
+### Check in this order
+
+1. **Call order.** `setup_logging()` (and your exporter setup) first, then
+   `configure_secure_redaction()`. The preset protects handlers that exist when it runs
+   and, at each `logging_context(...)` / `@with_context` entry, handlers registered
+   since the previous entry.
+2. **Handler ownership.** A handler you or a framework add *after* the preset ran, or
+   *during* an invocation, is not protected until the next invocation entry. Protect
+   it explicitly with `attach_secure_redaction(handler)` before
+   `logger.addHandler(handler)`. The preset never takes ownership of handlers,
+   formatters or levels.
+3. **Already-emitted records.** Redaction happens as a record is handled. Lines that
+   were already written (to stdout, a file or an exporter) before the preset was
+   active are not rewritten.
+4. **Sink and exporter paths.** Only records that flow through a protected Python
+   handler are masked. Output written with `print()`, by the Functions host, by
+   another process or by an exporter that bypasses `logging` is outside this library.
+   In OpenTelemetry mode the entire `extra` mapping becomes log attributes; see
+   [PII appears in Application Insights attributes](#pii-appears-in-application-insights-attributes-opentelemetry-mode)
+   and keep that handler protected as well.
+5. **Value shape.** Masking is key- and pattern-based (for example a `token` field or
+   `password=...` text). A secret placed in free text with no recognizable key or shape
+   is **not** detected.
+
+### Local reproduction (dummy values only)
+
+The script below is offline and needs neither Azure nor OpenTelemetry. The two
+`canary-*` strings are synthetic markers, not credentials. It is executed by
+`tests/test_troubleshooting_secure_recipe.py`, so the documented output stays true.
+
+<!-- secure-troubleshooting-repro:start -->
+```python
+import io
+import logging
+
+from azure_functions_logging import (
+    JsonFormatter,
+    attach_secure_redaction,
+    configure_secure_redaction,
+)
+
+CANARY_TOKEN = "canary-token-0000"  # synthetic: never use a real secret
+CANARY_FREE_TEXT = "canary-free-text-0000"  # synthetic
+
+
+def make_logger(name):
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    logger.propagate = False  # isolate from the root logger
+    logger.setLevel(logging.INFO)
+    return logger, handler, stream
+
+
+before, before_handler, before_out = make_logger("troubleshooting.before")
+before.addHandler(before_handler)  # exists when the preset runs
+
+configure_secure_redaction()
+
+after, after_handler, after_out = make_logger("troubleshooting.after")
+after.addHandler(after_handler)  # registered after the preset ran
+
+fixed, fixed_handler, fixed_out = make_logger("troubleshooting.fixed")
+attach_secure_redaction(fixed_handler)  # explicit protection first
+fixed.addHandler(fixed_handler)
+
+for logger in (before, after, fixed):
+    logger.info("login", extra={"token": CANARY_TOKEN})
+before.info("note: %s", CANARY_FREE_TEXT)
+
+print("handler present at preset time :", CANARY_TOKEN not in before_out.getvalue())
+print("handler added after the preset :", CANARY_TOKEN not in after_out.getvalue())
+print("attach_secure_redaction(handler):", CANARY_TOKEN not in fixed_out.getvalue())
+print("free text without a key/pattern :", CANARY_FREE_TEXT not in before_out.getvalue())
+```
+<!-- secure-troubleshooting-repro:end -->
+
+Expected output (`True` means the canary was **not** found in that handler's output):
+
+```text
+handler present at preset time : True
+handler added after the preset : False
+attach_secure_redaction(handler): True
+free text without a key/pattern : False
+```
+
+Run it from a checkout with `pip install -e .`, or reproduce the documented result with
+`python -m pytest tests/test_troubleshooting_secure_recipe.py`.
+
+### What this shows, and what it does not
+
+- **Masked:** structured fields whose key is sensitive (`token` above) and
+  recognizable secret shapes in messages, on handlers the preset covers.
+- **Not masked:** the handler added after the preset (row 2) until you call
+  `attach_secure_redaction(handler)` or the next invocation entry reconciles it; and
+  free text that has no sensitive key or known pattern (row 4).
+- **Not guaranteed:** removal of values from records already emitted, output that
+  bypasses Python `logging`, host-level or exporter-side telemetry, and arbitrary
+  secrets of unknown shape. This recipe is not a blanket no-PII guarantee; avoid
+  logging secrets in the first place.
+
 ## Fast Diagnostic Checklist
 
 Run through this list during incidents:
@@ -371,6 +532,7 @@ Run through this list during incidents:
 4. Confirm `host.json` level policy allows required severity.
 5. Confirm no duplicate root handlers.
 6. Confirm bound loggers are request-scoped.
+7. If a secret is still visible with secure redaction enabled, follow [the secure redaction checks](#a-secret-still-appears-in-a-log-opt-in-secure-redaction).
 
 ## Need More Help
 
