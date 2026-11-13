@@ -209,6 +209,8 @@ class TestNoiseFilter:
         module.emit_traffic()
         assert stream.getvalue() == ""
         assert (list(scope.handlers), scope.level, scope.propagate) == before
+
+
 class TestCollisionSafeLogging:
     """Metadata-preservation checks for examples/collision_safe_logging.py."""
 
