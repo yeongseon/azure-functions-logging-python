@@ -190,6 +190,8 @@ class TestNestedContextBinding:
             ("inside the scope", None, {"source": "logger-bound", "source_scope": "scope-bound"}),
             ("outside the scope", None, {"source": "logger-bound"}),
         ]
+
+
 class TestSecureLogging:
     """Offline checks for examples/secure_logging.py (synthetic canaries only)."""
 
