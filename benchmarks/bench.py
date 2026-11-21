@@ -28,8 +28,10 @@ from dataclasses import asdict, dataclass
 import gc
 import json
 import logging
+from pathlib import Path
 import platform
 import statistics
+import subprocess
 import sys
 import time
 
@@ -66,6 +68,24 @@ def _make_record() -> logging.LogRecord:
     return record
 
 
+class _NullSinkHandler(logging.Handler):
+    """Handler that formats each record and discards it (no I/O, no network)."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.format(record)
+
+
+class _MemorySinkHandler(logging.Handler):
+    """Handler that formats each record into a list: an in-memory sink, no I/O."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.payloads: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.payloads.append(self.format(record))
+
+
 # --------------------------------------------------------------------------- #
 # Timing harness
 # --------------------------------------------------------------------------- #
@@ -76,9 +96,13 @@ class Result:
     repeats: int
     median_ns_per_op: float
     min_ns_per_op: float
+    stdev_ns_per_op: float = 0.0
 
     def as_row(self) -> str:
-        return f"{self.name:<38} {self.median_ns_per_op:>12,.0f} ns {self.min_ns_per_op:>12,.0f} ns"
+        return (
+            f"{self.name:<50} {self.median_ns_per_op:>11,.0f} ns "
+            f"±{self.stdev_ns_per_op:>9,.0f} ns {self.min_ns_per_op:>11,.0f} ns"
+        )
 
 
 def _time_once(
@@ -131,6 +155,7 @@ def bench(
         repeats=repeats,
         median_ns_per_op=statistics.median(samples),
         min_ns_per_op=min(samples),
+        stdev_ns_per_op=statistics.stdev(samples) if len(samples) > 1 else 0.0,
     )
 
 
@@ -287,7 +312,112 @@ def run_benchmarks() -> list[Result]:
         )
     )
 
+    # ── End-to-end pipeline shapes (issue #714) ────────────────────────────
+    # One controlled sequence per shape through the whole chain a caller pays
+    # for: logger -> optional SamplingFilter -> JsonFormatter -> sink. Both
+    # sinks are local (null and in-memory), so no I/O enters the measurement.
+    # Redaction is deliberately excluded here: it is a safety path with its own
+    # rows above, not part of the sampling/structured-logging overhead question.
+    structured_extra = {
+        "order_id": "o-42",
+        "region": "koreacentral",
+        "user": {"id": "u-1", "email": "a@b.com"},
+    }
+    null_sink = _NullSinkHandler()
+
+    def _pipeline_logger(name: str, handler: logging.Handler, rate: int | None) -> logging.Logger:
+        # A distinct logger per shape keeps the rows independent: reusing one
+        # name would let a later configuration rewire an earlier row's handler.
+        logger = logging.getLogger(f"bench.pipeline.{name}")
+        logger.handlers.clear()
+        logger.filters.clear()
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        if rate is not None:
+            # One window long enough that only the first record can pass, so the
+            # sampled row measures the drop path rather than the emit path.
+            logger.addFilter(SamplingFilter(rate=rate, window=3_600.0))
+        handler.setFormatter(JsonFormatter())
+        logger.addHandler(handler)
+        return logger
+
+    simple_logger = _pipeline_logger("simple", null_sink, rate=None)
+
+    def _emit_simple() -> None:
+        simple_logger.info("processing order %s", "o-42")
+
+    results.append(
+        bench("pipeline: simple -> null sink", _emit_simple, iterations=5_000, repeats=7)
+    )
+
+    structured_logger = _pipeline_logger("structured", null_sink, rate=None)
+
+    def _emit_structured() -> None:
+        structured_logger.info("processing order %s", "o-42", extra=structured_extra)
+
+    results.append(
+        bench("pipeline: structured -> null sink", _emit_structured, iterations=5_000, repeats=7)
+    )
+
+    memory_sink = _MemorySinkHandler()
+    memory_logger = _pipeline_logger("memory", memory_sink, rate=None)
+
+    def _emit_memory() -> None:
+        memory_logger.info("processing order %s", "o-42", extra=structured_extra)
+
+    def _clear_memory_sink() -> None:
+        memory_sink.payloads.clear()
+
+    results.append(
+        bench(
+            "pipeline: structured -> memory sink",
+            _emit_memory,
+            iterations=5_000,
+            repeats=7,
+            before=_clear_memory_sink,
+        )
+    )
+
+    sampled_logger = _pipeline_logger("sampled", _NullSinkHandler(), rate=1)
+
+    def _emit_sampled() -> None:
+        sampled_logger.info("processing order %s", "o-42", extra=structured_extra)
+
+    _emit_sampled()  # spend the one allowed slot untimed, so every timed call is dropped
+    results.append(
+        bench(
+            "pipeline: structured, dropped by SamplingFilter",
+            _emit_sampled,
+            iterations=20_000,
+            repeats=7,
+        )
+    )
+
     return results
+
+
+def _package_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("azure-functions-logging")
+    except Exception:  # noqa: BLE001 - metadata is absent in a bare source checkout
+        return "unknown (not installed)"
+
+
+def _git_revision() -> str:
+    try:
+        completed = subprocess.run(  # nosec B603 B607 - fixed argv, no shell, no user input
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return completed.stdout.strip() or "unknown"
 
 
 def _environment() -> dict[str, str]:
@@ -296,6 +426,8 @@ def _environment() -> dict[str, str]:
         "implementation": platform.python_implementation(),
         "platform": platform.platform(),
         "processor": platform.processor() or "unknown",
+        "package": _package_version(),
+        "revision": _git_revision(),
     }
 
 
@@ -326,10 +458,11 @@ def main() -> int:
     print("azure-functions-logging — micro-benchmarks")
     print(
         f"  {env['implementation']} {env['python']} on {env['platform']}\n"
+        f"  package {env['package']} @ {env['revision']}\n"
         f"  (in-process CPU cost per op; excludes gRPC / host / ingestion)\n"
     )
-    print(f"{'benchmark':<38} {'median':>15} {'min':>15}")
-    print("-" * 70)
+    print(f"{'benchmark':<50} {'median':>14} {'variability':>13} {'min':>14}")
+    print("-" * 95)
     for r in results:
         print(r.as_row())
     return 0

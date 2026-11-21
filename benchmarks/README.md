@@ -15,6 +15,11 @@ python benchmarks/bench.py --include-import # also run the import-reload proxy
 No pytest, no third-party benchmark framework, no network, no Azure — the script
 uses only the stdlib plus this package's public API.
 
+Every row records its own `iterations` and `repeats`, the median across repeats,
+the standard deviation across repeats, and the fastest repeat. `--json` also
+carries the interpreter, platform, package version and git revision, so a run can
+be compared with another one instead of trusting a single wall-clock number.
+
 ## What these numbers are (and are not)
 
 These are **in-process CPU micro-benchmarks**. Each row is the median (across
@@ -32,6 +37,47 @@ context injection, JSON formatting, and the filters. They deliberately say
 Treat them as "is the per-record overhead in the microseconds or milliseconds
 range?" evidence — not as a platform performance model. Re-run on your own
 hardware for numbers that reflect your environment.
+
+## Pipeline shapes: simple, structured, sampled
+
+Four rows measure a whole record path — `logger.info()` → `makeRecord()` →
+optional `SamplingFilter` → `JsonFormatter` → sink — instead of one component at
+a time, over the three event shapes a Functions app actually emits:
+
+| Row | Shape | What it isolates |
+| --- | --- | --- |
+| `pipeline: simple -> null sink` | `logger.info("processing order %s", "o-42")`, no extras | The unavoidable per-record cost: record creation, formatting, handler dispatch |
+| `pipeline: structured -> null sink` | Same message plus `extra={order_id, region, user{id,email}}` | What carrying and serialising a structured payload adds |
+| `pipeline: structured -> memory sink` | Same record, formatted output appended to a list | A handler that actually keeps the formatted line — still no I/O |
+| `pipeline: structured, dropped by SamplingFilter` | Structured record on a logger with `SamplingFilter(rate=1, window=3600)` | What a **suppressed** record still costs — the saving sampling buys |
+
+Both sinks are local: a null sink that formats and discards, and an in-memory
+list sink. No socket, no file, no Azure. Redaction is deliberately **not** in the
+pipeline rows: it is a safety path with its own rows above and must not be tuned
+for speed.
+
+Contributor run — CPython 3.15.2, macOS 27.2.1 arm64, source checkout;
+5,000 iterations × 7 repeats per emitted row, 20,000 × 7 for the suppressed row:
+
+| Row | Median | Variability (stdev across repeats) |
+| --- | ---: | ---: |
+| `pipeline: simple -> null sink` | ~9.6 µs | ±0.4 µs |
+| `pipeline: structured -> null sink` | ~12.3 µs | ±0.9 µs |
+| `pipeline: structured -> memory sink` | ~11.8 µs | ±0.8 µs |
+| `pipeline: structured, dropped by SamplingFilter` | ~3.4 µs | ±0.03 µs |
+
+Two consecutive runs on the same idle machine moved these medians by up to
+~1 µs, so treat the ordering and the ratio as the signal, not the absolute
+microseconds.
+
+Reading it: on this machine one emitted structured record costs ~11 µs of worker
+CPU, while the same record costs ~3.4 µs when sampling drops it — sampling saves
+roughly two thirds of the per-record cost for chatty loggers, and the remaining
+third is the record creation that happens before any filter runs. Absolute values
+are machine-specific; the ratio is the stable part.
+
+These rows are **not** part of `make test` or CI: `bench.py` stays a standalone,
+opt-in script, so nothing here blocks a build.
 
 ## Reference run
 
@@ -65,4 +111,5 @@ reference and re-run the suite on a supported interpreter for anything load-bear
 - **`setup_logging`** is a one-time startup cost, not a per-request cost.
 
 To refresh this table, run `python benchmarks/bench.py` and update the numbers
-(and the environment line) to match your run.
+(and the environment line) to match your run. The table above predates the
+pipeline rows; a fresh run prints all twelve rows.
