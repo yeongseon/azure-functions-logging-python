@@ -109,26 +109,39 @@ def _time_once(
     fn: Callable[[], None],
     iterations: int,
     before: Callable[[], None] | None = None,
+    reset_batch: Callable[[], None] | None = None,
 ) -> float:
     """Return ns/op for a batch of ``iterations`` calls.
 
-    When ``before`` is provided it runs untimed before each call — used to reset
-    state (e.g. so ``setup_logging`` measures first-time cost, not its idempotent
-    fast-path) without charging the reset to the measurement.
-    """
-    if before is None:
-        start = time.perf_counter_ns()
-        for _ in range(iterations):
-            fn()
-        return (time.perf_counter_ns() - start) / iterations
+    The two reset hooks keep rows comparable by making the timing method
+    explicit:
 
-    total = 0
+    ``reset_batch`` runs untimed once before the batch. Use it for state that
+    only has to start clean (e.g. clearing a sink that collects every formatted
+    line). The batch keeps the single-timer path below, so the resulting number
+    carries the same harness overhead as a row with no hook at all.
+
+    ``before`` runs untimed before *each* call and therefore needs a per-call
+    timer. Only rows that must reset state between calls (the first-time
+    ``setup_logging`` measurement) should use it: its harness overhead is not
+    comparable with batched rows, so it must not be mixed into a row-to-row
+    comparison.
+    """
+    if before is not None:
+        total = 0
+        for _ in range(iterations):
+            before()
+            start = time.perf_counter_ns()
+            fn()
+            total += time.perf_counter_ns() - start
+        return total / iterations
+
+    if reset_batch is not None:
+        reset_batch()
+    start = time.perf_counter_ns()
     for _ in range(iterations):
-        before()
-        start = time.perf_counter_ns()
         fn()
-        total += time.perf_counter_ns() - start
-    return total / iterations
+    return (time.perf_counter_ns() - start) / iterations
 
 
 def bench(
@@ -138,14 +151,22 @@ def bench(
     iterations: int,
     repeats: int = 7,
     before: Callable[[], None] | None = None,
+    reset_batch: Callable[[], None] | None = None,
 ) -> Result:
-    if before is not None:
+    if before is not None and reset_batch is not None:
+        raise ValueError(
+            "before resets between calls and reset_batch between batches; "
+            "a row can only use one timing method"
+        )
+    if reset_batch is not None:
+        reset_batch()
+    elif before is not None:
         before()
     fn()  # warmup / populate caches
     gc_was_enabled = gc.isenabled()
     gc.disable()
     try:
-        samples = [_time_once(fn, iterations, before) for _ in range(repeats)]
+        samples = [_time_once(fn, iterations, before, reset_batch) for _ in range(repeats)]
     finally:
         if gc_was_enabled:
             gc.enable()
@@ -368,13 +389,18 @@ def run_benchmarks() -> list[Result]:
     def _clear_memory_sink() -> None:
         memory_sink.payloads.clear()
 
+    # The sink collects every formatted line, so it must start each batch empty.
+    # ``reset_batch`` clears it untimed between batches and keeps the single
+    # timer around the whole batch, which is the same harness the two null-sink
+    # rows use above — otherwise the row-to-row delta would compare two
+    # different timing methods instead of two handler costs.
     results.append(
         bench(
             "pipeline: structured -> memory sink",
             _emit_memory,
             iterations=5_000,
             repeats=7,
-            before=_clear_memory_sink,
+            reset_batch=_clear_memory_sink,
         )
     )
 

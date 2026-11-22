@@ -56,25 +56,31 @@ list sink. No socket, no file, no Azure. Redaction is deliberately **not** in th
 pipeline rows: it is a safety path with its own rows above and must not be tuned
 for speed.
 
-Contributor run — CPython 3.15.2, macOS 27.2.1 arm64, source checkout;
-5,000 iterations × 7 repeats per emitted row, 20,000 × 7 for the suppressed row:
+Contributor run — CPython 3.14.10 (inside the supported `>=3.11,<3.15` range),
+macOS 27.2.1 arm64, source checkout; 5,000 iterations × 7 repeats per emitted
+row, 20,000 × 7 for the suppressed row:
 
 | Row | Median | Variability (stdev across repeats) |
 | --- | ---: | ---: |
-| `pipeline: simple -> null sink` | ~9.6 µs | ±0.4 µs |
-| `pipeline: structured -> null sink` | ~12.3 µs | ±0.9 µs |
-| `pipeline: structured -> memory sink` | ~11.8 µs | ±0.8 µs |
-| `pipeline: structured, dropped by SamplingFilter` | ~3.4 µs | ±0.03 µs |
+| `pipeline: simple -> null sink` | ~9.6 µs | ±0.2 µs |
+| `pipeline: structured -> null sink` | ~12.5 µs | ±0.2 µs |
+| `pipeline: structured -> memory sink` | ~12.3 µs | ±0.4 µs |
+| `pipeline: structured, dropped by SamplingFilter` | ~3.6 µs | ±0.1 µs |
 
-Two consecutive runs on the same idle machine moved these medians by up to
-~1 µs, so treat the ordering and the ratio as the signal, not the absolute
-microseconds.
+All four rows share one timer around each batch; the memory sink is cleared
+untimed between batches, so a row-to-row delta compares handler costs and not
+two different timing methods.
 
-Reading it: on this machine one emitted structured record costs ~11 µs of worker
-CPU, while the same record costs ~3.4 µs when sampling drops it — sampling saves
-roughly two thirds of the per-record cost for chatty loggers, and the remaining
-third is the record creation that happens before any filter runs. Absolute values
-are machine-specific; the ratio is the stable part.
+Three consecutive runs on the same idle machine moved these medians by up to
+~1.6 µs on the noisiest row, so treat the ordering and the ratio as the signal,
+not the absolute microseconds. CPython 3.15 is outside the supported range and
+is not used as a reference here.
+
+Reading it: on this machine one emitted structured record costs ~12 µs of worker
+CPU, while the same record costs ~3.6 µs when sampling drops it — sampling saves
+roughly 70% of the per-record cost for chatty loggers, and the remaining third
+is the record creation that happens before any filter runs. Absolute values are
+machine-specific; the ratio is the stable part.
 
 These rows are **not** part of `make test` or CI: `bench.py` stays a standalone,
 opt-in script, so nothing here blocks a build.
