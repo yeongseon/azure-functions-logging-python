@@ -28,8 +28,10 @@ from dataclasses import asdict, dataclass
 import gc
 import json
 import logging
+from pathlib import Path
 import platform
 import statistics
+import subprocess
 import sys
 import time
 
@@ -66,6 +68,24 @@ def _make_record() -> logging.LogRecord:
     return record
 
 
+class _NullSinkHandler(logging.Handler):
+    """Handler that formats each record and discards it (no I/O, no network)."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.format(record)
+
+
+class _MemorySinkHandler(logging.Handler):
+    """Handler that formats each record into a list: an in-memory sink, no I/O."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.payloads: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.payloads.append(self.format(record))
+
+
 # --------------------------------------------------------------------------- #
 # Timing harness
 # --------------------------------------------------------------------------- #
@@ -76,35 +96,52 @@ class Result:
     repeats: int
     median_ns_per_op: float
     min_ns_per_op: float
+    stdev_ns_per_op: float = 0.0
 
     def as_row(self) -> str:
-        return f"{self.name:<38} {self.median_ns_per_op:>12,.0f} ns {self.min_ns_per_op:>12,.0f} ns"
+        return (
+            f"{self.name:<50} {self.median_ns_per_op:>11,.0f} ns "
+            f"±{self.stdev_ns_per_op:>9,.0f} ns {self.min_ns_per_op:>11,.0f} ns"
+        )
 
 
 def _time_once(
     fn: Callable[[], None],
     iterations: int,
     before: Callable[[], None] | None = None,
+    reset_batch: Callable[[], None] | None = None,
 ) -> float:
     """Return ns/op for a batch of ``iterations`` calls.
 
-    When ``before`` is provided it runs untimed before each call — used to reset
-    state (e.g. so ``setup_logging`` measures first-time cost, not its idempotent
-    fast-path) without charging the reset to the measurement.
-    """
-    if before is None:
-        start = time.perf_counter_ns()
-        for _ in range(iterations):
-            fn()
-        return (time.perf_counter_ns() - start) / iterations
+    The two reset hooks keep rows comparable by making the timing method
+    explicit:
 
-    total = 0
+    ``reset_batch`` runs untimed once before the batch. Use it for state that
+    only has to start clean (e.g. clearing a sink that collects every formatted
+    line). The batch keeps the single-timer path below, so the resulting number
+    carries the same harness overhead as a row with no hook at all.
+
+    ``before`` runs untimed before *each* call and therefore needs a per-call
+    timer. Only rows that must reset state between calls (the first-time
+    ``setup_logging`` measurement) should use it: its harness overhead is not
+    comparable with batched rows, so it must not be mixed into a row-to-row
+    comparison.
+    """
+    if before is not None:
+        total = 0
+        for _ in range(iterations):
+            before()
+            start = time.perf_counter_ns()
+            fn()
+            total += time.perf_counter_ns() - start
+        return total / iterations
+
+    if reset_batch is not None:
+        reset_batch()
+    start = time.perf_counter_ns()
     for _ in range(iterations):
-        before()
-        start = time.perf_counter_ns()
         fn()
-        total += time.perf_counter_ns() - start
-    return total / iterations
+    return (time.perf_counter_ns() - start) / iterations
 
 
 def bench(
@@ -114,14 +151,22 @@ def bench(
     iterations: int,
     repeats: int = 7,
     before: Callable[[], None] | None = None,
+    reset_batch: Callable[[], None] | None = None,
 ) -> Result:
-    if before is not None:
+    if before is not None and reset_batch is not None:
+        raise ValueError(
+            "before resets between calls and reset_batch between batches; "
+            "a row can only use one timing method"
+        )
+    if reset_batch is not None:
+        reset_batch()
+    elif before is not None:
         before()
     fn()  # warmup / populate caches
     gc_was_enabled = gc.isenabled()
     gc.disable()
     try:
-        samples = [_time_once(fn, iterations, before) for _ in range(repeats)]
+        samples = [_time_once(fn, iterations, before, reset_batch) for _ in range(repeats)]
     finally:
         if gc_was_enabled:
             gc.enable()
@@ -131,6 +176,7 @@ def bench(
         repeats=repeats,
         median_ns_per_op=statistics.median(samples),
         min_ns_per_op=min(samples),
+        stdev_ns_per_op=statistics.stdev(samples) if len(samples) > 1 else 0.0,
     )
 
 
@@ -287,7 +333,117 @@ def run_benchmarks() -> list[Result]:
         )
     )
 
+    # ── End-to-end pipeline shapes (issue #714) ────────────────────────────
+    # One controlled sequence per shape through the whole chain a caller pays
+    # for: logger -> optional SamplingFilter -> JsonFormatter -> sink. Both
+    # sinks are local (null and in-memory), so no I/O enters the measurement.
+    # Redaction is deliberately excluded here: it is a safety path with its own
+    # rows above, not part of the sampling/structured-logging overhead question.
+    structured_extra = {
+        "order_id": "o-42",
+        "region": "koreacentral",
+        "user": {"id": "u-1", "email": "a@b.com"},
+    }
+    null_sink = _NullSinkHandler()
+
+    def _pipeline_logger(name: str, handler: logging.Handler, rate: int | None) -> logging.Logger:
+        # A distinct logger per shape keeps the rows independent: reusing one
+        # name would let a later configuration rewire an earlier row's handler.
+        logger = logging.getLogger(f"bench.pipeline.{name}")
+        logger.handlers.clear()
+        logger.filters.clear()
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        if rate is not None:
+            # One window long enough that only the first record can pass, so the
+            # sampled row measures the drop path rather than the emit path.
+            logger.addFilter(SamplingFilter(rate=rate, window=3_600.0))
+        handler.setFormatter(JsonFormatter())
+        logger.addHandler(handler)
+        return logger
+
+    simple_logger = _pipeline_logger("simple", null_sink, rate=None)
+
+    def _emit_simple() -> None:
+        simple_logger.info("processing order %s", "o-42")
+
+    results.append(
+        bench("pipeline: simple -> null sink", _emit_simple, iterations=5_000, repeats=7)
+    )
+
+    structured_logger = _pipeline_logger("structured", null_sink, rate=None)
+
+    def _emit_structured() -> None:
+        structured_logger.info("processing order %s", "o-42", extra=structured_extra)
+
+    results.append(
+        bench("pipeline: structured -> null sink", _emit_structured, iterations=5_000, repeats=7)
+    )
+
+    memory_sink = _MemorySinkHandler()
+    memory_logger = _pipeline_logger("memory", memory_sink, rate=None)
+
+    def _emit_memory() -> None:
+        memory_logger.info("processing order %s", "o-42", extra=structured_extra)
+
+    def _clear_memory_sink() -> None:
+        memory_sink.payloads.clear()
+
+    # The sink collects every formatted line, so it must start each batch empty.
+    # ``reset_batch`` clears it untimed between batches and keeps the single
+    # timer around the whole batch, which is the same harness the two null-sink
+    # rows use above — otherwise the row-to-row delta would compare two
+    # different timing methods instead of two handler costs.
+    results.append(
+        bench(
+            "pipeline: structured -> memory sink",
+            _emit_memory,
+            iterations=5_000,
+            repeats=7,
+            reset_batch=_clear_memory_sink,
+        )
+    )
+
+    sampled_logger = _pipeline_logger("sampled", _NullSinkHandler(), rate=1)
+
+    def _emit_sampled() -> None:
+        sampled_logger.info("processing order %s", "o-42", extra=structured_extra)
+
+    _emit_sampled()  # spend the one allowed slot untimed, so every timed call is dropped
+    results.append(
+        bench(
+            "pipeline: structured, dropped by SamplingFilter",
+            _emit_sampled,
+            iterations=20_000,
+            repeats=7,
+        )
+    )
+
     return results
+
+
+def _package_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("azure-functions-logging")
+    except Exception:  # noqa: BLE001 - metadata is absent in a bare source checkout
+        return "unknown (not installed)"
+
+
+def _git_revision() -> str:
+    try:
+        completed = subprocess.run(  # nosec B603 B607 - fixed argv, no shell, no user input
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return completed.stdout.strip() or "unknown"
 
 
 def _environment() -> dict[str, str]:
@@ -296,6 +452,8 @@ def _environment() -> dict[str, str]:
         "implementation": platform.python_implementation(),
         "platform": platform.platform(),
         "processor": platform.processor() or "unknown",
+        "package": _package_version(),
+        "revision": _git_revision(),
     }
 
 
@@ -326,10 +484,11 @@ def main() -> int:
     print("azure-functions-logging — micro-benchmarks")
     print(
         f"  {env['implementation']} {env['python']} on {env['platform']}\n"
+        f"  package {env['package']} @ {env['revision']}\n"
         f"  (in-process CPU cost per op; excludes gRPC / host / ingestion)\n"
     )
-    print(f"{'benchmark':<38} {'median':>15} {'min':>15}")
-    print("-" * 70)
+    print(f"{'benchmark':<50} {'median':>14} {'variability':>13} {'min':>14}")
+    print("-" * 95)
     for r in results:
         print(r.as_row())
     return 0

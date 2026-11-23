@@ -15,6 +15,11 @@ python benchmarks/bench.py --include-import # also run the import-reload proxy
 No pytest, no third-party benchmark framework, no network, no Azure — the script
 uses only the stdlib plus this package's public API.
 
+Every row records its own `iterations` and `repeats`, the median across repeats,
+the standard deviation across repeats, and the fastest repeat. `--json` also
+carries the interpreter, platform, package version and git revision, so a run can
+be compared with another one instead of trusting a single wall-clock number.
+
 ## What these numbers are (and are not)
 
 These are **in-process CPU micro-benchmarks**. Each row is the median (across
@@ -32,6 +37,53 @@ context injection, JSON formatting, and the filters. They deliberately say
 Treat them as "is the per-record overhead in the microseconds or milliseconds
 range?" evidence — not as a platform performance model. Re-run on your own
 hardware for numbers that reflect your environment.
+
+## Pipeline shapes: simple, structured, sampled
+
+Four rows measure a whole record path — `logger.info()` → `makeRecord()` →
+optional `SamplingFilter` → `JsonFormatter` → sink — instead of one component at
+a time, over the three event shapes a Functions app actually emits:
+
+| Row | Shape | What it isolates |
+| --- | --- | --- |
+| `pipeline: simple -> null sink` | `logger.info("processing order %s", "o-42")`, no extras | The unavoidable per-record cost: record creation, formatting, handler dispatch |
+| `pipeline: structured -> null sink` | Same message plus `extra={order_id, region, user{id,email}}` | What carrying and serialising a structured payload adds |
+| `pipeline: structured -> memory sink` | Same record, formatted output appended to a list | A handler that actually keeps the formatted line — still no I/O |
+| `pipeline: structured, dropped by SamplingFilter` | Structured record on a logger with `SamplingFilter(rate=1, window=3600)` | What a **suppressed** record still costs — the saving sampling buys |
+
+Both sinks are local: a null sink that formats and discards, and an in-memory
+list sink. No socket, no file, no Azure. Redaction is deliberately **not** in the
+pipeline rows: it is a safety path with its own rows above and must not be tuned
+for speed.
+
+Contributor run — CPython 3.14.10 (inside the supported `>=3.11,<3.15` range),
+macOS 27.2.1 arm64, source checkout; 5,000 iterations × 7 repeats per emitted
+row, 20,000 × 7 for the suppressed row:
+
+| Row | Median | Variability (stdev across repeats) |
+| --- | ---: | ---: |
+| `pipeline: simple -> null sink` | ~9.6 µs | ±0.2 µs |
+| `pipeline: structured -> null sink` | ~12.5 µs | ±0.2 µs |
+| `pipeline: structured -> memory sink` | ~12.3 µs | ±0.4 µs |
+| `pipeline: structured, dropped by SamplingFilter` | ~3.6 µs | ±0.1 µs |
+
+All four rows share one timer around each batch; the memory sink is cleared
+untimed between batches, so a row-to-row delta compares handler costs and not
+two different timing methods.
+
+Three consecutive runs on the same idle machine moved these medians by up to
+~1.6 µs on the noisiest row, so treat the ordering and the ratio as the signal,
+not the absolute microseconds. CPython 3.15 is outside the supported range and
+is not used as a reference here.
+
+Reading it: on this machine one emitted structured record costs ~12 µs of worker
+CPU, while the same record costs ~3.6 µs when sampling drops it — sampling saves
+roughly 70% of the per-record cost for chatty loggers, and the remaining third
+is the record creation that happens before any filter runs. Absolute values are
+machine-specific; the ratio is the stable part.
+
+These rows are **not** part of `make test` or CI: `bench.py` stays a standalone,
+opt-in script, so nothing here blocks a build.
 
 ## Reference run
 
@@ -65,4 +117,5 @@ reference and re-run the suite on a supported interpreter for anything load-bear
 - **`setup_logging`** is a one-time startup cost, not a per-request cost.
 
 To refresh this table, run `python benchmarks/bench.py` and update the numbers
-(and the environment line) to match your run.
+(and the environment line) to match your run. The table above predates the
+pipeline rows; a fresh run prints all twelve rows.
