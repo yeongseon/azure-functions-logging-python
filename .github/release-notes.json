@@ -1,6 +1,7 @@
 {
   "repo": "yeongseon/azure-functions-logging-python",
   "owner_login": "yeongseon",
+  "pypi_project": "azure-functions-logging",
   "legacy_repos": [
     "yeongseon/azure-functions-logging"
   ],
