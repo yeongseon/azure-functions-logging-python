@@ -46,7 +46,7 @@ Copilot, etc.). No reviewer tool is a prerequisite.
   Local `make check-all` is recommended but not a separate mandatory gate;
   no assumption is made about CI runner hosting.
 - Review correctness, tests, compatibility, safety and maintainability.
-  Oracle, Copilot and agent-review outputs are advisory only.
+  Oracle and agent-review outputs are advisory only.
 - Address blocking findings and have the responsible maintainer decide on
   merge after verifying CI and relevant Azure integration/release evidence.
   Keep independent review of secrets, write permissions and publishing.
